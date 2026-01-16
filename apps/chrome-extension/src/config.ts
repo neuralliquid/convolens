@@ -90,6 +90,30 @@ export const STORAGE_KEYS = {
   pendingUploads: 'pendingUploads',
 };
 
+// =============================================================================
+// Correlation ID Generation
+// =============================================================================
+
+/**
+ * Generate a unique correlation ID for tracing requests
+ */
+export function generateCorrelationId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 14);
+  return `ext_${timestamp}_${random}`;
+}
+
+/**
+ * Get headers to include with API requests for tracing
+ */
+export function getTracingHeaders(): Record<string, string> {
+  return {
+    'x-correlation-id': generateCorrelationId(),
+    'x-source': 'chrome-extension',
+    'x-extension-version': chrome.runtime.getManifest().version,
+  };
+}
+
 // Default settings
 export interface ExtensionSettings {
   autoExtract: boolean;
@@ -109,28 +133,129 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   apiEndpoint: '',
 };
 
-// Message types for extension communication
-export type MessageAction =
-  | 'GET_CURRENT_CHAT'
-  | 'CHECK_STATUS'
-  | 'SET_AUTH_TOKEN'
-  | 'SEND_CHAT_DATA'
-  | 'OPEN_DASHBOARD'
-  | 'GET_AUTH_STATUS'
-  | 'LOGIN'
-  | 'LOGOUT'
-  | 'GET_SETTINGS'
-  | 'UPDATE_SETTINGS'
-  | 'CLEAR_PENDING_UPLOADS'
-  | 'RETRY_PENDING_UPLOADS';
+// Message types for extension communication - Discriminated union for type safety
 
-export interface ExtensionMessage {
-  action: MessageAction;
-  [key: string]: any;
+export interface GetCurrentChatMessage {
+  action: 'GET_CURRENT_CHAT';
 }
 
-export interface ExtensionResponse {
-  success: boolean;
-  data?: any;
-  error?: string;
+export interface CheckStatusMessage {
+  action: 'CHECK_STATUS';
+}
+
+export interface SetAuthTokenMessage {
+  action: 'SET_AUTH_TOKEN';
+  token: string | null;
+}
+
+export interface SendChatDataMessage {
+  action: 'SEND_CHAT_DATA';
+  data: {
+    chatName: string;
+    chatId: string;
+    extractedAt: string;
+    messageCount: number;
+    messages: Array<{
+      id: string;
+      text: string;
+      sender: string;
+      timestamp: string;
+      isOutgoing: boolean;
+      isMedia: boolean;
+      mediaType?: 'image' | 'video' | 'audio' | 'document' | 'sticker';
+      replyTo?: string;
+    }>;
+    source: 'chrome-extension';
+    version: string;
+    isGroup: boolean;
+  };
+}
+
+export interface OpenDashboardMessage {
+  action: 'OPEN_DASHBOARD';
+  path?: string;
+}
+
+export interface GetAuthStatusMessage {
+  action: 'GET_AUTH_STATUS';
+}
+
+export interface LoginMessage {
+  action: 'LOGIN';
+  email: string;
+  password: string;
+}
+
+export interface LogoutMessage {
+  action: 'LOGOUT';
+}
+
+export interface GetSettingsMessage {
+  action: 'GET_SETTINGS';
+}
+
+export interface UpdateSettingsMessage {
+  action: 'UPDATE_SETTINGS';
+  settings: Partial<ExtensionSettings>;
+}
+
+export interface ClearPendingUploadsMessage {
+  action: 'CLEAR_PENDING_UPLOADS';
+}
+
+export interface RetryPendingUploadsMessage {
+  action: 'RETRY_PENDING_UPLOADS';
+}
+
+// Union type of all message types
+export type ExtensionMessage =
+  | GetCurrentChatMessage
+  | CheckStatusMessage
+  | SetAuthTokenMessage
+  | SendChatDataMessage
+  | OpenDashboardMessage
+  | GetAuthStatusMessage
+  | LoginMessage
+  | LogoutMessage
+  | GetSettingsMessage
+  | UpdateSettingsMessage
+  | ClearPendingUploadsMessage
+  | RetryPendingUploadsMessage;
+
+// Helper type to extract action names
+export type MessageAction = ExtensionMessage['action'];
+
+// Response types with proper typing
+export interface SuccessResponse<T = unknown> {
+  success: true;
+  data?: T;
+}
+
+export interface ErrorResponse {
+  success: false;
+  error: string;
+}
+
+export type ExtensionResponse<T = unknown> = SuccessResponse<T> | ErrorResponse;
+
+// Specific response data types
+export interface AuthStatusData {
+  isAuthenticated: boolean;
+  user?: {
+    id: string;
+    email: string;
+    name?: string;
+  };
+}
+
+export interface CheckStatusData {
+  isWhatsAppWeb: boolean;
+  isLoggedIn: boolean;
+  isExtracting: boolean;
+}
+
+export interface PendingUploadsData {
+  processed: number;
+  failed?: number;
+  remaining?: number;
 }

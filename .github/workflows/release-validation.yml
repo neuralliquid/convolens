@@ -48,12 +48,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - name: Parse Azure Credentials
+        id: azure-creds
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientId')
+          TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.tenantId')
+          SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.subscriptionId')
+          
+          # Validate that parsing succeeded
+          if [ "$CLIENT_ID" = "null" ] || [ -z "$CLIENT_ID" ]; then
+            echo "Error: Failed to parse clientId from AZURE_CREDENTIALS"
+            exit 1
+          fi
+          if [ "$TENANT_ID" = "null" ] || [ -z "$TENANT_ID" ]; then
+            echo "Error: Failed to parse tenantId from AZURE_CREDENTIALS"
+            exit 1
+          fi
+          if [ "$SUBSCRIPTION_ID" = "null" ] || [ -z "$SUBSCRIPTION_ID" ]; then
+            echo "Error: Failed to parse subscriptionId from AZURE_CREDENTIALS"
+            exit 1
+          fi
+          
+          echo "client-id=$CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "tenant-id=$TENANT_ID" >> $GITHUB_OUTPUT
+          echo "subscription-id=$SUBSCRIPTION_ID" >> $GITHUB_OUTPUT
       - name: Azure Login
         uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ steps.azure-creds.outputs.client-id }}
+          tenant-id: ${{ steps.azure-creds.outputs.tenant-id }}
+          subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
 
       - name: Install jq
         run: sudo apt-get install -y jq

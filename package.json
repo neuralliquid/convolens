@@ -1,7 +1,8 @@
 {
-  "name": "whatsapp-conversation-summarizer",
+  "name": "convolens",
   "version": "0.1.0",
   "private": true,
+  "description": "ConvoLens - See Your Conversations Clearly. AI-powered conversation analysis platform.",
   "packageManager": "pnpm@8.15.4",
   "engines": {
     "node": ">=18.0.0",
@@ -57,7 +58,7 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-testing-library": "^6.2.0",
     "fs-extra": "^11.2.0",
-    "glob": "^10.5.0",
+    "glob": "^11.1.0",
     "husky": "^9.0.11",
     "inquirer": "^9.2.12",
     "lint-staged": "^15.2.2",
@@ -71,7 +72,7 @@
     "tsx": "^4.7.0",
     "turbo": "^1.13.4",
     "typescript": "^5.3.3",
-    "vite": "^5.4.21",
+    "vite": "^7.2.6",
     "vite-tsconfig-paths": "^4.3.1",
     "vitest": "^1.6.1"
   },

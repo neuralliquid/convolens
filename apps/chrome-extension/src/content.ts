@@ -21,6 +21,8 @@ import {
   getConfig,
   type ExtensionMessage,
   type ExtensionResponse,
+  type SetAuthTokenMessage,
+  type CheckStatusData,
 } from './config';
 
 // =============================================================================
@@ -70,12 +72,20 @@ const state: ExtractionState = {
 let authToken: string | null = null;
 let currentChatId: string | null = null;
 let statusUI: HTMLElement | null = null;
+let chatObserver: MutationObserver | null = null;
+let isInitialized = false;
 
 // =============================================================================
 // Initialization
 // =============================================================================
 
 async function init(): Promise<void> {
+  // Guard against multiple initializations
+  if (isInitialized) {
+    console.log('[WhatsSummarize] Already initialized, skipping');
+    return;
+  }
+
   console.log('[WhatsSummarize] Content script initializing...');
 
   // Verify we're on WhatsApp Web
@@ -98,13 +108,31 @@ async function init(): Promise<void> {
   // Inject UI elements
   injectUI();
 
-  // Set up message listener
+  // Set up message listener (only once)
   chrome.runtime.onMessage.addListener(handleMessage);
 
   // Observe chat navigation
   observeChatChanges();
 
+  // Mark as initialized
+  isInitialized = true;
+
+  // Set up cleanup on page unload
+  window.addEventListener('beforeunload', cleanup);
+
   console.log('[WhatsSummarize] Content script initialized successfully');
+}
+
+/**
+ * Cleanup resources when page unloads
+ */
+function cleanup(): void {
+  if (chatObserver) {
+    chatObserver.disconnect();
+    chatObserver = null;
+  }
+  isInitialized = false;
+  console.log('[WhatsSummarize] Cleanup completed');
 }
 
 /**
@@ -496,11 +524,15 @@ function parseTimestamp(timeText: string): string {
 }
 
 function generateMessageId(): string {
-  return 'msg_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  // Use crypto.getRandomValues() for cryptographically secure random values
+  const randomBytes = new Uint8Array(5);
+  crypto.getRandomValues(randomBytes);
+  const randomHex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+  return 'msg_' + Date.now().toString(36) + randomHex;
 }
 
 function generateChatId(name: string): string {
-  const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, '_').substr(0, 50);
+  const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 50);
   return 'chat_' + sanitized + '_' + Date.now().toString(36);
 }
 
@@ -556,7 +588,12 @@ async function queueForOfflineSync(chatData: ExtractedChat): Promise<void> {
 // =============================================================================
 
 function observeChatChanges(): void {
-  const observer = new MutationObserver(() => {
+  // Disconnect existing observer if any
+  if (chatObserver) {
+    chatObserver.disconnect();
+  }
+
+  chatObserver = new MutationObserver(() => {
     const header = querySelector(SELECTORS.primary.chatHeader, SELECTORS.fallback.chatHeader);
     if (header) {
       const contactName = querySelector(SELECTORS.primary.contactName, SELECTORS.fallback.contactName);
@@ -569,10 +606,20 @@ function observeChatChanges(): void {
     }
   });
 
-  observer.observe(document.body, {
+  // Find a more specific target than document.body to reduce performance impact
+  const chatContainer = document.querySelector('#main') ||
+                        document.querySelector('[data-testid="conversation-panel-wrapper"]') ||
+                        document.body;
+
+  chatObserver.observe(chatContainer, {
     childList: true,
     subtree: true,
+    // Don't observe attribute changes - reduces noise
+    attributes: false,
+    characterData: false,
   });
+
+  console.log('[WhatsSummarize] Chat observer started on:', chatContainer.tagName || 'body');
 }
 
 // =============================================================================
@@ -591,23 +638,29 @@ function handleMessage(
         .catch(error => sendResponse({ success: false, error: error.message }));
       return true;
 
-    case 'CHECK_STATUS':
+    case 'CHECK_STATUS': {
       const chatList = querySelector(SELECTORS.primary.chatList, SELECTORS.fallback.chatList);
-      sendResponse({
-        success: true,
-        data: {
-          isWhatsAppWeb: true,
-          isLoggedIn: !!chatList,
-          isExtracting: state.isExtracting,
-        },
-      });
+      const statusData: CheckStatusData = {
+        isWhatsAppWeb: true,
+        isLoggedIn: !!chatList,
+        isExtracting: state.isExtracting,
+      };
+      sendResponse({ success: true, data: statusData });
       break;
+    }
 
-    case 'SET_AUTH_TOKEN':
-      authToken = message.token;
-      chrome.storage.local.set({ [STORAGE_KEYS.authToken]: message.token });
+    case 'SET_AUTH_TOKEN': {
+      const typedMessage = message as SetAuthTokenMessage;
+      // Validate token is string or null
+      if (typedMessage.token !== null && typeof typedMessage.token !== 'string') {
+        sendResponse({ success: false, error: 'Token must be a string or null' });
+        break;
+      }
+      authToken = typedMessage.token;
+      chrome.storage.local.set({ [STORAGE_KEYS.authToken]: typedMessage.token });
       sendResponse({ success: true });
       break;
+    }
 
     default:
       sendResponse({ success: false, error: 'Unknown action' });

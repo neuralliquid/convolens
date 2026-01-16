@@ -19,13 +19,13 @@ body {
 }
 
 a {
-  color: #25D366; /* WhatsApp green */
+  color: #6B46C1; /* ConvoLens Primary Purple */
   text-decoration: none;
   transition: color 0.3s;
 }
 
 a:hover {
-  color: #128C7E; /* Darker WhatsApp green */
+  color: #06B6D4; /* ConvoLens Cyan */
 }
 
 /* Custom scrollbar */

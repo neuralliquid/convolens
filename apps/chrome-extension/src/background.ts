@@ -14,9 +14,15 @@ import {
   STORAGE_KEYS,
   RATE_LIMIT_CONFIG,
   DEFAULT_SETTINGS,
+  getTracingHeaders,
   type ExtensionMessage,
   type ExtensionResponse,
   type ExtensionSettings,
+  type LoginMessage,
+  type UpdateSettingsMessage,
+  type SendChatDataMessage,
+  type OpenDashboardMessage,
+  type SetAuthTokenMessage,
 } from './config';
 
 // =============================================================================
@@ -34,14 +40,8 @@ interface RateLimitState {
   resetTime: number;
 }
 
-// =============================================================================
-// State
-// =============================================================================
-
-const rateLimitState: RateLimitState = {
-  apiCallCount: 0,
-  resetTime: Date.now() + 60000,
-};
+// Storage key for persistent rate limiting
+const RATE_LIMIT_STORAGE_KEY = 'ws_rate_limit_state';
 
 // =============================================================================
 // Message Handler
@@ -60,17 +60,27 @@ async function handleMessage(message: ExtensionMessage, sender: chrome.runtime.M
   console.log('[Background] Received message:', message.action);
 
   switch (message.action) {
-    case 'SEND_CHAT_DATA':
-      return await sendChatData(message.data);
+    case 'SEND_CHAT_DATA': {
+      const typedMessage = message as SendChatDataMessage;
+      return await sendChatData(typedMessage.data);
+    }
 
-    case 'OPEN_DASHBOARD':
-      return await openDashboard(message.path);
+    case 'OPEN_DASHBOARD': {
+      const typedMessage = message as OpenDashboardMessage;
+      return await openDashboard(typedMessage.path);
+    }
 
     case 'GET_AUTH_STATUS':
       return await getAuthStatus();
 
-    case 'LOGIN':
-      return await handleLogin(message.email, message.password);
+    case 'LOGIN': {
+      const typedMessage = message as LoginMessage;
+      // Validate required fields
+      if (!typedMessage.email || !typedMessage.password) {
+        return { success: false, error: 'Email and password are required' };
+      }
+      return await handleLogin(typedMessage.email, typedMessage.password);
+    }
 
     case 'LOGOUT':
       return await handleLogout();
@@ -78,14 +88,25 @@ async function handleMessage(message: ExtensionMessage, sender: chrome.runtime.M
     case 'GET_SETTINGS':
       return await getSettings();
 
-    case 'UPDATE_SETTINGS':
-      return await updateSettings(message.settings);
+    case 'UPDATE_SETTINGS': {
+      const typedMessage = message as UpdateSettingsMessage;
+      if (!typedMessage.settings || typeof typedMessage.settings !== 'object') {
+        return { success: false, error: 'Settings object is required' };
+      }
+      return await updateSettings(typedMessage.settings);
+    }
 
     case 'RETRY_PENDING_UPLOADS':
       return await retryPendingUploads();
 
     case 'CLEAR_PENDING_UPLOADS':
       return await clearPendingUploads();
+
+    case 'GET_CURRENT_CHAT':
+    case 'CHECK_STATUS':
+    case 'SET_AUTH_TOKEN':
+      // These are handled by content script, not background
+      return { success: false, error: 'Action handled by content script' };
 
     default:
       return { success: false, error: 'Unknown action' };
@@ -107,20 +128,22 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
       return { success: false, error: 'Not authenticated. Please log in first.' };
     }
 
-    // Check rate limiting
-    if (!checkApiRateLimit()) {
+    // Check rate limiting (persistent across service worker restarts)
+    const canProceed = await checkApiRateLimit();
+    if (!canProceed) {
       // Queue for later
       await queuePendingUpload(chatData);
       return { success: false, error: 'Rate limited. Queued for later.' };
     }
 
-    // Send with retry
+    // Send with retry (include tracing headers for distributed tracing)
     const config = await getApiConfig();
     const result = await fetchWithRetry(`${config.apiUrl}/api/chat-export/extension`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${stored[STORAGE_KEYS.authToken]}`,
+        ...getTracingHeaders(),
       },
       body: JSON.stringify(chatData),
     });
@@ -150,7 +173,8 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries: num
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      rateLimitState.apiCallCount++;
+      // Track API call count persistently
+      await incrementApiCallCount();
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -318,9 +342,15 @@ async function queuePendingUpload(data: any): Promise<void> {
     attempts: 0,
   });
 
-  // Keep only last 20 pending uploads
+  // Keep only last 20 pending uploads, warn if dropping
+  let dropped = 0;
   while (pending.length > 20) {
     pending.shift();
+    dropped++;
+  }
+
+  if (dropped > 0) {
+    console.warn(`[Background] Queue full. Dropped ${dropped} oldest upload(s) to make room.`);
   }
 
   await chrome.storage.local.set({ [STORAGE_KEYS.pendingUploads]: pending });
@@ -409,18 +439,45 @@ async function trackExtractionHistory(chatData: any): Promise<void> {
 }
 
 // =============================================================================
-// Rate Limiting
+// Rate Limiting (Persistent across service worker restarts)
 // =============================================================================
 
-function checkApiRateLimit(): boolean {
+/**
+ * Get rate limit state from persistent storage
+ */
+async function getRateLimitState(): Promise<RateLimitState> {
+  const stored = await chrome.storage.local.get([RATE_LIMIT_STORAGE_KEY]);
+  const state = stored[RATE_LIMIT_STORAGE_KEY] as RateLimitState | undefined;
+
   const now = Date.now();
 
-  if (now > rateLimitState.resetTime) {
-    rateLimitState.apiCallCount = 0;
-    rateLimitState.resetTime = now + 60000;
+  // Return existing state or create new one
+  if (state && now < state.resetTime) {
+    return state;
   }
 
-  return rateLimitState.apiCallCount < RATE_LIMIT_CONFIG.maxApiCallsPerMinute;
+  // Reset if expired or doesn't exist
+  return {
+    apiCallCount: 0,
+    resetTime: now + 60000, // 1 minute window
+  };
+}
+
+/**
+ * Increment API call count with persistence
+ */
+async function incrementApiCallCount(): Promise<void> {
+  const state = await getRateLimitState();
+  state.apiCallCount++;
+  await chrome.storage.local.set({ [RATE_LIMIT_STORAGE_KEY]: state });
+}
+
+/**
+ * Check if API rate limit allows another call (persistent)
+ */
+async function checkApiRateLimit(): Promise<boolean> {
+  const state = await getRateLimitState();
+  return state.apiCallCount < RATE_LIMIT_CONFIG.maxApiCallsPerMinute;
 }
 
 // =============================================================================

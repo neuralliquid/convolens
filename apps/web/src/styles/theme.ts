@@ -1,8 +1,16 @@
-// Default theme settings
+// ConvoLens Brand Theme
 const theme = {
   colors: {
-    primary: '#1890ff',
-    secondary: '#52c41a',
+    // ConvoLens Primary Brand Colors
+    primary: '#6B46C1', // Deep Purple - Main brand color
+    secondary: '#06B6D4', // Bright Cyan - Secondary brand color
+    accent: '#C4B5FD', // Soft Lavender - Accent color
+    
+    // WhatsApp Integration Colors (for WhatsApp-specific features only)
+    whatsappGreen: '#25D366', // Use only for WhatsApp chat indicators
+    whatsappDark: '#128C7E', // Use only for WhatsApp-specific elements
+    
+    // Semantic Colors
     error: '#f5222d',
     warning: '#faad14',
     success: '#52c41a',

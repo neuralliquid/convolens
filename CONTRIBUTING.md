@@ -16,14 +16,30 @@ There is a known buglist, ask for the details.
    ```bash
    git checkout -b feature/your-feature-name
    ```
-5. Make your changes
-6. Run the development server:
+5. **Environment Setup:**
+   ```bash
+   cp apps/web/.env.example apps/web/.env.local
+   cp apps/api/.env.example apps/api/.env
+   ```
+6. Make your changes
+7. Run the development server:
    ```bash
    pnpm dev
    ```
-7. Test your changes
-8. Commit your changes with a descriptive message
-9. Push to your fork and open a Pull Request
+8. Test your changes:
+   ```bash
+   pnpm test
+   pnpm lint
+   ```
+9. Commit your changes with a descriptive message
+10. Push to your fork and open a Pull Request
+
+### Azure Infrastructure Setup (Optional)
+
+If you need to work with Azure infrastructure or GitHub Actions workflows:
+
+- **Azure Credentials Configuration**: See [Azure Setup Guide](docs/AZURE_SETUP.md) for detailed instructions on configuring OIDC authentication for GitHub Actions.
+- **Infrastructure Deployment**: See [Infrastructure Guide](infra/README.md) for deploying Azure resources.
 
 ## 📝 Code Style
 

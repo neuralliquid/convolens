@@ -14,6 +14,7 @@
 // - Azure Key Vault (secrets management)
 // - Azure Container Apps (API hosting)
 // - Azure Static Web Apps (frontend hosting)
+// - Azure Budget Alerts (cost management)
 // =============================================================================
 
 targetScope = 'resourceGroup'
@@ -52,6 +53,12 @@ param enableStaticWebApps bool = true
 @description('Administrator email for alerts')
 param adminEmail string = ''
 
+@description('Enable budget alerts')
+param enableBudgetAlerts bool = true
+
+@description('Monthly budget amount in USD')
+param monthlyBudgetAmount int = environment == 'prod' ? 500 : environment == 'staging' ? 200 : 100
+
 @description('OpenAI model deployments')
 param openAIDeployments array = [
   {
@@ -83,10 +90,19 @@ var resourcePrefix = '${projectName}-${environment}'
 var resourcePrefixClean = replace(resourcePrefix, '-', '')
 
 // SKUs based on environment
-var cosmosDBSku = environment == 'prod' ? 'Standard' : 'Standard'
+// Redis: Basic (no SLA) for dev, Standard (SLA) for prod
 var redisSku = environment == 'prod' ? 'Standard' : 'Basic'
 var redisFamily = environment == 'prod' ? 'C' : 'C'
 var redisCapacity = environment == 'prod' ? 1 : 0
+
+// Storage: Standard for dev, Premium for prod (optional)
+var storageSkuName = environment == 'prod' ? 'Standard_GRS' : 'Standard_LRS'
+
+// Container Apps: Production uses more resources
+var containerAppCpu = environment == 'prod' ? '1.0' : '0.5'
+var containerAppMemory = environment == 'prod' ? '2.0Gi' : '1.0Gi'
+var containerAppMinReplicas = environment == 'prod' ? 2 : 0
+var containerAppMaxReplicas = environment == 'prod' ? 10 : 3
 
 // =============================================================================
 // Modules
@@ -111,6 +127,7 @@ module storage 'modules/storage.bicep' = {
     name: 'st${resourcePrefixClean}'
     location: location
     tags: tags
+    sku: storageSkuName
     containerNames: ['chat-exports', 'user-uploads', 'summaries']
     enableVersioning: environment == 'prod'
   }
@@ -192,6 +209,11 @@ module containerApps 'modules/container-apps.bicep' = if (enableContainerApps) {
     redisHostname: enableRedis ? redis.outputs.hostname : ''
     storageAccountName: storage.outputs.name
     openAIEndpoint: enableOpenAI ? openAI.outputs.endpoint : ''
+    // Environment-specific scaling
+    apiCpu: containerAppCpu
+    apiMemory: containerAppMemory
+    minReplicas: containerAppMinReplicas
+    maxReplicas: containerAppMaxReplicas
   }
 }
 
@@ -203,6 +225,18 @@ module staticWebApp 'modules/static-web-app.bicep' = if (enableStaticWebApps) {
     location: location
     tags: tags
     apiUrl: enableContainerApps ? containerApps.outputs.apiUrl : ''
+  }
+}
+
+// Budget Alerts (Cost Management)
+module budgetAlerts 'modules/budget-alerts.bicep' = if (enableBudgetAlerts && !empty(adminEmail)) {
+  name: 'budget-${environment}'
+  params: {
+    name: 'budget-${resourcePrefix}'
+    amount: monthlyBudgetAmount
+    contactEmails: [adminEmail]
+    environment: environment
+    tags: tags
   }
 }
 

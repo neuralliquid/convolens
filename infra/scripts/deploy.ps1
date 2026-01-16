@@ -51,9 +51,16 @@ $ResourceGroup = "rg-$ProjectName-$Environment"
 # =============================================================================
 
 function Write-Info { param([string]$Message) Write-Host "[INFO] $Message" -ForegroundColor Cyan }
-function Write-Success { param([string]$Message) Write-Host "[SUCCESS] $Message" -ForegroundColor Green }
-function Write-Warning { param([string]$Message) Write-Host "[WARNING] $Message" -ForegroundColor Yellow }
-function Write-Error { param([string]$Message) Write-Host "[ERROR] $Message" -ForegroundColor Red }
+function Write-SuccessMessage { param([string]$Message) Write-Host "[SUCCESS] $Message" -ForegroundColor Green }
+function Write-WarningMessage { param([string]$Message) Write-Host "[WARNING] $Message" -ForegroundColor Yellow }
+function Write-ErrorMessage { param([string]$Message) Write-Host "[ERROR] $Message" -ForegroundColor Red }
+
+# Helper for null coalescing (PowerShell 5.1 compatible)
+function Get-ValueOrDefault {
+    param($Value, $Default)
+    if ($null -eq $Value -or $Value -eq '') { return $Default }
+    return $Value
+}
 
 function Write-Banner {
     Write-Host ""
@@ -77,7 +84,7 @@ function Test-Prerequisites {
         $null = az version 2>$null
     }
     catch {
-        Write-Error "Azure CLI not found. Please install: https://docs.microsoft.com/cli/azure/install-azure-cli"
+        Write-ErrorMessage "Azure CLI not found. Please install: https://docs.microsoft.com/cli/azure/install-azure-cli"
         exit 1
     }
 
@@ -91,7 +98,7 @@ function Test-Prerequisites {
     # Check login
     $account = az account show 2>$null | ConvertFrom-Json
     if (-not $account) {
-        Write-Error "Not logged into Azure. Run: az login"
+        Write-ErrorMessage "Not logged into Azure. Run: az login"
         exit 1
     }
     Write-Info "Logged in as: $($account.user.name)"
@@ -100,18 +107,18 @@ function Test-Prerequisites {
     # Check parameter file exists
     $paramFile = Join-Path $ParamsDir "$Environment.bicepparam"
     if (-not (Test-Path $paramFile)) {
-        Write-Error "Parameter file not found: $paramFile"
+        Write-ErrorMessage "Parameter file not found: $paramFile"
         exit 1
     }
 
     # Check main.bicep exists
     $mainBicep = Join-Path $BicepDir 'main.bicep'
     if (-not (Test-Path $mainBicep)) {
-        Write-Error "Main Bicep file not found: $mainBicep"
+        Write-ErrorMessage "Main Bicep file not found: $mainBicep"
         exit 1
     }
 
-    Write-Success "Pre-flight checks passed"
+    Write-SuccessMessage "Pre-flight checks passed"
 }
 
 # =============================================================================
@@ -125,12 +132,12 @@ function Test-Templates {
     $result = az bicep build --file $mainBicep --stdout 2>&1
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Template validation failed"
+        Write-ErrorMessage "Template validation failed"
         Write-Host $result
         exit 1
     }
 
-    Write-Success "Template validation passed"
+    Write-SuccessMessage "Template validation passed"
 }
 
 # =============================================================================
@@ -150,7 +157,7 @@ function Ensure-ResourceGroup {
             --name $ResourceGroup `
             --location $Location `
             --tags project=$ProjectName environment=$Environment managedBy=bicep | Out-Null
-        Write-Success "Resource group created"
+        Write-SuccessMessage "Resource group created"
     }
 }
 
@@ -178,12 +185,12 @@ function Invoke-WhatIfAnalysis {
         --name $DeploymentName
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "What-if analysis failed"
+        Write-ErrorMessage "What-if analysis failed"
         exit 1
     }
 
     Write-Host ""
-    Write-Success "What-if analysis complete"
+    Write-SuccessMessage "What-if analysis complete"
 
     return $true
 }
@@ -207,11 +214,11 @@ function Invoke-Deployment {
             --name $DeploymentName
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Deployment validation failed"
+            Write-ErrorMessage "Deployment validation failed"
             exit 1
         }
 
-        Write-Success "Deployment validation passed"
+        Write-SuccessMessage "Deployment validation passed"
         return
     }
 
@@ -234,12 +241,12 @@ function Invoke-Deployment {
         --verbose
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Deployment failed"
+        Write-ErrorMessage "Deployment failed"
         exit 1
     }
 
     Write-Host ""
-    Write-Success "Deployment complete!"
+    Write-SuccessMessage "Deployment complete!"
 
     # Show outputs
     Write-Host ""
@@ -290,7 +297,7 @@ function Invoke-PostDeployment {
             & $validateScript -Environment $Environment
         }
         catch {
-            Write-Warning "Resource validation had issues: $_"
+            Write-WarningMessage "Resource validation had issues: $_"
         }
     }
 
@@ -300,7 +307,7 @@ function Invoke-PostDeployment {
         New-EnvironmentFile -DeploymentName $DeploymentName
     }
 
-    Write-Success "Post-deployment tasks complete"
+    Write-SuccessMessage "Post-deployment tasks complete"
 }
 
 function New-EnvironmentFile {
@@ -338,7 +345,7 @@ AZURE_COSMOS_DATABASE=$($outputs.cosmosDBDatabaseName.value)
 
 # Azure Redis
 AZURE_REDIS_HOSTNAME=$($outputs.redisHostname.value)
-AZURE_REDIS_PORT=$($outputs.redisPort.value ?? '6380')
+AZURE_REDIS_PORT=$(Get-ValueOrDefault $outputs.redisPort.value '6380')
 
 # Azure Storage
 AZURE_STORAGE_ACCOUNT_NAME=$($outputs.storageAccountName.value)
@@ -354,11 +361,11 @@ AZURE_KEY_VAULT_NAME=$($outputs.keyVaultName.value)
 "@
 
             $content | Out-File -FilePath $envFile -Encoding UTF8
-            Write-Success "Generated: $envFile"
+            Write-SuccessMessage "Generated: $envFile"
         }
     }
     catch {
-        Write-Warning "Could not retrieve deployment outputs: $_"
+        Write-WarningMessage "Could not retrieve deployment outputs: $_"
     }
 }
 
@@ -394,13 +401,13 @@ function Main {
 
         # If what-if only, stop here
         if ($WhatIfOnly) {
-            Write-Success "What-if analysis complete. No changes were made."
+            Write-SuccessMessage "What-if analysis complete. No changes were made."
             return
         }
 
         # Prompt for confirmation before actual deployment
         if (-not (Get-DeploymentConfirmation)) {
-            Write-Warning "Deployment cancelled by user"
+            Write-WarningMessage "Deployment cancelled by user"
             return
         }
     }
@@ -415,7 +422,7 @@ function Main {
         Write-Host ""
     }
 
-    Write-Success "All tasks completed successfully!"
+    Write-SuccessMessage "All tasks completed successfully!"
 }
 
 # Run main

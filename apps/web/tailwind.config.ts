@@ -65,6 +65,18 @@ const config: Config = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // ConvoLens Brand Colors
+        convolens: {
+          primary: "#6B46C1",
+          secondary: "#06B6D4",
+          accent: "#C4B5FD",
+        },
+        // WhatsApp Colors (for WhatsApp-specific features only)
+        whatsapp: {
+          primary: "#25D366",
+          dark: "#128C7E",
+          light: "#DCF8C6",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

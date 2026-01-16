@@ -19,8 +19,18 @@
 
 import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
-import { logger } from '../../utils/logger';
-import { getStorageProvider, getAzureBlobStorageConfig, type StorageProvider } from '../../config/azure/index';
+import { createHmac } from 'crypto';
+import { logger } from '../../utils/logger.js';
+import { getStorageProvider, getAzureBlobStorageConfig, type StorageProvider } from '../../config/azure/index.js';
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const AZURE_API_VERSION = '2023-11-03';
+const REQUEST_TIMEOUT_MS = 30000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 // =============================================================================
 // Types
@@ -43,6 +53,97 @@ export interface UploadOptions {
 export interface StorageServiceConfig {
   provider?: StorageProvider;
   localBasePath?: string;
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Extract HTTP status code from various error formats
+ * Supports errors with status, statusCode, or response.status properties
+ */
+function getHttpStatusFromError(error: unknown): number | undefined {
+  if (error === null || typeof error !== 'object') {
+    return undefined;
+  }
+
+  const err = error as Record<string, unknown>;
+
+  // Direct status property (e.g., from custom errors)
+  if (typeof err.status === 'number') {
+    return err.status;
+  }
+
+  // statusCode property (e.g., from some HTTP libraries)
+  if (typeof err.statusCode === 'number') {
+    return err.statusCode;
+  }
+
+  // Nested response.status (e.g., from axios-like errors)
+  if (err.response && typeof err.response === 'object') {
+    const response = err.response as Record<string, unknown>;
+    if (typeof response.status === 'number') {
+      return response.status;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Fetch with timeout support
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Retry helper with exponential backoff
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  baseDelayMs: number = RETRY_DELAY_MS
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      // Don't retry on client errors (4xx) except rate limiting (429)
+      const status = getHttpStatusFromError(error);
+      if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
+        throw error;
+      }
+
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        logger.warn(`[StorageService] Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 // =============================================================================
@@ -260,16 +361,20 @@ export class StorageService {
       );
     }
 
-    const response = await fetch(authUrl, {
-      method: 'PUT',
-      headers,
-      body: buffer,
-    });
+    const response = await withRetry(async () => {
+      const res = await fetchWithTimeout(authUrl, {
+        method: 'PUT',
+        headers,
+        body: buffer,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Azure Blob upload failed: ${response.status} - ${errorText}`);
-    }
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Azure Blob upload failed: ${res.status} - ${errorText}`);
+      }
+
+      return res;
+    });
 
     logger.info(`[StorageService] Uploaded to Azure: ${key}`);
 
@@ -381,29 +486,98 @@ export class StorageService {
       throw new Error(`Azure Blob list failed: ${response.status}`);
     }
 
-    // Parse XML response (simplified - use proper XML parser in production)
     const text = await response.text();
+    return this.parseAzureBlobListXml(text);
+  }
+
+  /**
+   * Safely parse Azure Blob Storage list XML response
+   * Uses a simple state-machine parser instead of regex for security and reliability
+   */
+  private parseAzureBlobListXml(xml: string): StorageFile[] {
     const files: StorageFile[] = [];
 
-    // Basic regex parsing for POC - use xml2js or similar in production
-    const blobMatches = text.matchAll(/<Blob>[\s\S]*?<Name>(.*?)<\/Name>[\s\S]*?<Content-Length>(\d+)<\/Content-Length>[\s\S]*?<Last-Modified>(.*?)<\/Last-Modified>[\s\S]*?<\/Blob>/g);
+    // Simple iterative parser - safer than regex for XML
+    let pos = 0;
 
-    for (const match of blobMatches) {
+    while (pos < xml.length) {
+      // Find next <Blob> tag
+      const blobStart = xml.indexOf('<Blob>', pos);
+      if (blobStart === -1) break;
+
+      const blobEnd = xml.indexOf('</Blob>', blobStart);
+      if (blobEnd === -1) break;
+
+      const blobContent = xml.slice(blobStart, blobEnd);
+
+      // Extract Name
+      const name = this.extractXmlElement(blobContent, 'Name');
+      if (!name) {
+        pos = blobEnd + 7;
+        continue;
+      }
+
+      // Extract Content-Length
+      const contentLength = this.extractXmlElement(blobContent, 'Content-Length');
+      const size = contentLength ? parseInt(contentLength, 10) : 0;
+
+      // Extract Last-Modified
+      const lastModified = this.extractXmlElement(blobContent, 'Last-Modified');
+
+      // Extract Content-Type if available
+      const contentType = this.extractXmlElement(blobContent, 'Content-Type') || 'application/octet-stream';
+
       files.push({
-        key: match[1],
-        size: parseInt(match[2], 10),
-        contentType: 'application/octet-stream',
-        lastModified: new Date(match[3]),
+        key: this.decodeXmlEntities(name),
+        size: isNaN(size) ? 0 : size,
+        contentType,
+        lastModified: lastModified ? new Date(lastModified) : new Date(),
       });
+
+      pos = blobEnd + 7;
     }
 
     return files;
+  }
+
+  /**
+   * Extract text content from an XML element
+   */
+  private extractXmlElement(xml: string, tagName: string): string | null {
+    const openTag = `<${tagName}>`;
+    const closeTag = `</${tagName}>`;
+
+    const startIdx = xml.indexOf(openTag);
+    if (startIdx === -1) return null;
+
+    const contentStart = startIdx + openTag.length;
+    const endIdx = xml.indexOf(closeTag, contentStart);
+    if (endIdx === -1) return null;
+
+    return xml.slice(contentStart, endIdx);
+  }
+
+  /**
+   * Decode common XML entities
+   */
+  private decodeXmlEntities(text: string): string {
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'");
   }
 
   private buildAzureBlobUrl(accountName: string, containerName: string, blobName: string): string {
     return `https://${accountName}.blob.core.windows.net/${containerName}/${blobName}`;
   }
 
+  /**
+   * Create Azure SharedKey authentication header using HMAC-SHA256
+   *
+   * @see https://docs.microsoft.com/rest/api/storageservices/authorize-with-shared-key
+   */
   private createAzureAuthHeader(
     method: string,
     accountName: string,
@@ -412,45 +586,86 @@ export class StorageService {
     accountKey: string,
     headers: Record<string, string>
   ): string {
-    // Note: This is a placeholder. Production code should use Azure SDK
-    // or implement proper SharedKey authentication
-    logger.warn('[StorageService] Using simplified Azure auth - use Azure SDK in production');
-    return `SharedKey ${accountName}:placeholder`;
+    // Build canonicalized headers (x-ms-* headers, sorted alphabetically)
+    const canonicalizedHeaders = Object.keys(headers)
+      .filter(key => key.toLowerCase().startsWith('x-ms-'))
+      .sort()
+      .map(key => `${key.toLowerCase()}:${headers[key].trim()}`)
+      .join('\n');
+
+    // Build canonicalized resource
+    const canonicalizedResource = `/${accountName}/${containerName}/${blobName}`;
+
+    // Build string to sign (Blob service format)
+    // https://docs.microsoft.com/rest/api/storageservices/authorize-with-shared-key#blob-queue-and-file-services-shared-key-lite-and-table-service-shared-key-lite-authorization
+    const contentLength = headers['Content-Length'] || '';
+    const contentType = headers['Content-Type'] || '';
+
+    const stringToSign = [
+      method,                              // HTTP Verb
+      '',                                  // Content-Encoding
+      '',                                  // Content-Language
+      contentLength,                       // Content-Length
+      '',                                  // Content-MD5
+      contentType,                         // Content-Type
+      '',                                  // Date (empty when x-ms-date is used)
+      '',                                  // If-Modified-Since
+      '',                                  // If-Match
+      '',                                  // If-None-Match
+      '',                                  // If-Unmodified-Since
+      '',                                  // Range
+      canonicalizedHeaders,                // Canonicalized headers
+      canonicalizedResource,               // Canonicalized resource
+    ].join('\n');
+
+    // Create HMAC-SHA256 signature
+    const { createHmac } = require('crypto');
+    const decodedKey = Buffer.from(accountKey, 'base64');
+    const signature = createHmac('sha256', decodedKey)
+      .update(stringToSign, 'utf8')
+      .digest('base64');
+
+    return `SharedKey ${accountName}:${signature}`;
   }
 
   // ===========================================================================
-  // AWS S3 Implementation (Placeholder)
+  // AWS S3 Implementation
   // ===========================================================================
+  // NOTE: AWS S3 requires @aws-sdk/client-s3 package. Install it if you need S3 support.
+  // npm install @aws-sdk/client-s3
+
+  private assertS3NotImplemented(): never {
+    const message =
+      '[StorageService] AWS S3 is configured but not implemented. ' +
+      'Either install @aws-sdk/client-s3 and implement S3 methods, ' +
+      'or switch to Azure Blob Storage or local filesystem. ' +
+      'Set STORAGE_PROVIDER=local to use local storage instead.';
+    logger.error(message);
+    throw new Error(message);
+  }
 
   private async uploadToS3(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
-    // TODO: Implement AWS S3 upload using AWS SDK
-    logger.warn('[StorageService] AWS S3 not fully implemented, falling back to local');
-    return this.uploadToLocal(key, data, options);
+    this.assertS3NotImplemented();
   }
 
   private async downloadFromS3(key: string): Promise<Buffer> {
-    logger.warn('[StorageService] AWS S3 not fully implemented, falling back to local');
-    return this.downloadFromLocal(key);
+    this.assertS3NotImplemented();
   }
 
   private async deleteFromS3(key: string): Promise<void> {
-    logger.warn('[StorageService] AWS S3 not fully implemented, falling back to local');
-    return this.deleteFromLocal(key);
+    this.assertS3NotImplemented();
   }
 
   private getS3Url(key: string, expiresIn: number): string {
-    logger.warn('[StorageService] AWS S3 not fully implemented');
-    return this.getLocalUrl(key);
+    this.assertS3NotImplemented();
   }
 
   private async existsInS3(key: string): Promise<boolean> {
-    logger.warn('[StorageService] AWS S3 not fully implemented');
-    return this.existsInLocal(key);
+    this.assertS3NotImplemented();
   }
 
   private async listInS3(prefix: string): Promise<StorageFile[]> {
-    logger.warn('[StorageService] AWS S3 not fully implemented');
-    return this.listInLocal(prefix);
+    this.assertS3NotImplemented();
   }
 }
 

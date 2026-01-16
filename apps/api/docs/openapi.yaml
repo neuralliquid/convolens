@@ -1,0 +1,600 @@
+openapi: 3.0.3
+info:
+  title: WhatsSummarize API
+  description: |
+    API for the WhatsSummarize platform - WhatsApp chat summarization service.
+
+    ## Authentication
+    Most endpoints require JWT authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ## Rate Limiting
+    - Default: 100 requests per 15 minutes
+    - Auth endpoints: 5 attempts per 15 minutes
+
+    ## Correlation IDs
+    Include `x-correlation-id` header for request tracing.
+
+  version: 1.0.0
+  contact:
+    name: WhatsSummarize Support
+    email: support@whatssummarize.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3001
+    description: Development server
+  - url: https://api.whatssummarize.com
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: Chat Export
+    description: Chat data upload and processing
+  - name: Extension
+    description: Chrome extension support endpoints
+  - name: Health
+    description: Service health and monitoring
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns service health status
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /metrics:
+    get:
+      summary: Get metrics
+      description: Returns service metrics for monitoring
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Metrics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+
+  /circuit-breakers:
+    get:
+      summary: Circuit breaker status
+      description: Returns status of all circuit breakers
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Circuit breaker statuses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CircuitBreakerResponse'
+
+  /api/auth/register:
+    post:
+      summary: Register new user
+      description: Create a new user account
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/login:
+    post:
+      summary: User login
+      description: Authenticate user and receive JWT token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/me:
+    get:
+      summary: Get current user
+      description: Returns the authenticated user's profile
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/chat-export/upload:
+    post:
+      summary: Upload chat export file
+      description: Upload a WhatsApp chat export text file for processing
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: WhatsApp chat export .txt file
+              required:
+                - file
+      responses:
+        '200':
+          description: File processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatExportResponse'
+        '400':
+          description: Invalid file format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/chat-export/extension:
+    post:
+      summary: Receive extension chat data
+      description: Receive chat data from Chrome extension
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtensionChatData'
+      responses:
+        '200':
+          description: Data received successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionChatResponse'
+        '400':
+          description: Invalid data format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/extension/selectors:
+    get:
+      summary: Get DOM selectors
+      description: Get current WhatsApp Web DOM selectors for the extension
+      tags:
+        - Extension
+      parameters:
+        - name: x-extension-version
+          in: header
+          schema:
+            type: string
+          description: Extension version
+      responses:
+        '200':
+          description: Selector configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectorResponse'
+
+  /api/extension/selectors/report:
+    post:
+      summary: Report discovered selectors
+      description: Report selectors discovered by the extension
+      tags:
+        - Extension
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectorReport'
+      responses:
+        '200':
+          description: Report received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /api/extension/config:
+    get:
+      summary: Get extension configuration
+      description: Get configuration settings for the Chrome extension
+      tags:
+        - Extension
+      responses:
+        '200':
+          description: Extension configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionConfigResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+      required:
+        - error
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        environment:
+          type: string
+
+    MetricsResponse:
+      type: object
+      properties:
+        counters:
+          type: array
+          items:
+            type: object
+        gauges:
+          type: array
+          items:
+            type: object
+        histograms:
+          type: array
+          items:
+            type: object
+
+    CircuitBreakerResponse:
+      type: object
+      properties:
+        circuitBreakers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              state:
+                type: string
+                enum: [CLOSED, OPEN, HALF_OPEN]
+              failures:
+                type: integer
+        deduplication:
+          type: object
+          properties:
+            entries:
+              type: integer
+            idempotencyKeys:
+              type: integer
+
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        name:
+          type: string
+      required:
+        - email
+        - password
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        refreshToken:
+          type: string
+          description: Refresh token
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    UserResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    ChatExportResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            messageCount:
+              type: integer
+            participants:
+              type: array
+              items:
+                type: string
+            dateRange:
+              type: object
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                end:
+                  type: string
+                  format: date-time
+
+    ExtensionChatData:
+      type: object
+      properties:
+        chatName:
+          type: string
+        chatId:
+          type: string
+        extractedAt:
+          type: string
+          format: date-time
+        messageCount:
+          type: integer
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractedMessage'
+        source:
+          type: string
+          enum: [chrome-extension]
+        version:
+          type: string
+        isGroup:
+          type: boolean
+      required:
+        - chatName
+        - chatId
+        - extractedAt
+        - messageCount
+        - messages
+        - source
+        - version
+        - isGroup
+
+    ExtractedMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        sender:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        isOutgoing:
+          type: boolean
+        isMedia:
+          type: boolean
+        mediaType:
+          type: string
+          enum: [image, video, audio, document, sticker]
+        replyTo:
+          type: string
+      required:
+        - id
+        - text
+        - sender
+        - timestamp
+        - isOutgoing
+        - isMedia
+
+    ExtensionChatResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            chatId:
+              type: string
+            chatName:
+              type: string
+            messageCount:
+              type: integer
+            receivedAt:
+              type: string
+              format: date-time
+        duplicate:
+          type: boolean
+
+    SelectorResponse:
+      type: object
+      properties:
+        selectors:
+          type: object
+          properties:
+            version:
+              type: string
+            updatedAt:
+              type: string
+              format: date-time
+            primary:
+              $ref: '#/components/schemas/SelectorSet'
+            fallback:
+              $ref: '#/components/schemas/SelectorSet'
+
+    SelectorSet:
+      type: object
+      properties:
+        chatList:
+          type: string
+        messageList:
+          type: string
+        messageContainer:
+          type: string
+        messageText:
+          type: string
+        messageTime:
+          type: string
+        senderName:
+          type: string
+        chatHeader:
+          type: string
+        contactName:
+          type: string
+
+    SelectorReport:
+      type: object
+      properties:
+        discovered:
+          type: object
+        userAgent:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ExtensionConfigResponse:
+      type: object
+      properties:
+        minVersion:
+          type: string
+        latestVersion:
+          type: string
+        updateRequired:
+          type: boolean
+        features:
+          type: object
+          properties:
+            autoExtract:
+              type: boolean
+            offlineSync:
+              type: boolean
+            selectorAutoUpdate:
+              type: boolean
+        endpoints:
+          type: object
+          properties:
+            selectors:
+              type: string
+            chatExport:
+              type: string

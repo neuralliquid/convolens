@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "WhatsSummarize - WhatsApp Chat Analyzer",
+  "name": "ConvoLens - WhatsApp Chat Analyzer",
   "version": "1.0.0",
-  "description": "Extract and analyze your WhatsApp Web conversations with AI-powered summaries. Get instant insights, key topics, and intelligent summaries.",
+  "description": "ConvoLens: See Your Conversations Clearly. Extract and analyze your WhatsApp Web conversations with AI-powered summaries. Get instant insights, key topics, and intelligent summaries.",
 
   "permissions": [
     "storage",
@@ -13,6 +13,7 @@
 
   "host_permissions": [
     "https://web.whatsapp.com/*",
+    "https://api.convolens.io/*",
     "https://api.whatssummarize.com/*",
     "http://localhost:3001/*"
   ],
@@ -25,7 +26,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "WhatsSummarize"
+    "default_title": "ConvoLens"
   },
 
   "icons": {

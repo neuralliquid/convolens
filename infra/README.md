@@ -65,6 +65,10 @@ infra/
    - Key Vault Administrator (for managing secrets)
    - Cognitive Services Contributor (for OpenAI)
 
+4. **GitHub Actions Setup** (for CI/CD deployments):
+   - See [Azure Setup Guide](../docs/AZURE_SETUP.md) for configuring OIDC authentication
+   - Requires configuring three GitHub secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+
 ## Quick Start
 
 ### Deploy Development Environment (PowerShell - Recommended)
@@ -141,12 +145,15 @@ az deployment group create \
 
 ### Using GitHub Actions
 
-1. Configure repository secrets:
-   - `AZURE_CLIENT_ID` - Service principal client ID
-   - `AZURE_TENANT_ID` - Azure AD tenant ID
-   - `AZURE_SUBSCRIPTION_ID` - Azure subscription ID
+1. **Configure Azure credentials** (see [Azure Setup Guide](../docs/AZURE_SETUP.md) for detailed instructions):
+   - Create Azure AD application (service principal)
+   - Configure federated credentials for OIDC
+   - Set up GitHub repository secrets:
+     - `AZURE_CLIENT_ID` - Service principal client ID
+     - `AZURE_TENANT_ID` - Azure AD tenant ID
+     - `AZURE_SUBSCRIPTION_ID` - Azure subscription ID
 
-2. Trigger deployment:
+2. **Trigger deployment**:
    - Push to `main` branch (auto-deploys to dev)
    - Use workflow dispatch for staging/prod
    - PRs trigger what-if analysis
