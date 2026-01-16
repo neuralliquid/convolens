@@ -7,12 +7,13 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinTable,
+  JoinColumn,
   ManyToMany,
   Index
 } from 'typeorm';
 import type { Relation } from 'typeorm';
-import { Message } from './Message.js';
-import { User } from './User.js';
+import { Message } from './Message';
+import { User } from './User';
 
 export interface GroupMetadata {
   whatsappGroupId?: string;
@@ -69,15 +70,15 @@ export class Group {
   @OneToMany(() => Message, message => message.group, { cascade: true })
   messages: Relation<Message[]>;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   metadata?: GroupMetadata;
 
-  @CreateDateColumn({ type: 'timestamp' })
+  @CreateDateColumn({ type: 'datetime' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' })
+  @UpdateDateColumn({ type: 'datetime' })
   updatedAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   archivedAt?: Date;
 }

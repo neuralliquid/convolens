@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useToast } from '../components/ui/use-toast';
+import { useToast } from '../components/ui/toaster';
 
 interface UploadResult {
   success: boolean;

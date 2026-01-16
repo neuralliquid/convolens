@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from '@ui/ui/button';
-import { Checkbox } from '@ui/ui/checkbox';
-import { Input } from '@ui/ui/input';
-import { Label } from '@ui/ui/label';
-import { Separator } from '@ui/ui/separator';
-import { toast } from '@ui/ui/toaster';
-import { useAuth } from '@/contexts/auth-context';
-import { cn } from '@utils/utils';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { toast } from '@/components/ui/toaster';
+import { useAuth } from '@whatssummarize/contexts';
+import { cn } from '@/lib/utils';
 import { AlertCircle, Eye, EyeOff, Github, Loader2, Lock, Mail } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';

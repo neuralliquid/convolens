@@ -39,7 +39,7 @@
  * - Summary length customization
  */
 
-import { logger } from '../../utils/logger.js';
+import { logger } from '../../utils/logger';
 
 // Types
 export interface ChatMessage {

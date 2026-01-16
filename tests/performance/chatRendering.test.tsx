@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react';
-import { ChatContainer } from 'frontend/src/components/chat/ChatContainer';
+import { ChatContainer } from 'apps/web/src/components/chat/ChatContainer';
 import { measurePerformance } from 'reassure';
 
 // Generate a large number of test messages

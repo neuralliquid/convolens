@@ -1,6 +1,6 @@
 import { ComponentType, forwardRef } from 'react';
 import { LucideProps } from 'lucide-react';
-import { cn } from '@utils/utils';
+import { cn } from '@/lib/utils';
 
 type IconType = React.ForwardRefExoticComponent<
   Omit<LucideProps, 'ref'> & React.RefAttributes<SVGSVGElement>

@@ -3,7 +3,7 @@
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { motion, AnimatePresence } from "framer-motion"
 import { Loader2, ChevronDown, Check } from "lucide-react"
-import { cn } from "@utils/utils"
+import { cn } from "@/lib/utils"
 import * as React from "react"
 
 const Select = SelectPrimitive.Root

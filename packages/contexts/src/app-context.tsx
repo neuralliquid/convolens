@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from 'react';
 import { createContext, useContext, ReactNode, useCallback, useState } from 'react';
 
 export interface Group {
@@ -158,6 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [groups, setGroups] = useState<Group[]>(mockGroups);
   const [activeGroup, setActiveGroup] = useState<Group | null>(null);
   const [summaries, setSummaries] = useState<Summary[]>(mockSummaries);
+  // @ts-ignore - setPersonalSummaries is unused for now
   const [personalSummaries, setPersonalSummaries] = useState<PersonalSummary[]>(mockPersonalSummaries);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -192,7 +192,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newSummary: Summary = {
         id: `s${Date.now()}`,
         groupId,
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString().split('T')[0] || new Date().toISOString(),
         content: `Generated summary for ${dateRange.start} to ${dateRange.end}. This is a placeholder summary.`,
         highlights: [
           'Highlight 1 from generated summary',

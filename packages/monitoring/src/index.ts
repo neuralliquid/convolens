@@ -53,11 +53,11 @@ export interface PerformanceSpan {
 
 // Default configuration
 const DEFAULT_CONFIG: MonitoringConfig = {
-  environment: (process.env.NODE_ENV as MonitoringConfig['environment']) || 'development',
+  environment: (process.env['NODE_ENV'] as MonitoringConfig['environment']) || 'development',
   sampleRate: 1.0,
   tracesSampleRate: 0.1,
-  debug: process.env.NODE_ENV === 'development',
-  enabled: process.env.NODE_ENV !== 'test',
+  debug: process.env['NODE_ENV'] === 'development',
+  enabled: process.env['NODE_ENV'] !== 'test',
 };
 
 // State
@@ -266,7 +266,7 @@ export function createErrorBoundary(fallback?: React.ReactNode): any {
  * Middleware for Express error handling
  */
 export function expressErrorHandler() {
-  return (error: Error, req: any, res: any, next: any) => {
+  return (error: Error, req: any, res: any, _next: any) => {
     const eventId = captureException(error, {
       extra: {
         url: req.url,

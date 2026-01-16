@@ -9,8 +9,8 @@ import {
   Index
 } from 'typeorm';
 import type { Relation } from 'typeorm';
-import { Group } from './Group.js';
-import { User } from './User.js';
+import { Group } from './Group';
+import { User } from './User';
 
 export interface MessageMetadata {
   whatsappMessageId?: string;
@@ -48,7 +48,7 @@ export class Message {
   @Column({ nullable: true })
   mediaUrl?: string;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   metadata?: MessageMetadata;
 
   @ManyToOne(() => Group, group => group.messages, { 
@@ -61,12 +61,12 @@ export class Message {
   @Column({ type: 'uuid' })
   groupId: string;
 
-  @CreateDateColumn({ type: 'timestamp' })
+  @CreateDateColumn({ type: 'datetime' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' })
+  @UpdateDateColumn({ type: 'datetime' })
   updatedAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   deletedAt?: Date;
 }

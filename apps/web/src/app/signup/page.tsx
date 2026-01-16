@@ -1,7 +1,7 @@
 "use client"
 
-import { SignupForm } from "@ui/auth/signup-form"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@ui/ui/card"
+import { SignupForm } from "@/components/auth/signup-form"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
 import { Suspense } from "react"
 import PageWrapper from "../page-wrapper"

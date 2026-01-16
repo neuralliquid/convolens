@@ -60,7 +60,7 @@ module.exports = {
   
   // Module name mapper for path aliases
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/frontend/src/$1',
+    '^@/(.*)$': '<rootDir>/apps/web/src/$1',
     '^@/tests/(.*)$': '<rootDir>/tests/$1',
   },
   

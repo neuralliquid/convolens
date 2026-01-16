@@ -1,6 +1,4 @@
-import { jest } from '@jest/globals';
-import 'jest-canvas-mock';
-import 'jest-fetch-mock';
+import { jest, beforeAll, afterEach, afterAll } from '@jest/globals';
 
 // Create a mock implementation of Storage
 class MockStorage implements Storage {

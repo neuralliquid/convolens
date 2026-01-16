@@ -1,36 +1,22 @@
 {
   "compilerOptions": {
     /* Base Options */
-    "esModuleInterop": true,
-    "skipLibCheck": true,
     "target": "ES2020",
-    "allowJs": true,
-    "resolveJsonModule": true,
+    "module": "ESNext",
     "moduleDetection": "force",
-    "isolatedModules": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": false,
-    "noEmit": true,
 
-    /* Paths */
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./apps/*/src"],
-      "@web/*": ["./apps/web/src/*"],
-      "@api/*": ["./apps/api/src/*"],
-      "@ui/*": ["./packages/ui/src/*"],
-      "@config/*": ["./packages/config/src/*"],
-      "@utils/*": ["./packages/utils/src/*"],
-      "@whatssummarize/contexts": ["./packages/contexts/src/index.ts"],
-      "@whatssummarize/contexts/*": ["./packages/contexts/src/*"]
-    },
+    /* Modules */
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    /* JavaScript Support */
+    "allowJs": true,
+    "checkJs": true,
 
     /* Type Checking */
     "strict": true,
@@ -48,20 +34,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
-    "noImplicitThis": true,
     "useUnknownInCatchVariables": true,
-
-    /* Modules */
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-
-    /* JavaScript Support */
-    "allowJs": true,
-    "checkJs": true,
 
     /* Emit */
     "declaration": true,
@@ -69,10 +42,10 @@
     "sourceMap": true,
     "outDir": "./dist",
     "composite": true,
+    "noEmit": true,
 
     /* React */
     "jsx": "react-jsx",
-    "jsxImportSource": "@emotion/react",
 
     /* Library */
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
@@ -80,7 +53,20 @@
     /* Advanced */
     "incremental": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+
+    /* Paths */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./apps/*/src"],
+      "@web/*": ["./apps/web/src/*"],
+      "@api/*": ["./apps/api/src/*"],
+      "@ui/*": ["./packages/ui/src/*"],
+      "@config/*": ["./packages/config/src/*"],
+      "@utils/*": ["./packages/utils/src/*"],
+      "@whatssummarize/contexts": ["./packages/contexts/src/index.ts"],
+      "@whatssummarize/contexts/*": ["./packages/contexts/src/*"]
+    }
   },
   "exclude": ["node_modules", "dist", "**/dist", "**/node_modules", "**/coverage"],
   "include": [

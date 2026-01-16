@@ -2,7 +2,7 @@
 
 import { useTheme } from "next-themes"
 import { useState, useEffect } from "react"
-import { ThemeToggle } from "@ui/theme-toggle"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function TestThemePage() {
   const { theme } = useTheme()

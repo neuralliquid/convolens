@@ -2,7 +2,7 @@
 
 import { ReactNode, Suspense, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { PageLoading } from '@ui/ui/loading'
+import { PageLoading } from '@/components/ui/loading'
 import PageWrapper from '@/app/page-wrapper'
 
 type DynamicComponentProps = {
@@ -21,7 +21,7 @@ export function createPage(componentImport: () => Promise<any>) {
     }
   )
 
-  return function PageWrapper() {
+  return function WrappedPage() {
     const [isMounted, setIsMounted] = useState(false)
 
     useEffect(() => {

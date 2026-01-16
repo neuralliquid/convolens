@@ -1,4 +1,4 @@
-import { Message } from '../../../frontend/src/components/chat/Message';
+import { Message } from '../../../apps/web/src/components/chat/Message';
 import { render, screen } from '../../test-utils';
 
 // The mock for @/lib/utils is now in __mocks__/@/lib/utils.ts

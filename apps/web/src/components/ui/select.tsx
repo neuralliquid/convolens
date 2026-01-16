@@ -5,7 +5,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { motion, AnimatePresence } from "framer-motion"
 import { Check, ChevronDown, ChevronUp, Loader2 } from "lucide-react"
 
-import { cn } from "@utils/utils"
+import { cn } from "@/lib/utils"
 
 const Select = SelectPrimitive.Root
 

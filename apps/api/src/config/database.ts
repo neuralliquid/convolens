@@ -1,8 +1,8 @@
 import { DataSource } from 'typeorm';
-import { Message } from '../db/entities/Message.js';
-import { Group } from '../db/entities/Group.js';
-import { User } from '../db/entities/User.js';
-import { logger } from '../utils/logger.js';
+import { Message } from '../db/entities/Message';
+import { Group } from '../db/entities/Group';
+import { User } from '../db/entities/User';
+import { logger } from '../utils/logger';
 
 export const AppDataSource = new DataSource({
   type: 'sqlite',

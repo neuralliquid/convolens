@@ -5,7 +5,7 @@ import Link from "next/link"
 import { ArrowRight, MessageSquare, BarChart2, Search, Shield, Zap } from "lucide-react"
 import styles from "./landing-page.module.css"
 import { useEffect, useRef, ComponentType, MouseEvent as ReactMouseEvent } from "react"
-import { initMouseTracking, initStaggeredAnimations } from "@utils/animation-utils"
+import { initMouseTracking, initStaggeredAnimations } from "@/lib/animation-utils"
 import "./enhanced-styles.css"
 
 interface FeatureCardProps {

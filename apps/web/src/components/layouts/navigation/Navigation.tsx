@@ -1,15 +1,15 @@
 "use client"
 
-import { Button } from "@ui/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@ui/ui/dropdown-menu"
-import { Input } from "@ui/ui/input"
-import { useAuth } from "@/contexts/auth-context"
-import { cn } from "@utils/utils"
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { useAuth } from "@whatssummarize/contexts"
+import { cn } from "@/lib/utils"
 import {
   ChevronDown,
   LogOut,
@@ -19,7 +19,7 @@ import {
   User,
   X
 } from "lucide-react"
-import { ThemeToggle } from "@ui/ui/theme-toggle"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import * as React from "react"

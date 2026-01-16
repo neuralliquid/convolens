@@ -1,8 +1,8 @@
 import { SummaryCard } from "@ui/common/summary-card"
 import { Summary } from "@utils/dashboard-utils"
 import { calculateScores } from "@utils/scoring"
-import { Progress } from "@ui/ui/progress"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@ui/ui/tooltip"
+import { Progress } from "@/components/ui/progress"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Info } from "lucide-react"
 import { useState, useEffect } from "react"
 

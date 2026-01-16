@@ -1,8 +1,8 @@
 import { DataSource } from 'typeorm';
-import { User } from '../db/entities/User.js';
-import { Group } from '../db/entities/Group.js';
-import { Message } from '../db/entities/Message.js';
-import { logger } from '../utils/logger.js';
+import { User } from '../db/entities/User';
+import { Group } from '../db/entities/Group';
+import { Message } from '../db/entities/Message';
+import { logger } from '../utils/logger';
 
 // Load environment variables
 import dotenv from 'dotenv';

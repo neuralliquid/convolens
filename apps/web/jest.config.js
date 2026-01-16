@@ -10,7 +10,7 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   // The root of your source code
   rootDir: '../../',
-  roots: ['<rootDir>/apps/web/src'],
+  roots: ['<rootDir>/apps/web/src', '<rootDir>/tests'],
   
   // Test environment
   testEnvironment: 'jsdom',
@@ -24,17 +24,14 @@ const customJestConfig = {
   // Module name mapping - must match your tsconfig.json paths
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/apps/web/src/$1',
-    '^@ui/(.*)$': '<rootDir>/packages/ui/src/$1',
-    '^@utils/(.*)$': '<rootDir>/packages/utils/src/$1',
-    '^@config/(.*)$': '<rootDir>/packages/config/src/$1',
-    '^@/types/(.*)$': '<rootDir>/apps/web/src/types/$1',
-    '^@/styles/(.*)$': '<rootDir>/apps/web/src/styles/$1',
-    '^@/public/(.*)$': '<rootDir>/apps/web/public/$1',
-    '^@/hooks/(.*)$': '<rootDir>/apps/web/src/hooks/$1',
-    '^@/contexts/(.*)$': '<rootDir>/packages/contexts/src/$1',
-    '^@/services/(.*)$': '<rootDir>/apps/web/src/services/$1',
-    '^@/constants/(.*)$': '<rootDir>/apps/web/src/constants/$1',
-    '^@/assets/(.*)$': '<rootDir>/apps/web/src/assets/$1',
+    '^@whatssummarize/ui$': '<rootDir>/packages/ui/src/index.ts',
+    '^@whatssummarize/ui/(.*)$': '<rootDir>/packages/ui/src/$1',
+    '^@whatssummarize/utils$': '<rootDir>/packages/utils/src/index.ts',
+    '^@whatssummarize/utils/(.*)$': '<rootDir>/packages/utils/src/$1',
+    '^@whatssummarize/contexts$': '<rootDir>/packages/contexts/src/index.ts',
+    '^@whatssummarize/contexts/(.*)$': '<rootDir>/packages/contexts/src/$1',
+    '^@ui/(.*)$': '<rootDir>/apps/web/src/components/$1',
+    '^@utils/(.*)$': '<rootDir>/apps/web/src/lib/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   

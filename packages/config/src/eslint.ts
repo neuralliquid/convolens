@@ -1,48 +1,44 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import type { Linter } from 'eslint';
 
-export const baseConfig = tseslint.config([
+// Base config shared by all
+export const baseConfig: Linter.FlatConfig[] = tseslint.config(
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**'],
   },
-]);
+) as unknown as Linter.FlatConfig[];
 
-export const nodeConfig = tseslint.config([
+// Node.js config
+export const nodeConfig: Linter.FlatConfig[] = tseslint.config(
   ...baseConfig,
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
-      ecmaVersion: 2020,
-      sourceType: 'module',
+      ecmaVersion: 2020 as const,
+      sourceType: 'module' as const,
       globals: {
         ...globals.node,
       },
     },
   },
-]);
+) as unknown as Linter.FlatConfig[];
 
-export const reactConfig = (options = {}) => {
-  const { strict = false } = options;
-  
-  return tseslint.config([
+// React config generator
+export const reactConfig = (_options: { strict?: boolean } = {}): Linter.FlatConfig[] => {
+  const configs = tseslint.config(
     ...baseConfig,
     {
       files: ['**/*.{jsx,tsx}'],
-      extends: [
-        'plugin:react/recommended',
-        'plugin:react-hooks/recommended',
-        'plugin:jsx-a11y/recommended',
-        strict && 'plugin:react/jsx-runtime',
-      ].filter(Boolean),
       settings: {
         react: {
           version: 'detect',
         },
       },
       languageOptions: {
-        ecmaVersion: 2020,
-        sourceType: 'module',
+        ecmaVersion: 2020 as const,
+        sourceType: 'module' as const,
         globals: {
           ...globals.browser,
         },
@@ -56,21 +52,23 @@ export const reactConfig = (options = {}) => {
         'react/prop-types': 'off',
         'react/react-in-jsx-scope': 'off',
       },
-    },
-  ]);
+    }
+  );
+
+  return configs as unknown as Linter.FlatConfig[];
 };
 
-export const typescriptConfig = tseslint.config([
+// Typescript specific config
+export const typescriptConfig: Linter.FlatConfig[] = tseslint.config(
   ...baseConfig,
+  ...tseslint.configs.recommended,
+  ...tseslint.configs.stylistic,
   {
     files: ['**/*.{ts,tsx}'],
-    extends: [
-      'plugin:@typescript-eslint/recommended',
-      'plugin:@typescript-eslint/stylistic',
-    ],
-    parser: '@typescript-eslint/parser',
-    parserOptions: {
-      project: './tsconfig.json',
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.json',
+      },
     },
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
@@ -82,19 +80,16 @@ export const typescriptConfig = tseslint.config([
       ],
     },
   },
-]);
+) as unknown as Linter.FlatConfig[];
 
 export const prettierConfig = {
-  extends: ['prettier'],
-  plugins: ['prettier'],
   rules: {
     'prettier/prettier': 'error',
   },
 };
 
-export default tseslint.config([
+// Default export combining everything
+export default tseslint.config(
   js.configs.recommended,
   ...typescriptConfig,
-  ...reactConfig(),
-  prettierConfig,
-]);
+) as unknown as Linter.FlatConfig[];

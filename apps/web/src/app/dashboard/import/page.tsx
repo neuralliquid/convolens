@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@ui/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@ui/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@ui/ui/tabs';
-import { FileUpload } from '@ui/file-upload/FileUpload';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import FileUpload from '@/components/file-upload/FileUpload';
 import { useFileUpload } from '@/hooks/useFileUpload';
-import { toast } from '@ui/ui/use-toast';
+import { toast } from '@/components/ui/toaster';
 
 export default function ImportChatPage() {
   const router = useRouter();

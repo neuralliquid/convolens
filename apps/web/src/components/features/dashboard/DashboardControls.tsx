@@ -1,5 +1,5 @@
-import { Input } from "@ui/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ui/ui/select"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowUpDown } from "lucide-react"
 import { SortOption } from "@utils/dashboard-utils"
 import type { Platform, PlatformFilter } from "@/types/platform"

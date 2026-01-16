@@ -9,8 +9,8 @@ import {
   OneToMany 
 } from 'typeorm';
 import bcrypt from 'bcryptjs';
-import { Group } from './Group.js';
-import { Message } from './Message.js';
+import { Group } from './Group';
+import { Message } from './Message';
 import { Exclude } from 'class-transformer';
 
 export enum UserRole {
@@ -34,7 +34,7 @@ export class User {
   name?: string;
 
   @Column({
-    type: 'enum',
+    type: 'simple-enum',
     enum: UserRole,
     default: UserRole.USER,
   })
@@ -52,10 +52,10 @@ export class User {
   @OneToMany(() => Message, message => message.sender)
   messages: Message[];
 
-  @CreateDateColumn({ type: 'timestamp' })
+  @CreateDateColumn({ type: 'datetime' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamp' })
+  @UpdateDateColumn({ type: 'datetime' })
   updatedAt: Date;
 
   @BeforeInsert()

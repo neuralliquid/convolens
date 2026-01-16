@@ -64,23 +64,6 @@ const USER_STORAGE_KEY = 'whatssummarize_user'
 const SESSION_STORAGE_KEY = 'whatssummarize_session'
 
 /**
- * Maps Supabase user to our User type
- */
-function mapSupabaseUser(supabaseUser: any): User {
-  if (!supabaseUser) return null
-
-  return {
-    id: supabaseUser.id,
-    email: supabaseUser.email || '',
-    name: supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || '',
-    avatarUrl: supabaseUser.user_metadata?.avatar_url,
-    role: supabaseUser.user_metadata?.role || 'user',
-    isAdmin: supabaseUser.user_metadata?.role === 'admin',
-    metadata: supabaseUser.user_metadata
-  }
-}
-
-/**
  * Creates a Supabase-like client interface
  * In production, this should import from @/lib/supabase/client
  * For now, provides a working implementation that can be swapped
@@ -93,8 +76,8 @@ function createAuthClient() {
 
   // Try to dynamically load Supabase client
   // This pattern allows for flexible configuration
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
+  const supabaseKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']
 
   // If Supabase is not configured, use the API backend
   if (!supabaseUrl || !supabaseKey) {
@@ -114,7 +97,7 @@ function createAuthClient() {
  * This is used when Supabase is not configured
  */
 function createApiAuthClient() {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+  const apiUrl = process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3001'
 
   return {
     type: 'api' as const,

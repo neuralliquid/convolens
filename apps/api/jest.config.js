@@ -36,7 +36,7 @@ export default {
     '/node_modules/',
     '/dist/'
   ],
-  setupFiles: ['<rootDir>/tests/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   globalSetup: '<rootDir>/tests/global-setup.ts',
   globalTeardown: '<rootDir>/tests/global-teardown.ts',
   testTimeout: 10000,

@@ -46,17 +46,17 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
           {
             name: 'lastLogin',
-            type: 'timestamp',
+            type: 'datetime',
             isNullable: true,
           },
           {
             name: 'createdAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
           },
           {
             name: 'updatedAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
             onUpdate: 'CURRENT_TIMESTAMP',
           },
@@ -122,23 +122,23 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
           {
             name: 'metadata',
-            type: 'jsonb',
+            type: 'simple-json',
             isNullable: true,
           },
           {
             name: 'createdAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
           },
           {
             name: 'updatedAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
             onUpdate: 'CURRENT_TIMESTAMP',
           },
           {
             name: 'archivedAt',
-            type: 'timestamp',
+            type: 'datetime',
             isNullable: true,
           },
         ],
@@ -184,7 +184,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
           {
             name: 'metadata',
-            type: 'jsonb',
+            type: 'simple-json',
             isNullable: true,
           },
           {
@@ -193,18 +193,18 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
           {
             name: 'createdAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
           },
           {
             name: 'updatedAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
             onUpdate: 'CURRENT_TIMESTAMP',
           },
           {
             name: 'deletedAt',
-            type: 'timestamp',
+            type: 'datetime',
             isNullable: true,
           },
         ],
@@ -229,7 +229,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
           {
             name: 'joinedAt',
-            type: 'timestamp',
+            type: 'datetime',
             default: 'CURRENT_TIMESTAMP',
           },
         ],

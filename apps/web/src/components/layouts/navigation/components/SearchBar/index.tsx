@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Search as SearchIcon, X } from 'lucide-react';
-import { cn } from '@utils/utils';
+import { cn } from '@/lib/utils';
 import { SearchBarProps } from '../../types';
 import styles from '../../navigation.module.css';
 

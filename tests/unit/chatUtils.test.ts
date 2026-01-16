@@ -1,4 +1,4 @@
-import { formatChatMessages, formatMessageDate } from '../../frontend/src/utils/chatUtils';
+import { formatChatMessages, formatMessageDate } from '../../apps/web/src/utils/chatUtils';
 
 // First, mock all the date-fns modules with jest.mock
 jest.mock('date-fns', () => {
@@ -169,7 +169,7 @@ describe('formatChatMessages', () => {
     });
     
     // Add a spy to the formatChatMessages function to see what's happening
-    const originalFormatChatMessages = jest.requireActual('../../frontend/src/utils/chatUtils').formatChatMessages;
+    const originalFormatChatMessages = jest.requireActual('../../apps/web/src/utils/chatUtils').formatChatMessages;
     const formatChatMessagesSpy = jest.fn((...args) => {
       const result = originalFormatChatMessages(...args);
       console.log('formatChatMessages result:', JSON.stringify(result, null, 2));
@@ -178,13 +178,13 @@ describe('formatChatMessages', () => {
     
     try {
       // Temporarily replace the module's formatChatMessages with our spied version
-      jest.mock('../../frontend/src/utils/chatUtils', () => ({
-        ...jest.requireActual('../../frontend/src/utils/chatUtils'),
+      jest.mock('../../apps/web/src/utils/chatUtils', () => ({
+        ...jest.requireActual('../../apps/web/src/utils/chatUtils'),
         formatChatMessages: formatChatMessagesSpy
       }));
       
       // Re-import to get the mocked version
-      const { formatChatMessages } = require('../../frontend/src/utils/chatUtils');
+      const { formatChatMessages } = require('../../apps/web/src/utils/chatUtils');
       const result = formatChatMessages(messages);
       
       // Debug the results

@@ -1,7 +1,7 @@
-import { Header, Footer } from "@ui/layouts"
+import { Header, Footer } from "@/components/layouts"
 import { AuthProvider, AppProvider } from "@whatssummarize/contexts"
-import { ThemeProvider } from "@ui/theme-provider"
-import { Toaster } from "@ui/toaster"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 import { Inter } from "next/font/google"
 

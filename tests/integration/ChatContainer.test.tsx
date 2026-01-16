@@ -1,8 +1,8 @@
 import { render, screen } from '../test-utils';
-import { ChatContainer } from '../../frontend/src/components/chat/ChatContainer';
+import { ChatContainer } from '../../apps/web/src/components/chat/ChatContainer';
 
 // Mock the Message component to track its props
-jest.mock('../../frontend/src/components/chat/Message', () => ({
+jest.mock('../../apps/web/src/components/chat/Message', () => ({
   Message: jest.fn(({ id, content, isConsecutive, showHeader, isFromMe, sender }) => {
     // Log the props for debugging
     console.log(`Message ${id} props:`, { 
@@ -33,7 +33,7 @@ jest.mock('../../frontend/src/components/chat/Message', () => ({
     );
   })
 }));
-import { MessageProps } from '../../frontend/src/components/chat/Message';
+import { MessageProps } from '../../apps/web/src/components/chat/Message';
 
 describe('ChatContainer Integration', () => {
   const currentUserId = 'user-1';
@@ -79,7 +79,7 @@ describe('ChatContainer Integration', () => {
 
   it('groups consecutive messages from the same sender', () => {
     // Import the formatChatMessages function directly
-    const { formatChatMessages } = require('../../frontend/src/utils/chatUtils');
+    const { formatChatMessages } = require('../../apps/web/src/utils/chatUtils');
     
     // Format the mock messages
     const formattedMessages = formatChatMessages(mockMessages);

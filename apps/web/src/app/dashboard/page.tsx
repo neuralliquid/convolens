@@ -2,13 +2,13 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/auth-context';
+import { useAuth } from '@whatssummarize/contexts';
 import { BarChart2, MessageSquare, Shield, Zap, Plus, Settings, FileText } from 'lucide-react';
 import PageWrapper from '../page-wrapper';
-import { PageHeader } from '@ui/ui/page-header';
-import { Button } from '@ui/ui/button';
-import { StyledCard } from '@ui/ui/styled-card';
-import { EmptyState } from '@ui/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { StyledCard } from '@/components/ui/styled-card';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading } = useAuth();

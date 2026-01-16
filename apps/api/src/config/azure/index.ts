@@ -18,7 +18,7 @@
  * Configure individual services with their respective environment variables.
  */
 
-import { logger } from '../../utils/logger.js';
+import { logger } from '../../utils/logger';
 
 // =============================================================================
 // Types

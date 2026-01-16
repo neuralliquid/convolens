@@ -1,7 +1,7 @@
 "use client";
 
-import { LoginForm } from '@ui/auth/login-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@ui/ui/card';
+import { LoginForm } from '@/components/auth/login-form';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import PageWrapper from '../page-wrapper';

@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@ui/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Gauge, Users, FileText, MessageSquare } from "lucide-react"
 import { formatNumber } from "@utils/dashboard-utils"
 

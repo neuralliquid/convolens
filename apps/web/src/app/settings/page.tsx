@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/contexts/auth-context";
-import { PageHeader } from "@ui/ui/page-header";
-import { Button } from "@ui/ui/button";
-import { StyledCard } from "@ui/ui/styled-card";
+import { useAuth } from "@whatssummarize/contexts";
+import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
+import { StyledCard } from "@/components/ui/styled-card";
 import PageWrapper from "../page-wrapper";
 import { Settings, Bell, Shield, User, Moon } from "lucide-react";
-import { Switch } from "@ui/ui/switch";
-import { Label } from "@ui/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function SettingsPage() {
   const { user } = useAuth();
