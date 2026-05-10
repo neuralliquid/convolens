@@ -1,5 +1,5 @@
 {
-  "name": "@whatssummarize/chrome-extension",
+  "name": "@convolens/chrome-extension",
   "version": "1.0.0",
   "private": true,
   "description": "WhatsSummarize Chrome Extension for WhatsApp Web",
