@@ -195,7 +195,7 @@ jobs:
             echo "✅ Application Insights exists"
           fi
 
-          # Check Container Apps (names match bicep BASE pattern: ${BASE}-cae, ${BASE}-api)
+          # Check Container Apps (names follow ${BASE}-{cae,api} per infra/terraform/env/{env}/main.tf)
           CAE_NAME="${BASE}-cae"
           echo "Checking Container Apps Environment: $CAE_NAME..."
           if ! az containerapp env show --name "$CAE_NAME" --resource-group "$RG" &>/dev/null; then
