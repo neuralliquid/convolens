@@ -80,6 +80,12 @@ variable "container_image_api" {
   default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
 }
 
+variable "api_target_port" {
+  type        = number
+  description = "Container App ingress target port. Internal eval uses the Azure helloworld placeholder on port 80; set to 3001 when deploying the real API image."
+  default     = 80
+}
+
 variable "frontend_runtime_stack" {
   type        = string
   description = "Linux App Service runtime stack for the Next.js frontend."

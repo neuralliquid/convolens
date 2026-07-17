@@ -391,7 +391,7 @@ Goal: create the production infrastructure plan without deploying application be
 
 Implementation note:
 
-- The first Terraform profile is cost-minimized for internal evaluation: PostgreSQL, Redis, and dedicated ACR are disabled by default; the API scales to zero; frontend App Service uses the Free tier; storage uses LRS; telemetry is capped at 1 GB/day. Flip `enable_postgres = true` and choose paid frontend/API sizing before treating the environment as durable production.
+- The first Terraform profile is cost-minimized for internal evaluation: PostgreSQL, Redis, and dedicated ACR are disabled by default; the API scales to zero; frontend App Service uses the Free tier; storage uses LRS; telemetry is capped at 1 GB/day. The API target port defaults to `80` for the Azure helloworld placeholder image; set `api_target_port = 3001` when deploying the real API image. Flip `enable_postgres = true` and choose paid frontend/API sizing before treating the environment as durable production.
 
 Work:
 

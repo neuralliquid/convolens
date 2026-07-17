@@ -17,6 +17,7 @@ admin_email           = ""
 monthly_budget_amount = 75
 
 container_image_api = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+api_target_port     = 80
 
 tags = {
   costCenter = "production"

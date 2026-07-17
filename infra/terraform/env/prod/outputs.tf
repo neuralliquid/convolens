@@ -50,8 +50,8 @@ output "application_insights_connection_string" {
 }
 
 output "container_app_url" {
-  value       = "https://${azurerm_container_app.api.latest_revision_fqdn}"
-  description = "Public URL of the API Container App."
+  value       = "https://${azurerm_container_app.api.ingress[0].fqdn}"
+  description = "Stable public URL of the API Container App."
 }
 
 output "frontend_default_hostname" {

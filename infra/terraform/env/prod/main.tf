@@ -243,7 +243,7 @@ resource "azurerm_container_app" "api" {
 
   ingress {
     external_enabled = true
-    target_port      = 3001
+    target_port      = var.api_target_port
     transport        = "http"
 
     traffic_weight {
@@ -255,6 +255,7 @@ resource "azurerm_container_app" "api" {
       allowed_origins = [var.allowed_origin]
       allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
       allowed_headers = ["content-type", "authorization", "x-correlation-id", "x-idempotency-key"]
+      exposed_headers = []
     }
   }
 
@@ -263,10 +264,12 @@ resource "azurerm_container_app" "api" {
     max_replicas = 2
 
     container {
-      name   = "api"
-      image  = var.container_image_api
-      cpu    = 0.5
-      memory = "1.0Gi"
+      name    = "api"
+      image   = var.container_image_api
+      cpu     = 0.5
+      memory  = "1Gi"
+      args    = []
+      command = []
 
       env {
         name  = "NODE_ENV"
@@ -274,7 +277,7 @@ resource "azurerm_container_app" "api" {
       }
       env {
         name  = "PORT"
-        value = "3001"
+        value = tostring(var.api_target_port)
       }
       env {
         name  = "FRONTEND_URL"
@@ -388,8 +391,8 @@ resource "azurerm_linux_web_app" "frontend" {
 
   app_settings = {
     NODE_ENV                              = "production"
-    NEXT_PUBLIC_API_URL                   = "https://${azurerm_container_app.api.latest_revision_fqdn}/api"
-    NEXT_PUBLIC_API_BASE_URL              = "https://${azurerm_container_app.api.latest_revision_fqdn}"
+    NEXT_PUBLIC_API_URL                   = "https://${azurerm_container_app.api.ingress[0].fqdn}/api"
+    NEXT_PUBLIC_API_BASE_URL              = "https://${azurerm_container_app.api.ingress[0].fqdn}"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
     AZURE_APP_INSIGHTS_CONNECTION_STRING  = azurerm_application_insights.ai.connection_string
     SCM_DO_BUILD_DURING_DEPLOYMENT        = "true"
