@@ -8,6 +8,7 @@ import {
   BeforeUpdate,
   OneToMany 
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import bcrypt from 'bcryptjs';
 import { Group } from './Group';
 import { Message } from './Message';
@@ -47,15 +48,18 @@ export class User {
   lastLogin?: Date;
 
   @OneToMany(() => Group, group => group.owner)
-  ownedGroups: Group[];
+  ownedGroups: Relation<Group[]>;
+
+  @OneToMany(() => Group, group => group.members)
+  groups: Relation<Group[]>;
 
   @OneToMany(() => Message, message => message.sender)
-  messages: Message[];
+  messages: Relation<Message[]>;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updatedAt: Date;
 
   @BeforeInsert()

@@ -73,12 +73,12 @@ export class Group {
   @Column({ type: 'simple-json', nullable: true })
   metadata?: GroupMetadata;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ nullable: true })
   archivedAt?: Date;
 }
