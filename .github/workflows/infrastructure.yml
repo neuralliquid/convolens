@@ -213,6 +213,7 @@ jobs:
           subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
 
       - name: Bootstrap Dev Key Vault Access
+        id: bootstrap-dev-keyvault
         if: matrix.environment == 'dev'
         run: |
           set -euo pipefail
@@ -228,6 +229,7 @@ jobs:
             --name nl-dev-convolens-kv \
             --object-id "$DEPLOYER_OBJECT_ID" \
             --secret-permissions get list set delete purge recover
+          echo "deployer-object-id=$DEPLOYER_OBJECT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Terraform Init
         env:
@@ -235,6 +237,19 @@ jobs:
           ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} init -backend-config=backend.hcl
+
+      - name: Import Bootstrapped Dev Key Vault Access
+        if: matrix.environment == 'dev'
+        env:
+          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
+          DEPLOYER_OBJECT_ID: ${{ steps.bootstrap-dev-keyvault.outputs.deployer-object-id }}
+        run: |
+          set -euo pipefail
+          POLICY_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/nl-dev-convolens-rg/providers/Microsoft.KeyVault/vaults/nl-dev-convolens-kv/objectId/$DEPLOYER_OBJECT_ID"
+          terraform -chdir=infra/terraform/env/${{ matrix.environment }} state rm azurerm_key_vault_access_policy.deployer || true
+          terraform -chdir=infra/terraform/env/${{ matrix.environment }} import -input=false azurerm_key_vault_access_policy.deployer "$POLICY_ID"
 
       - name: Terraform Apply
         env:
