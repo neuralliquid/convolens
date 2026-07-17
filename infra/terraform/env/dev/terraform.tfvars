@@ -12,6 +12,10 @@ enable_container_apps = true
 enable_static_web_app = true
 enable_budget_alerts  = false
 
+ci_deployer_object_ids = [
+  "d487629d-0758-4192-bf00-dfd4f214a738", # GitHub Actions OIDC service principal
+]
+
 admin_email           = ""
 monthly_budget_amount = 100
 
