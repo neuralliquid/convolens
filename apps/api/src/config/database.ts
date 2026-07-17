@@ -1,28 +1,59 @@
 import { DataSource } from 'typeorm';
+import type { DataSourceOptions } from 'typeorm';
 import { Message } from '../db/entities/Message';
 import { Group } from '../db/entities/Group';
 import { User } from '../db/entities/User';
 import { logger } from '../utils/logger';
 
-export const AppDataSource = new DataSource({
-  type: 'sqlite',
-  database: 'database.sqlite',
-  synchronize: process.env.NODE_ENV !== 'production', // Auto-create tables in dev/test
-  logging: process.env.NODE_ENV === 'development',
+const isProduction = process.env.NODE_ENV === 'production';
+const dbType = process.env.DB_TYPE || 'sqlite';
+const migrationsRun = process.env.DB_MIGRATIONS_RUN === undefined
+  ? isProduction
+  : process.env.DB_MIGRATIONS_RUN === 'true';
+
+const commonOptions = {
+  synchronize: !isProduction && process.env.DB_SYNCHRONIZE !== 'false',
+  logging: process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development',
   entities: [Message, Group, User],
   migrations: ['dist/db/migrations/*.js'],
-  migrationsRun: process.env.NODE_ENV === 'production',
+  migrationsRun,
   subscribers: [],
   cache: {
-    duration: 1000 * 30, // 30 seconds
+    duration: 1000 * 30,
   },
-  // Enable WAL mode for better concurrency
+};
+
+const sqliteOptions: DataSourceOptions = {
+  ...commonOptions,
+  type: 'sqlite',
+  database: process.env.DATABASE_PATH || 'database.sqlite',
   extra: {
     connection: {
       pragma: 'journal_mode = WAL',
     },
   },
-});
+};
+
+const postgresOptions: DataSourceOptions = {
+  ...commonOptions,
+  type: 'postgres',
+  host: process.env.DB_HOST,
+  port: Number.parseInt(process.env.DB_PORT || '5432', 10),
+  username: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME || 'convolens',
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+};
+
+const getDataSourceOptions = (): DataSourceOptions => {
+  if (dbType === 'postgres') {
+    return postgresOptions;
+  }
+
+  return sqliteOptions;
+};
+
+export const AppDataSource = new DataSource(getDataSourceOptions());
 
 export const initializeDatabase = async (): Promise<void> => {
   if (AppDataSource.isInitialized) {

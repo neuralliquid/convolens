@@ -68,3 +68,4 @@ logs
 .tmp
 actionlint
 infra/bicep/*.json
+**/.terraform/

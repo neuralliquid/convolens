@@ -61,12 +61,12 @@ export class Message {
   @Column({ type: 'uuid' })
   groupId: string;
 
-  @CreateDateColumn({ type: 'datetime' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'datetime' })
+  @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ nullable: true })
   deletedAt?: Date;
 }
