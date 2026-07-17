@@ -212,6 +212,23 @@ jobs:
           tenant-id: ${{ steps.azure-creds.outputs.tenant-id }}
           subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
 
+      - name: Bootstrap Dev Key Vault Access
+        if: matrix.environment == 'dev'
+        run: |
+          set -euo pipefail
+          DEPLOYER_OBJECT_ID=$(az ad sp show \
+            --id "${{ steps.azure-creds.outputs.client-id }}" \
+            --query id \
+            -o tsv)
+          if [ -z "$DEPLOYER_OBJECT_ID" ]; then
+            echo "Error: failed to resolve Azure service principal object ID" >&2
+            exit 1
+          fi
+          az keyvault set-policy \
+            --name nl-dev-convolens-kv \
+            --object-id "$DEPLOYER_OBJECT_ID" \
+            --secret-permissions get list set delete purge recover
+
       - name: Terraform Init
         env:
           ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
