@@ -195,7 +195,7 @@ resource "azurerm_key_vault_access_policy" "deployer" {
 }
 
 resource "azurerm_key_vault_access_policy" "ci_deployers" {
-  for_each = var.ci_deployer_object_ids
+  for_each = setsubtract(var.ci_deployer_object_ids, [data.azurerm_client_config.current.object_id])
 
   key_vault_id = azurerm_key_vault.kv.id
   tenant_id    = data.azurerm_client_config.current.tenant_id
