@@ -25,7 +25,7 @@
     "@convolens/contexts": "workspace:^",
     "@convolens/ui": "workspace:*",
     "antd": "^5.26.5",
-    "axios": "^1.12.0",
+    "axios": "^1.16.0",
     "date-fns": "^4.1.0",
     "next": "^15.4.8",
     "next-auth": "^4.24.13",
