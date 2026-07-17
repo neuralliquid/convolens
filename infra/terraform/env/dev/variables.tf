@@ -76,6 +76,12 @@ variable "enable_budget_alerts" {
   default     = true
 }
 
+variable "ci_deployer_object_ids" {
+  type        = set(string)
+  description = "Microsoft Entra object IDs for CI/CD principals that need Key Vault secret permissions during Terraform plan/apply."
+  default     = []
+}
+
 variable "admin_email" {
   type        = string
   description = "Email address that receives budget alerts. Empty disables budget alerts regardless of enable_budget_alerts."

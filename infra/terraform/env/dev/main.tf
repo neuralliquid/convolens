@@ -194,13 +194,26 @@ resource "azurerm_key_vault_access_policy" "deployer" {
   secret_permissions = ["Get", "List", "Set", "Delete", "Purge", "Recover"]
 }
 
+resource "azurerm_key_vault_access_policy" "ci_deployers" {
+  for_each = var.ci_deployer_object_ids
+
+  key_vault_id = azurerm_key_vault.kv.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = each.value
+
+  secret_permissions = ["Get", "List", "Set", "Delete", "Purge", "Recover"]
+}
+
 resource "azurerm_key_vault_secret" "cosmos_endpoint" {
   count        = var.enable_cosmos ? 1 : 0
   name         = "cosmos-db-endpoint"
   value        = azurerm_cosmosdb_account.cosmos[0].endpoint
   key_vault_id = azurerm_key_vault.kv.id
 
-  depends_on = [azurerm_key_vault_access_policy.deployer]
+  depends_on = [
+    azurerm_key_vault_access_policy.deployer,
+    azurerm_key_vault_access_policy.ci_deployers,
+  ]
 }
 
 resource "azurerm_key_vault_secret" "cosmos_key" {
@@ -209,7 +222,10 @@ resource "azurerm_key_vault_secret" "cosmos_key" {
   value        = azurerm_cosmosdb_account.cosmos[0].primary_key
   key_vault_id = azurerm_key_vault.kv.id
 
-  depends_on = [azurerm_key_vault_access_policy.deployer]
+  depends_on = [
+    azurerm_key_vault_access_policy.deployer,
+    azurerm_key_vault_access_policy.ci_deployers,
+  ]
 }
 
 resource "azurerm_key_vault_secret" "cosmos_connection_string" {
@@ -218,7 +234,10 @@ resource "azurerm_key_vault_secret" "cosmos_connection_string" {
   value        = azurerm_cosmosdb_account.cosmos[0].primary_sql_connection_string
   key_vault_id = azurerm_key_vault.kv.id
 
-  depends_on = [azurerm_key_vault_access_policy.deployer]
+  depends_on = [
+    azurerm_key_vault_access_policy.deployer,
+    azurerm_key_vault_access_policy.ci_deployers,
+  ]
 }
 
 resource "azurerm_key_vault_secret" "appinsights_connection_string" {
@@ -226,7 +245,10 @@ resource "azurerm_key_vault_secret" "appinsights_connection_string" {
   value        = azurerm_application_insights.ai.connection_string
   key_vault_id = azurerm_key_vault.kv.id
 
-  depends_on = [azurerm_key_vault_access_policy.deployer]
+  depends_on = [
+    azurerm_key_vault_access_policy.deployer,
+    azurerm_key_vault_access_policy.ci_deployers,
+  ]
 }
 
 resource "azurerm_key_vault_secret" "storage_connection_string" {
@@ -234,7 +256,10 @@ resource "azurerm_key_vault_secret" "storage_connection_string" {
   value        = azurerm_storage_account.st.primary_connection_string
   key_vault_id = azurerm_key_vault.kv.id
 
-  depends_on = [azurerm_key_vault_access_policy.deployer]
+  depends_on = [
+    azurerm_key_vault_access_policy.deployer,
+    azurerm_key_vault_access_policy.ci_deployers,
+  ]
 }
 
 resource "azurerm_redis_cache" "redis" {
@@ -255,7 +280,10 @@ resource "azurerm_key_vault_secret" "redis_password" {
   value        = azurerm_redis_cache.redis[0].primary_access_key
   key_vault_id = azurerm_key_vault.kv.id
 
-  depends_on = [azurerm_key_vault_access_policy.deployer]
+  depends_on = [
+    azurerm_key_vault_access_policy.deployer,
+    azurerm_key_vault_access_policy.ci_deployers,
+  ]
 }
 
 resource "azurerm_cognitive_account" "openai" {
