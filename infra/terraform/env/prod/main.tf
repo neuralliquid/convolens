@@ -365,8 +365,9 @@ resource "azurerm_service_plan" "frontend" {
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   os_type             = "Linux"
-  sku_name            = "F1"
-  tags                = local.tags
+  # B1 is the lowest App Service tier that supports managed certificates for custom domains.
+  sku_name = "B1"
+  tags     = local.tags
 }
 
 resource "azurerm_linux_web_app" "frontend" {
