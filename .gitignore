@@ -55,6 +55,7 @@ tests/__results__/
 # Local development
 .DS_Store
 *.pem
+.serena/
 
 # Logs
 logs
