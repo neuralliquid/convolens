@@ -4,14 +4,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 env:
   TF_VERSION: '1.14.7'
   TF_IN_AUTOMATION: 'true'
   TF_INPUT: '0'
-  ARM_USE_OIDC: 'true'
   ENVIRONMENT: prod
 
 jobs:
@@ -48,24 +46,25 @@ jobs:
         run: |
           set -euo pipefail
           CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientId')
+          CLIENT_SECRET=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientSecret')
           TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.tenantId')
           SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.subscriptionId')
-          for v in "$CLIENT_ID" "$TENANT_ID" "$SUBSCRIPTION_ID"; do
+          for v in "$CLIENT_ID" "$CLIENT_SECRET" "$TENANT_ID" "$SUBSCRIPTION_ID"; do
             if [ "$v" = "null" ] || [ -z "$v" ]; then
-              echo "Error: AZURE_CREDENTIALS missing clientId/tenantId/subscriptionId" >&2
+              echo "Error: AZURE_CREDENTIALS must include clientId/clientSecret/tenantId/subscriptionId for the temporary secret-based deploy path" >&2
               exit 1
             fi
           done
           echo "client-id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::$CLIENT_SECRET"
+          echo "client-secret=$CLIENT_SECRET" >> "$GITHUB_OUTPUT"
           echo "tenant-id=$TENANT_ID" >> "$GITHUB_OUTPUT"
           echo "subscription-id=$SUBSCRIPTION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Azure Login
         uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
         with:
-          client-id: ${{ steps.azure-creds.outputs.client-id }}
-          tenant-id: ${{ steps.azure-creds.outputs.tenant-id }}
-          subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -79,6 +78,7 @@ jobs:
       - name: Terraform Init
         env:
           ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
           ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
@@ -86,6 +86,7 @@ jobs:
       - name: Terraform Apply Base Infrastructure
         env:
           ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
           ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
@@ -95,6 +96,7 @@ jobs:
         id: tf
         env:
           ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
           ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: |
@@ -130,6 +132,7 @@ jobs:
             -var "api_target_port=3001"
         env:
           ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
           ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
