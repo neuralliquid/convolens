@@ -1,0 +1,174 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: '1.14.7'
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: '0'
+  ARM_USE_OIDC: 'true'
+  ENVIRONMENT: prod
+
+jobs:
+  deploy:
+    name: Deploy Convolens Production
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Parse Azure Credentials
+        id: azure-creds
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientId')
+          TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.tenantId')
+          SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.subscriptionId')
+          for v in "$CLIENT_ID" "$TENANT_ID" "$SUBSCRIPTION_ID"; do
+            if [ "$v" = "null" ] || [ -z "$v" ]; then
+              echo "Error: AZURE_CREDENTIALS missing clientId/tenantId/subscriptionId" >&2
+              exit 1
+            fi
+          done
+          echo "client-id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+          echo "tenant-id=$TENANT_ID" >> "$GITHUB_OUTPUT"
+          echo "subscription-id=$SUBSCRIPTION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Azure Login
+        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
+        with:
+          client-id: ${{ steps.azure-creds.outputs.client-id }}
+          tenant-id: ${{ steps.azure-creds.outputs.tenant-id }}
+          subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build API and Web
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://placeholder.invalid/api
+          NEXT_PUBLIC_API_BASE_URL: https://placeholder.invalid
+
+      - name: Terraform Init
+        env:
+          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
+        run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
+
+      - name: Terraform Apply Base Infrastructure
+        env:
+          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
+          TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+        run: terraform -chdir=infra/terraform/env/prod apply -auto-approve
+
+      - name: Capture Terraform Outputs
+        id: tf
+        env:
+          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
+        run: |
+          terraform -chdir=infra/terraform/env/prod output -json > tf-outputs.json
+          echo "resource-group=$(jq -r '.resource_group_name.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "api-url=$(jq -r '.container_app_url.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "web-url=$(jq -r '.frontend_default_hostname.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "web-name=nl-prod-convolens-web" >> "$GITHUB_OUTPUT"
+          ACR_LOGIN_SERVER=$(jq -r '.container_registry_login_server.value' tf-outputs.json)
+          if [ -z "$ACR_LOGIN_SERVER" ]; then
+            echo "ACR output is empty; enable_container_registry must be true for production deploy." >&2
+            exit 1
+          fi
+          echo "acr-login-server=$ACR_LOGIN_SERVER" >> "$GITHUB_OUTPUT"
+          echo "acr-name=${ACR_LOGIN_SERVER%%.azurecr.io}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and Push API Image
+        id: api-image
+        run: |
+          IMAGE="${{ steps.tf.outputs.acr-login-server }}/convolens-api:${{ github.sha }}"
+          az acr build \
+            --registry "${{ steps.tf.outputs.acr-name }}" \
+            --image "convolens-api:${{ github.sha }}" \
+            --file apps/api/Dockerfile \
+            .
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Apply API Image
+        run: |
+          terraform -chdir=infra/terraform/env/prod apply \
+            -auto-approve \
+            -var "container_image_api=${{ steps.api-image.outputs.image }}" \
+            -var "api_target_port=3001"
+        env:
+          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
+          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
+          TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+
+      - name: Rebuild Web With Production API URL
+        run: pnpm --filter @convolens/web... build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ steps.tf.outputs.api-url }}/api
+          NEXT_PUBLIC_API_BASE_URL: ${{ steps.tf.outputs.api-url }}
+
+      - name: Package Web Standalone
+        run: |
+          rm -rf deploy-web web.zip
+          mkdir -p deploy-web
+          cp -R apps/web/.next/standalone/. deploy-web/
+          mkdir -p deploy-web/apps/web/.next/static
+          cp -R apps/web/.next/static/. deploy-web/apps/web/.next/static/
+          if [ -d apps/web/public ]; then
+            mkdir -p deploy-web/apps/web/public
+            cp -R apps/web/public/. deploy-web/apps/web/public/
+          fi
+          cd deploy-web
+          zip -r ../web.zip .
+
+      - name: Deploy Web App
+        run: |
+          az webapp config appsettings set \
+            --resource-group "${{ steps.tf.outputs.resource-group }}" \
+            --name "${{ steps.tf.outputs.web-name }}" \
+            --settings \
+              NEXTAUTH_SECRET="${{ secrets.NEXTAUTH_SECRET }}" \
+              MYSTIRA_IDENTITY_CLIENT_SECRET="${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}"
+          az webapp deploy \
+            --resource-group "${{ steps.tf.outputs.resource-group }}" \
+            --name "${{ steps.tf.outputs.web-name }}" \
+            --src-path web.zip \
+            --type zip
+
+      - name: Smoke Test
+        run: |
+          curl -fsS --max-time 30 "${{ steps.tf.outputs.api-url }}/health"
+          curl -fsSI --max-time 30 "${{ steps.tf.outputs.web-url }}"

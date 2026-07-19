@@ -15,7 +15,7 @@ Upload one supported export → validate and parse → show deterministic analyt
 ## Responsibilities
 
 - Read repository instructions before changes.
-- Complete WhatsSummarize-to-ConvoLens naming and link cleanup.
+- Complete ConvoLens naming and link cleanup.
 - Support one export format well.
 - Add synthetic demo data, upload validation, retention/deletion controls, redaction or confirmation, usage limits, telemetry without conversation content, tests, and a deployed smoke test.
 - Update privacy notices, README status, limitations, screenshots, demo script, funding evidence, and the Baton launch issue.

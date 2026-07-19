@@ -82,14 +82,14 @@ variable "container_image_api" {
 
 variable "api_target_port" {
   type        = number
-  description = "Container App ingress target port. Internal eval uses the Azure helloworld placeholder on port 80; set to 3001 when deploying the real API image."
-  default     = 80
+  description = "Container App ingress target port for the Convolens API image."
+  default     = 3001
 }
 
 variable "frontend_runtime_stack" {
   type        = string
   description = "Linux App Service runtime stack for the Next.js frontend."
-  default     = "20-lts"
+  default     = "24-lts"
 }
 
 variable "allowed_origin" {
@@ -102,6 +102,24 @@ variable "custom_hostname" {
   type        = string
   description = "Canonical production hostname. DNS binding is a go-live step after validation."
   default     = "convolens.neuralliquid.ai"
+}
+
+variable "mystira_identity_well_known" {
+  type        = string
+  description = "Mystira Identity OIDC discovery document URL."
+  default     = "https://identity.mystira.app/.well-known/openid-configuration"
+}
+
+variable "mystira_identity_client_id" {
+  type        = string
+  description = "Mystira Identity OIDC client id for Convolens."
+  default     = ""
+}
+
+variable "mystira_identity_scope" {
+  type        = string
+  description = "Mystira Identity OIDC scopes requested by Convolens."
+  default     = "openid profile email"
 }
 
 variable "admin_email" {
@@ -125,7 +143,7 @@ variable "enable_budget_alerts" {
 variable "enable_container_registry" {
   type        = bool
   description = "Create a dedicated production Azure Container Registry for Convolens images."
-  default     = false
+  default     = true
 }
 
 variable "enable_redis" {

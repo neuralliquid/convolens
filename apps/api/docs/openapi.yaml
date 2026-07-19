@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: WhatsSummarize API
+  title: ConvoLens API
   description: |
-    API for the WhatsSummarize platform - WhatsApp chat summarization service.
+    API for the ConvoLens platform - WhatsApp chat summarization service.
 
     ## Authentication
     Most endpoints require JWT authentication. Include the token in the Authorization header:
@@ -19,8 +19,8 @@ info:
 
   version: 1.0.0
   contact:
-    name: WhatsSummarize Support
-    email: support@whatssummarize.com
+    name: ConvoLens Support
+    email: support@convolens.neuralliquid.ai
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -28,7 +28,7 @@ info:
 servers:
   - url: http://localhost:3001
     description: Development server
-  - url: https://api.whatssummarize.com
+  - url: https://api.convolens.neuralliquid.ai
     description: Production server
 
 tags:

@@ -52,6 +52,9 @@ jobs:
   validate:
     name: Validate Terraform
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -62,13 +65,13 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Format Check
-        run: terraform -chdir=infra/terraform/env/dev fmt -check -recursive
+        run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} fmt -check -recursive
 
       - name: Terraform Init (no backend)
-        run: terraform -chdir=infra/terraform/env/dev init -backend=false
+        run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} init -backend=false
 
       - name: Terraform Validate
-        run: terraform -chdir=infra/terraform/env/dev validate
+        run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} validate
 
   # =============================================================================
   # Plan Changes (PR preview / workflow_dispatch=plan)
@@ -77,10 +80,10 @@ jobs:
     name: Plan (${{ matrix.environment }})
     runs-on: ubuntu-latest
     needs: validate
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan'
     strategy:
       matrix:
-        environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev"]') }}
+        environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev","prod"]') }}
     environment: ${{ matrix.environment }}
 
     steps:
@@ -166,8 +169,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+      github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
     strategy:
       matrix:
         environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["dev"]') }}

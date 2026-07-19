@@ -1,6 +1,6 @@
 # ConvoLens - Frontend
 
-This is the frontend for ConvoLens (formerly WhatsSummarize), built with Next.js, TypeScript, and Ant Design. It provides the user interface for uploading messaging exports, monitoring groups, and viewing AI-generated conversation summaries.
+This is the frontend for ConvoLens (ConvoLens), built with Next.js, TypeScript, and Ant Design. It provides the user interface for uploading messaging exports, monitoring groups, and viewing AI-generated conversation summaries.
 
 ## Features
 

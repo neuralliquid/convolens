@@ -1,7 +1,5 @@
 # ConvoLens
 
-> **Note:** This project was previously known as **WhatsSummarize**. The brand rename is now landing in stages — see [NAMING_RECOMMENDATIONS.md](NAMING_RECOMMENDATIONS.md) for context.
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js%2015-000000?style=flat&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -86,8 +84,8 @@ For a detailed analysis, see [Technology Stack Assessment](docs/PHASE_1_TECH_STA
 1.  **Clone:**
 
     ```bash
-    git clone https://github.com/JustAGhosT/whats-summarize.git
-    cd whats-summarize
+    git clone https://github.com/neuralliquid/convolens.git
+    cd convolens
     ```
 
 2.  **Install:**
@@ -121,9 +119,7 @@ For deploying to Azure infrastructure:
 ## 📚 Documentation
 
 - [Documentation Index](docs/README.md): Complete guide to all documentation.
-- [**ConvoLens Brand Guide**](NAMING_RECOMMENDATIONS.md): Our new brand identity and implementation roadmap. ⭐
 - [**Brand Color Guidelines**](docs/BRAND_COLOR_GUIDELINES.md): How to use ConvoLens colors vs WhatsApp colors. 🎨
-- [Program Name Analysis](docs/PROGRAM_NAME_SUGGESTIONS.md): Comprehensive analysis of all name options evaluated.
 - [Azure Setup Guide](docs/AZURE_SETUP.md): Configure Azure credentials for GitHub Actions deployment.
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md): Roadmap for upcoming refactors and features.
 - [Technical Debt Registry](docs/TECHNICAL_DEBT.md): Known issues and tracking.

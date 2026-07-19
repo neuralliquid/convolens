@@ -1,18 +1,21 @@
 "use client";
 
-import { LoginForm } from '@/components/auth/login-form';
+import { signIn } from 'next-auth/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Button } from '@/components/ui/button';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import PageWrapper from '../page-wrapper';
 
 function LoginPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  
-  const handleSuccess = () => {
-    const redirectTo = searchParams.get('redirectTo') || '/dashboard';
-    router.push(redirectTo);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  const handleMystiraSignIn = async () => {
+    setIsSigningIn(true);
+    const callbackUrl = searchParams.get('redirectTo') || '/dashboard';
+    await signIn('mystira', { callbackUrl });
+    setIsSigningIn(false);
   };
 
   return (
@@ -24,24 +27,26 @@ function LoginPageContent() {
         
         <CardHeader className="text-center space-y-1">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 mb-4">
-            <div className="h-8 w-8 text-primary font-bold flex items-center justify-center text-xl">WS</div>
+            <div className="h-8 w-8 text-primary font-bold flex items-center justify-center text-xl">CL</div>
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">
             Welcome back
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Sign in to your account to continue
+            Sign in with Mystira Identity to continue
           </p>
         </CardHeader>
         
         <CardContent className="space-y-6 px-6 pb-6">
-          <LoginForm 
-            onSuccess={handleSuccess}
-            showHeader={false}
-            showSocialLogins={true}
-            showSignupLink={true}
-            className="space-y-4"
-          />
+          <Button
+            type="button"
+            variant="primary"
+            className="w-full"
+            onClick={handleMystiraSignIn}
+            disabled={isSigningIn}
+          >
+            {isSigningIn ? 'Redirecting...' : 'Continue with Mystira Identity'}
+          </Button>
         </CardContent>
       </Card>
       </div>

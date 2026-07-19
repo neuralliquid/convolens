@@ -1,10 +1,10 @@
 # Azure Credentials Setup Guide
 
-This guide explains how to set up Azure credentials for deploying WhatsSummarize infrastructure using GitHub Actions.
+This guide explains how to set up Azure credentials for deploying ConvoLens infrastructure using GitHub Actions.
 
 ## Overview
 
-WhatsSummarize uses **OpenID Connect (OIDC)** authentication to securely deploy to Azure without storing long-lived credentials. This is the recommended approach by both GitHub and Microsoft.
+ConvoLens uses **OpenID Connect (OIDC)** authentication to securely deploy to Azure without storing long-lived credentials. This is the recommended approach by both GitHub and Microsoft.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ WhatsSummarize uses **OpenID Connect (OIDC)** authentication to securely deploy 
 2. Go to **Azure Active Directory** → **App registrations**
 3. Click **New registration**
 4. Enter application details:
-   - **Name**: `whatssummarize-github-actions`
+   - **Name**: `convolens-github-actions`
    - **Supported account types**: Single tenant
    - Click **Register**
 
@@ -40,7 +40,7 @@ az account set --subscription "<your-subscription-id>"
 
 # Create service principal with Contributor role
 az ad sp create-for-rbac \
-  --name "whatssummarize-github-actions" \
+  --name "convolens-github-actions" \
   --role contributor \
   --scopes /subscriptions/<your-subscription-id>
 
@@ -59,8 +59,8 @@ OIDC allows GitHub Actions to authenticate to Azure without storing secrets.
 3. Click **Add credential**
 4. Select **GitHub Actions deploying Azure resources**
 5. Fill in the details:
-   - **Organization**: Your GitHub username or organization
-   - **Repository**: `whatssummarize`
+   - **Organization**: `neuralliquid`
+   - **Repository**: `convolens`
    - **Entity type**: Choose one:
      - **Branch** (for main branch deployments): `main`
      - **Pull Request** (for PR validation)
@@ -82,8 +82,8 @@ SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 APP_ID="<your-application-client-id>"
 
 # Replace with your GitHub username or organization
-GITHUB_ORG="<your-github-username-or-org>"
-GITHUB_REPO="whatssummarize"
+GITHUB_ORG="neuralliquid"
+GITHUB_REPO="convolens"
 
 # For main branch deployments
 az ad app federated-credential create \
@@ -154,7 +154,7 @@ az role assignment create \
 # az role assignment create \
 #   --assignee <application-client-id> \
 #   --role "Contributor" \
-#   --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/rg-whatssummarize-dev
+#   --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/nl-dev-convolens-rg
 ```
 
 For specific resource operations, you may need additional roles:
@@ -308,9 +308,9 @@ az role assignment create \
 The subject format is: `repo:<GITHUB_ORG>/<GITHUB_REPO>:<entity_type>`
 
 Examples:
-- For main: `repo:<your-github-username-or-org>/whatssummarize:ref:refs/heads/main`
-- For PR: `repo:<your-github-username-or-org>/whatssummarize:pull_request`
-- For env: `repo:<your-github-username-or-org>/whatssummarize:environment:dev`
+- For main: `repo:<your-github-username-or-org>/ConvoLens:ref:refs/heads/main`
+- For PR: `repo:<your-github-username-or-org>/ConvoLens:pull_request`
+- For env: `repo:<your-github-username-or-org>/ConvoLens:environment:dev`
 
 ### Workflow Fails with "Login failed" or "Not all values are present"
 
@@ -379,7 +379,7 @@ echo '{"clientId":"xxx","tenantId":"yyy","subscriptionId":"zzz"}' | jq .
 - [Azure OIDC Documentation](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure)
 - [GitHub Actions Azure Login](https://github.com/marketplace/actions/azure-login)
 - [Azure CLI Reference](https://learn.microsoft.com/en-us/cli/azure/)
-- [WhatsSummarize Infrastructure Guide](../infra/README.md)
+- [ConvoLens Infrastructure Guide](../infra/README.md)
 
 ## Quick Reference Commands
 

@@ -1,5 +1,5 @@
 repository:
-  name: whatssummarize
+  name: convolens
   description: A comprehensive platform for analyzing and summarizing conversations across multiple messaging platforms, starting with WhatsApp.
   topics:
     - nextjs

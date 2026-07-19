@@ -383,7 +383,8 @@ resource "azurerm_linux_web_app" "frontend" {
   }
 
   site_config {
-    always_on = false
+    always_on        = false
+    app_command_line = "node apps/web/server.js"
 
     application_stack {
       node_version = var.frontend_runtime_stack
@@ -396,6 +397,10 @@ resource "azurerm_linux_web_app" "frontend" {
     NEXT_PUBLIC_API_BASE_URL              = "https://${azurerm_container_app.api.ingress[0].fqdn}"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
     AZURE_APP_INSIGHTS_CONNECTION_STRING  = azurerm_application_insights.ai.connection_string
+    NEXTAUTH_URL                          = "https://${azurerm_linux_web_app.frontend.default_hostname}"
+    MYSTIRA_IDENTITY_WELL_KNOWN           = var.mystira_identity_well_known
+    MYSTIRA_IDENTITY_CLIENT_ID            = var.mystira_identity_client_id
+    MYSTIRA_IDENTITY_SCOPE                = var.mystira_identity_scope
     SCM_DO_BUILD_DURING_DEPLOYMENT        = "true"
     WEBSITE_RUN_FROM_PACKAGE              = "1"
     CONVOLENS_CANONICAL_HOSTNAME          = var.custom_hostname

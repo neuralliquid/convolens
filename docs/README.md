@@ -1,8 +1,6 @@
 # ConvoLens Documentation Index
 
-Welcome to the **ConvoLens** documentation (formerly WhatsSummarize). This directory contains comprehensive guides, technical specifications, and strategic planning documents for our conversation analysis platform.
-
-> **Rebranding Notice:** We've selected ConvoLens as our new brand name! See the [ConvoLens Brand Guide](../NAMING_RECOMMENDATIONS.md) for details.
+Welcome to the **ConvoLens** documentation. This directory contains comprehensive guides, technical specifications, and strategic planning documents for our conversation analysis platform.
 
 ---
 
@@ -50,13 +48,11 @@ Welcome to the **ConvoLens** documentation (formerly WhatsSummarize). This direc
 
 ### 📌 Brand Resources
 
-- **[ConvoLens Brand Guide](../NAMING_RECOMMENDATIONS.md)** ⭐ - Complete brand identity and implementation guide
 - **[Brand Color Guidelines](BRAND_COLOR_GUIDELINES.md)** 🎨 - When to use ConvoLens colors vs WhatsApp colors
-- **[Name Selection Analysis](PROGRAM_NAME_SUGGESTIONS.md)** - Comprehensive evaluation of 18 name options
 
 ### Brand Identity
 
-**Selected Name:** ConvoLens (Score: 46/50)
+**Product Name:** ConvoLens
 
 The ConvoLens brand provides:
 
@@ -125,7 +121,6 @@ The ConvoLens brand provides:
 | ----------------------------------------------------- | -------------------------------- |
 | [Roadmap](ROADMAP.md)                                 | Long-term product vision         |
 | [Future Considerations](FUTURE_CONSIDERATIONS.md)     | Ideas for exploration            |
-| [ConvoLens Brand Guide](../NAMING_RECOMMENDATIONS.md) | Complete brand identity (⭐ NEW) |
 | [Code Review Analysis](CODE_REVIEW_ANALYSIS.md)       | Codebase health assessment       |
 
 ---
@@ -139,7 +134,6 @@ The ConvoLens brand provides:
 - **Add a new feature** → [Implementation Plan](IMPLEMENTATION_PLAN.md)
 - **Fix a bug** → [Technical Debt Registry](TECHNICAL_DEBT.md)
 - **Write tests** → [Testing Strategy](TESTING_STRATEGY.md)
-- **Rebrand the product** → [ConvoLens Brand Guide](../NAMING_RECOMMENDATIONS.md) ✅
 - **Use the platform** → [User Guide](USER_GUIDE.md)
 - **Monitor production** → [Observability](OBSERVABILITY.md) + [Runbook](runbook.md)
 - **Understand tech choices** → [Phase 1 Tech Stack](PHASE_1_TECH_STACK.md)
@@ -219,7 +213,7 @@ Links to related documents
 
 ### Official Project Links
 
-- **Repository**: [github.com/JustAGhosT/whatssummarize](https://github.com/JustAGhosT/whatssummarize)
+- **Repository**: [github.com/neuralliquid/convolens](https://github.com/neuralliquid/convolens)
 - **Main README**: [README.md](../README.md)
 - **Contributing Guide**: [CONTRIBUTING.md](../CONTRIBUTING.md)
 - **Code of Conduct**: [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)
@@ -271,8 +265,6 @@ Found an error or unclear section?
 
 ### Recently Added
 
-- ✅ **ConvoLens brand selection and implementation guide** (December 2025)
-- ✅ Comprehensive name analysis (18 options evaluated)
 - ✅ Azure setup guide with OIDC
 - ✅ Testing strategy documentation
 - ✅ Observability guidelines
@@ -305,8 +297,7 @@ Found an error or unclear section?
 1. Vision: [Roadmap](ROADMAP.md)
 2. Current State: [Code Review Analysis](CODE_REVIEW_ANALYSIS.md)
 3. Planning: [Implementation Plan](IMPLEMENTATION_PLAN.md)
-4. **Branding: [ConvoLens Brand Guide](../NAMING_RECOMMENDATIONS.md)** ⭐
-5. Users: [User Guide](USER_GUIDE.md)
+4. Users: [User Guide](USER_GUIDE.md)
 
 ### For DevOps Engineers
 
@@ -321,4 +312,4 @@ _This documentation index is maintained by the ConvoLens team. For questions or 
 
 **Last Updated:** December 2025  
 **Maintained By:** Core Team  
-**Status:** Active Development | Rebranding to ConvoLens
+**Status:** Active Development

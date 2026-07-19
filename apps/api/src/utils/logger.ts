@@ -1,6 +1,6 @@
 import winston, { format } from 'winston';
 import 'winston-daily-rotate-file';
-import { getCorrelationContext } from '../middleware/correlation.js';
+import { getCorrelationContext } from '../middleware/correlation';
 
 declare module 'winston' {
   interface Logger {
@@ -76,7 +76,7 @@ export const logger = winston.createLogger({
     addCorrelation(),
   ),
   defaultMeta: {
-    service: 'whatssummarize-api',
+    service: 'convolens-api',
     environment: process.env.NODE_ENV || 'development',
   },
   transports: [

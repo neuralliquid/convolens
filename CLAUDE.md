@@ -7,7 +7,7 @@ This file provides guidance to Claude Code when working in this repository.
 **ConvoLens** converts supported conversation exports into deterministic analytics and bounded AI-generated insights.
 
 - Canonical repository: `neuralliquid/convolens`
-- Historical name: WhatsSummarize / `whats-summarize`; do not introduce new references using the old name.
+- Use the canonical product and repository name: ConvoLens / `convolens`.
 
 ## Startup
 

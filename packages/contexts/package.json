@@ -9,7 +9,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build --force",
     "dev": "tsc --watch",
     "clean": "rm -rf node_modules && rm -rf dist",
     "lint": "eslint .",

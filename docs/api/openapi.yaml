@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: ConvoLens API
-  description: API documentation for the ConvoLens application (formerly WhatsSummarize)
+  description: API documentation for the ConvoLens application
   version: 1.0.0
   contact:
     name: Support
@@ -11,7 +11,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://api.whatssummarize.com/v1
+  - url: https://api.convolens.neuralliquid.ai/v1
     description: Production server
   - url: http://localhost:3000/api
     description: Development server

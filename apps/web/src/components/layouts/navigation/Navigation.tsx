@@ -284,18 +284,18 @@ export function Navigation() {
             ) : (
               <div className={styles.authButtons}>
                 <Link 
-                  href="/login" 
+                  href="/login"
                   className={cn(styles.button, styles.loginButton)}
                   onClick={toggleMobileMenu}
                 >
                   Log in
                 </Link>
                 <Link 
-                  href="/signup" 
+                  href="/login"
                   className={cn(styles.button, styles.signupButton)}
                   onClick={toggleMobileMenu}
                 >
-                  Sign up
+                  Sign in
                 </Link>
               </div>
             )}
@@ -325,18 +325,18 @@ export function Navigation() {
             {!isAuthenticated && (
               <div className={styles.mobileAuthButtons}>
                 <Link 
-                  href="/login" 
+                  href="/login"
                   className={cn(styles.button, styles.loginButton)}
                   onClick={toggleMobileMenu}
                 >
                   Log in
                 </Link>
                 <Link 
-                  href="/signup" 
+                  href="/login"
                   className={cn(styles.button, styles.signupButton)}
                   onClick={toggleMobileMenu}
                 >
-                  Sign up
+                  Sign in
                 </Link>
               </div>
             )}

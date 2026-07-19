@@ -1,42 +1,26 @@
-# Build stage
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 
-WORKDIR /app
+WORKDIR /repo
+RUN corepack enable
 
-# Install dependencies
-COPY package*.json ./
-RUN npm ci --only=production
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY tools ./tools
 
-# Copy source code
-COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @convolens/api build
 
-# Build the application
-RUN npm run build
+FROM node:24-alpine AS runtime
 
-# Production stage
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Install production dependencies only
-COPY package*.json ./
-RUN npm ci --only=production
-
-# Copy built files from builder
-COPY --from=builder /app/dist ./dist
-
-# Copy required files
-# Environment variables should be provided at runtime
-# Either mount a proper .env file or use container environment variables
-
-# Create necessary directories
-RUN mkdir -p ./data ./logs ./uploads
-
-# Expose the application port
-EXPOSE 3001
-
-# Set environment to production
+WORKDIR /repo
 ENV NODE_ENV=production
 
-# Start the application
+COPY --from=builder /repo ./
+
+RUN mkdir -p apps/api/data apps/api/logs apps/api/uploads
+
+WORKDIR /repo/apps/api
+EXPOSE 3001
+
 CMD ["node", "dist/index.js"]

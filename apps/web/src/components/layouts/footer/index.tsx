@@ -21,7 +21,7 @@ export function Footer() {
               A powerful tool to analyze and summarize your WhatsApp conversations, providing insights and analytics about your chats.
             </p>
             <div className="mt-6 flex space-x-4">
-              <Link href="https://github.com/JustAGhosT/whats-summarize" className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 hover-card p-2 rounded-full">
+              <Link href="https://github.com/neuralliquid/convolens" className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 hover-card p-2 rounded-full">
                 <span className="sr-only">GitHub</span>
                 <Github className="h-6 w-6" />
               </Link>

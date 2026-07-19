@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-**ConvoLens** is an AI-powered conversation analysis platform that transforms messaging exports into insights. Users upload chat exports from WhatsApp (and soon Telegram, Discord, etc.) to visualize communication patterns and generate AI-driven summaries. (Previously known as **WhatsSummarize**.)
+**ConvoLens** is an AI-powered conversation analysis platform that transforms messaging exports into insights. Users upload chat exports from WhatsApp (and soon Telegram, Discord, etc.) to visualize communication patterns and generate AI-driven summaries.
 
 ## Development Commands
 
@@ -109,14 +109,14 @@ The architecture is designed to support multiple messaging platforms:
 3. Return `ChatExportData` structure
 4. Add validation function like `isValidTelegramExport()`
 
-#### Brand Identity (ConvoLens)
-**Current State**: ConvoLens (renamed from "WhatsSummarize")
+#### Brand Identity
+**Current State**: ConvoLens
 - **Colors**: Deep Purple (#6B46C1) + Bright Cyan (#06B6D4) + Soft Lavender (#C4B5FD)
 - **Tagline**: "See Your Conversations Clearly"
 - **Design System**: Migrating from Ant Design to pure Tailwind + Shadcn/UI
 - **WhatsApp Colors**: Preserved only for WhatsApp-specific features (use green #25D366 sparingly)
 
-See [NAMING_RECOMMENDATIONS.md](NAMING_RECOMMENDATIONS.md) and [docs/BRAND_COLOR_GUIDELINES.md](docs/BRAND_COLOR_GUIDELINES.md) for complete brand guidelines.
+See [docs/BRAND_COLOR_GUIDELINES.md](docs/BRAND_COLOR_GUIDELINES.md) for brand color guidance.
 
 ## Important Notes
 
