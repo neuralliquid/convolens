@@ -14,7 +14,7 @@
   "host_permissions": [
     "https://web.whatsapp.com/*",
     "https://api.convolens.com/*",
-    "https://api.whatssummarize.com/*",
+    "https://api.convolens.neuralliquid.ai/*",
     "http://localhost:3001/*"
   ],
 

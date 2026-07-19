@@ -1,6 +1,6 @@
 # Future Considerations
 
-This document outlines potential enhancements, features, and improvements that could be added to the WhatsSummarize project. These are organized by category and priority.
+This document outlines potential enhancements, features, and improvements that could be added to the ConvoLens project. These are organized by category and priority.
 
 ## Monitoring & Observability
 

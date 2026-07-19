@@ -42,7 +42,7 @@ tasks:
 
   - id: org-transfer-cleanup
     title: "Org transfer cleanup: update CI badges, federated creds, OIDC subjects after neuralliquid/convolens rename settles"
-    description: "Repo moved from JustAGhosT/whatssummarize to neuralliquid/convolens. Verify CI workflows, Azure federated creds, and any consumer references all use the new canonical name."
+    description: "Repo moved from JustAGhosT/ConvoLens to neuralliquid/convolens. Verify CI workflows, Azure federated creds, and any consumer references all use the new canonical name."
     priority: medium
     status: todo
     quarter: "2026-Q2"

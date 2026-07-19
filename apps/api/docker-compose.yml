@@ -5,7 +5,7 @@ services:
     build:
       context: .
       target: development
-    container_name: whatssummarize-backend
+    container_name: convolens-backend
     restart: unless-stopped
     ports:
       - "3001:3001"
@@ -31,7 +31,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: whatssummarize-redis
+    container_name: convolens-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -43,12 +43,12 @@ services:
   # For production, use a separate database like PostgreSQL
   # db:
   #   image: postgres:15-alpine
-  #   container_name: whatssummarize-db
+  #   container_name: convolens-db
   #   restart: unless-stopped
   #   environment:
   #     POSTGRES_USER: ${DB_USERNAME:-postgres}
   #     POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-  #     POSTGRES_DB: ${DB_NAME:-whatssummarize}
+  #     POSTGRES_DB: ${DB_NAME:-convolens}
   #   volumes:
   #     - postgres_data:/var/lib/postgresql/data
   #   ports:

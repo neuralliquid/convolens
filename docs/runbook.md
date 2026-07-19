@@ -24,8 +24,8 @@ This runbook contains operational procedures for the ConvoLens application.
 ### Local Development Setup
 ```bash
 # Clone the repository
-git clone https://github.com/JustAGhosT/whats-summarize.git
-cd whats-summarize
+git clone https://github.com/neuralliquid/convolens.git
+cd convolens
 
 # Install dependencies
 pnpm install

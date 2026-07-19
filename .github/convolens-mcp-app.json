@@ -1,6 +1,6 @@
 {
-  "name": "WhatsSummarize MCP Assistant",
-  "description": "MCP integration for WhatsSummarize development",
+  "name": "ConvoLens MCP Assistant",
+  "description": "MCP integration for ConvoLens development",
   "default_permissions": {
     "contents": "write",
     "issues": "write",
@@ -17,6 +17,6 @@
     "workflow_dispatch"
   ],
   "public": false,
-  "webhook_url": "https://whatssummarize-mcp.azurewebsites.net/webhook",
+  "webhook_url": "https://convolens-mcp.azurewebsites.net/webhook",
   "webhook_secret": "${WEBHOOK_SECRET}"
 }

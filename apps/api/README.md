@@ -1,6 +1,6 @@
 # ConvoLens Backend
 
-A robust backend service for processing and summarizing WhatsApp chat exports. Built with Node.js, TypeScript, Express, and TypeORM. (Formerly WhatsSummarize.)
+A robust backend service for processing and summarizing WhatsApp chat exports. Built with Node.js, TypeScript, Express, and TypeORM. (ConvoLens.)
 
 ## ✨ Features
 
@@ -30,8 +30,8 @@ A robust backend service for processing and summarizing WhatsApp chat exports. B
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/JustAGhosT/whats-summarize.git
-   cd whats-summarize/apps/api
+   git clone https://github.com/neuralliquid/convolens.git
+   cd convolens/apps/api
    ```
 
 2. Install dependencies:

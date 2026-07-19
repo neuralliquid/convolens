@@ -98,10 +98,10 @@ const LandingPage = () => {
               </p>
               <div className="mt-10 flex flex-col sm:flex-row gap-4">
                 <Link 
-                  href="/signup" 
+                  href="/login"
                   className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-center btn-glow"
                 >
-                  Get Started Free
+                  Sign in
                 </Link>
                 <Link 
                   href="/features" 
@@ -186,10 +186,10 @@ const LandingPage = () => {
                 <h3 className="text-xl font-semibold mb-2">Ready to get started?</h3>
                 <p className="mb-4">Try ConvoLens today and gain new insights from your conversations.</p>
                 <Link 
-                  href="/signup" 
+                  href="/login"
                   className="inline-block px-5 py-2 bg-white text-green-600 font-medium rounded-lg hover:bg-gray-100 transition-colors duration-200 btn-glow"
                 >
-                  Sign up free
+                  Sign in
                 </Link>
               </div>
             </div>
@@ -257,11 +257,11 @@ const LandingPage = () => {
           </p>
           <div className="mt-10">
             <Link 
-              href="/signup" 
+              href="/login"
               className="px-8 py-3 bg-white text-green-700 font-medium rounded-lg shadow-md hover:bg-gray-100 transition-colors duration-200 inline-block transform-none"
               style={{ backfaceVisibility: 'hidden' }}
             >
-              Get Started Free
+              Sign in
             </Link>
           </div>
         </div>

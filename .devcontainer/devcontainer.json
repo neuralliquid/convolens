@@ -30,7 +30,7 @@
 
     "codespaces": {
       "repositories": {
-        "JustAGhosT/whatssummarize": {
+        "neuralliquid/convolens": {
           "permissions": {
             "contents": "write",
             "pull_requests": "write",

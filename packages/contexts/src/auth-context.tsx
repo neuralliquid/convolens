@@ -63,14 +63,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const USER_STORAGE_KEY = 'convolens_user'
 const SESSION_STORAGE_KEY = 'convolens_session'
 
-// Legacy storage keys from the WhatsSummarize → ConvoLens rename.
-// Kept here purely so the migration shim below can copy values forward
-// without signing existing users out. These constants (and the migration
-// shim) should be removed ~30 days after the rename ships, or once
-// telemetry confirms zero legacy reads.
-const OLD_USER_STORAGE_KEY = 'whatssummarize_user'
-const OLD_SESSION_STORAGE_KEY = 'whatssummarize_session'
-
 /**
  * Creates a Supabase-like client interface
  * In production, this should import from @/lib/supabase/client
@@ -105,12 +97,14 @@ function createAuthClient() {
  * This is used when Supabase is not configured
  */
 function createApiAuthClient() {
-  const apiUrl = process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3001'
+  const configuredApiUrl = process.env['NEXT_PUBLIC_API_URL'] || 'http://localhost:3001/api'
+  const trimmedApiUrl = configuredApiUrl.replace(/\/+$/, '')
+  const apiUrl = trimmedApiUrl.endsWith('/api') ? trimmedApiUrl : `${trimmedApiUrl}/api`
 
   return {
     type: 'api' as const,
     async login(email: string, password: string) {
-      const response = await fetch(`${apiUrl}/api/auth/login`, {
+      const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -125,7 +119,7 @@ function createApiAuthClient() {
       return response.json()
     },
     async signup(email: string, password: string, name: string) {
-      const response = await fetch(`${apiUrl}/api/auth/register`, {
+      const response = await fetch(`${apiUrl}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name }),
@@ -140,7 +134,7 @@ function createApiAuthClient() {
       return response.json()
     },
     async logout() {
-      await fetch(`${apiUrl}/api/auth/logout`, {
+      await fetch(`${apiUrl}/auth/logout`, {
         method: 'POST',
         credentials: 'include'
       })
@@ -150,7 +144,7 @@ function createApiAuthClient() {
       if (!token) return null
 
       try {
-        const response = await fetch(`${apiUrl}/api/auth/me`, {
+        const response = await fetch(`${apiUrl}/auth/me`, {
           headers: { 'Authorization': `Bearer ${token}` },
           credentials: 'include'
         })
@@ -182,34 +176,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize authentication state on mount
   useEffect(() => {
     let isMounted = true
-
-    // One-shot localStorage migration from `whatssummarize_*` →
-    // `convolens_*`. Without this, every existing user would be signed out
-    // on the deploy that ships the brand rename. Safe to run on every
-    // mount: after the first run, the legacy keys are gone, so subsequent
-    // mounts are no-ops. Remove this block (and the OLD_* constants
-    // above) ~30 days after deploy.
-    if (typeof window !== 'undefined') {
-      try {
-        const migrations: Array<[string, string]> = [
-          [OLD_USER_STORAGE_KEY, USER_STORAGE_KEY],
-          [OLD_SESSION_STORAGE_KEY, SESSION_STORAGE_KEY],
-        ]
-        for (const [oldK, newK] of migrations) {
-          const legacy = localStorage.getItem(oldK)
-          if (legacy === null) continue
-          const existing = localStorage.getItem(newK)
-          if (existing === null) {
-            localStorage.setItem(newK, legacy)
-          }
-          localStorage.removeItem(oldK)
-        }
-      } catch (err) {
-        // localStorage can throw in private-mode / quota-exceeded
-        // scenarios — never let that block auth init.
-        console.warn('[AuthContext] Legacy storage migration skipped:', err)
-      }
-    }
 
     const initializeAuth = async () => {
       try {

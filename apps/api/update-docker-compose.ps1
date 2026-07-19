@@ -9,7 +9,7 @@ services:
       target: development
       args:
         - NODE_ENV=development
-    container_name: whatssummarize-backend-dev
+    container_name: convolens-backend-dev
     command: npm run dev
     restart: unless-stopped
     ports:
@@ -62,7 +62,7 @@ services:
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
       - SMTP_SECURE=false
-      - EMAIL_FROM=noreply@whatssummarize.dev
+      - EMAIL_FROM=noreply@convolens.local
       
       # Rate Limiting (increased for development)
       - RATE_LIMIT_WINDOW_MS=900000 # 15 minutes
@@ -80,7 +80,7 @@ services:
   # Redis for caching and rate limiting
   redis:
     image: redis:7-alpine
-    container_name: whatssummarize-redis-dev
+    container_name: convolens-redis-dev
     restart: unless-stopped
     ports:
       - "63790:6379"
@@ -98,7 +98,7 @@ services:
   # MailHog for email testing
   mailhog:
     image: mailhog/mailhog:latest
-    container_name: whatssummarize-mailhog-dev
+    container_name: convolens-mailhog-dev
     restart: unless-stopped
     ports:
       - "1025:1025" # SMTP server
@@ -114,7 +114,7 @@ services:
   # Database management UI (Adminer)
   dbadmin:
     image: adminer:latest
-    container_name: whatssummarize-dbadmin-dev
+    container_name: convolens-dbadmin-dev
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -128,7 +128,7 @@ services:
   # Database (SQLite in development)
   db:
     image: nouchka/sqlite3:latest
-    container_name: whatssummarize-db-dev
+    container_name: convolens-db-dev
     restart: unless-stopped
     volumes:
       - db_data_dev:/app/data

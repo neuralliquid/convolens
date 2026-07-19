@@ -327,12 +327,13 @@ class SelectorService {
     try {
       const stored = await chrome.storage.local.get(['selectorCache']);
       if (stored.selectorCache) {
-        this.cachedSelectors = stored.selectorCache;
+        const cachedSelectors = stored.selectorCache as CachedSelectors;
+        this.cachedSelectors = cachedSelectors;
 
         // Check if cache is still valid
-        const age = Date.now() - this.cachedSelectors.cachedAt;
+        const age = Date.now() - cachedSelectors.cachedAt;
         if (age < CACHE_TTL_MS) {
-          this.currentConfig = this.cachedSelectors.config;
+          this.currentConfig = cachedSelectors.config;
           console.log('[SelectorService] Loaded cached selectors version', this.currentConfig.version);
         }
       }
