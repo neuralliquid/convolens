@@ -81,6 +81,39 @@ jobs:
           NEXT_PUBLIC_API_URL: https://placeholder.invalid/api
           NEXT_PUBLIC_API_BASE_URL: https://placeholder.invalid
 
+      - name: Ensure Terraform Backend
+        run: |
+          set -euo pipefail
+          az group create \
+            --name nl-tfstate-rg \
+            --location southafricanorth \
+            --tags project=convolens purpose=tfstate environment=prod
+          if ! az storage account show \
+            --resource-group nl-tfstate-rg \
+            --name nltfstateconvolens \
+            --only-show-errors >/dev/null 2>&1; then
+            az storage account create \
+              --resource-group nl-tfstate-rg \
+              --name nltfstateconvolens \
+              --location southafricanorth \
+              --sku Standard_LRS \
+              --kind StorageV2 \
+              --min-tls-version TLS1_2 \
+              --allow-blob-public-access false \
+              --https-only true \
+              --tags project=convolens purpose=tfstate environment=prod
+          fi
+          ACCOUNT_KEY=$(az storage account keys list \
+            --resource-group nl-tfstate-rg \
+            --account-name nltfstateconvolens \
+            --query '[0].value' \
+            -o tsv)
+          az storage container create \
+            --name tfstate \
+            --account-name nltfstateconvolens \
+            --account-key "$ACCOUNT_KEY" \
+            --fail-on-exist false
+
       - name: Terraform Init
         env:
           ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
