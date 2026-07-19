@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: '24'
-          cache: 'pnpm'
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
@@ -67,11 +66,16 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
+        run: pnpm install --frozen-lockfile --reporter=append-only
+        env:
+          CI: 'true'
 
       - name: Build API and Web
+        timeout-minutes: 15
         run: pnpm run build
         env:
+          CI: 'true'
           NEXT_PUBLIC_API_URL: https://placeholder.invalid/api
           NEXT_PUBLIC_API_BASE_URL: https://placeholder.invalid
 
@@ -138,8 +142,10 @@ jobs:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
 
       - name: Rebuild Web With Production API URL
+        timeout-minutes: 15
         run: pnpm --filter @convolens/web... build
         env:
+          CI: 'true'
           NEXT_PUBLIC_API_URL: ${{ steps.tf.outputs.api-url }}/api
           NEXT_PUBLIC_API_BASE_URL: ${{ steps.tf.outputs.api-url }}
 
