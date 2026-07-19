@@ -18,6 +18,7 @@ jobs:
   deploy:
     name: Deploy Convolens Production
     runs-on: ubuntu-latest
+    environment: Production
 
     steps:
       - name: Checkout
