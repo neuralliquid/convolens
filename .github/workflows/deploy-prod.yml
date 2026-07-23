@@ -206,6 +206,10 @@ jobs:
             mkdir -p deploy-web/apps/web/public
             cp -R apps/web/public/. deploy-web/apps/web/public/
           fi
+          if [ -d node_modules/.pnpm/node_modules ]; then
+            mkdir -p deploy-web/apps/web/node_modules
+            cp -R node_modules/.pnpm/node_modules/. deploy-web/apps/web/node_modules/
+          fi
           while find deploy-web -type l -print -quit | grep -q .; do
             find deploy-web -type l -print0 | while IFS= read -r -d '' link; do
               target=$(readlink -f "$link" || true)
