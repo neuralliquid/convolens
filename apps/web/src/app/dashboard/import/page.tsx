@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Chrome, ExternalLink, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -47,9 +49,7 @@ export default function ImportChatPage() {
         >
           <TabsList className="grid w-full grid-cols-2 max-w-md mb-8">
             <TabsTrigger value="file">File Upload</TabsTrigger>
-            <TabsTrigger value="whatsapp" disabled>
-              WhatsApp Web (Coming Soon)
-            </TabsTrigger>
+            <TabsTrigger value="whatsapp">WhatsApp Web</TabsTrigger>
           </TabsList>
 
           <TabsContent value="file">
@@ -107,33 +107,48 @@ export default function ImportChatPage() {
               <CardHeader>
                 <CardTitle>Connect WhatsApp Web</CardTitle>
                 <CardDescription>
-                  Connect directly to WhatsApp Web to import your chats
+                  Use the ConvoLens browser extension to extract the open WhatsApp Web chat.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <div className="text-center max-w-md">
-                  <div className="bg-muted p-4 rounded-lg mb-6 inline-block">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="48"
-                      height="48"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-muted-foreground"
-                    >
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border p-4">
+                    <div className="mb-3 flex items-center gap-2 font-medium">
+                      <Chrome className="h-5 w-5 text-primary" />
+                      Install
+                    </div>
+                    <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                      <li>Build the extension from <code>apps/chrome-extension</code>.</li>
+                      <li>Open <code>chrome://extensions</code> and enable Developer mode.</li>
+                      <li>Choose Load unpacked and select the extension folder.</li>
+                    </ol>
                   </div>
-                  <h3 className="text-xl font-semibold mb-2">Coming Soon</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Direct WhatsApp Web integration is under development. For now, please use the file upload option.
-                  </p>
-                  <Button onClick={() => setActiveTab('file')}>
-                    Go to File Upload
+                  <div className="rounded-lg border p-4">
+                    <div className="mb-3 flex items-center gap-2 font-medium">
+                      <Settings className="h-5 w-5 text-primary" />
+                      Configure
+                    </div>
+                    <dl className="space-y-2 text-sm text-muted-foreground">
+                      <div>
+                        <dt className="font-medium text-foreground">API endpoint</dt>
+                        <dd className="break-all">https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io</dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium text-foreground">Dashboard</dt>
+                        <dd>https://convolens.neuralliquid.ai</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button asChild variant="primary">
+                    <Link href="https://web.whatsapp.com" target="_blank" rel="noreferrer">
+                      Open WhatsApp Web
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button variant="outline" onClick={() => setActiveTab('file')}>
+                    Use file upload
                   </Button>
                 </div>
               </CardContent>

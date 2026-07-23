@@ -79,7 +79,7 @@ The extension supports custom API endpoints via the settings page. Environment-a
 | Environment | API URL | Dashboard URL |
 |------------|---------|---------------|
 | Development | `http://localhost:3001` | `http://localhost:3000` |
-| Production | `https://api.convolens.com` | `https://app.convolens.com` |
+| Production | `https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io` | `https://convolens.neuralliquid.ai` |
 
 ## Development
 
