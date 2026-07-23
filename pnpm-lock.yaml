@@ -363,6 +363,9 @@ importers:
       '@supabase/ssr':
         specifier: ^0.7.0
         version: 0.7.0(@supabase/supabase-js@2.110.7)
+      '@swc/helpers':
+        specifier: ^0.5.15
+        version: 0.5.15
       antd:
         specifier: ^5.26.5
         version: 5.26.6(date-fns@4.1.0)(react-dom@19.2.7)(react@19.2.7)
