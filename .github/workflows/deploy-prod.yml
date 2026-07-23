@@ -206,10 +206,6 @@ jobs:
             mkdir -p deploy-web/apps/web/public
             cp -R apps/web/public/. deploy-web/apps/web/public/
           fi
-          if [ -d node_modules/.pnpm/node_modules ]; then
-            mkdir -p deploy-web/apps/web/node_modules
-            cp -R node_modules/.pnpm/node_modules/. deploy-web/apps/web/node_modules/
-          fi
           while find deploy-web -type l -print -quit | grep -q .; do
             find deploy-web -type l -print0 | while IFS= read -r -d '' link; do
               target=$(readlink -f "$link" || true)
@@ -219,10 +215,12 @@ jobs:
               fi
             done
           done
-          SWC_HELPERS_DIR="$(dirname "$(node -e "process.stdout.write(require.resolve('@swc/helpers/package.json', { paths: [process.cwd() + '/apps/web'] }))")")"
-          mkdir -p deploy-web/apps/web/node_modules/@swc
-          rm -rf deploy-web/apps/web/node_modules/@swc/helpers
-          cp -R "$SWC_HELPERS_DIR" deploy-web/apps/web/node_modules/@swc/helpers
+          for package in @next/env @swc/helpers baseline-browser-mapping caniuse-lite postcss styled-jsx; do
+            package_dir="$(dirname "$(node -e "const path = require('path'); const nextPackage = require.resolve('next/package.json', { paths: [process.cwd() + '/apps/web'] }); const nextModules = path.dirname(nextPackage).replace(/[\\/]next$/, ''); process.stdout.write(require.resolve(process.argv[1] + '/package.json', { paths: [nextModules, process.cwd() + '/apps/web'] }))" "$package")")"
+            mkdir -p "deploy-web/apps/web/node_modules/$(dirname "$package")"
+            rm -rf "deploy-web/apps/web/node_modules/$package"
+            cp -R "$package_dir" "deploy-web/apps/web/node_modules/$package"
+          done
           cd deploy-web
           zip -r ../web.zip .
 
