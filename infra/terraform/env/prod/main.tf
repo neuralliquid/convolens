@@ -202,6 +202,21 @@ resource "azurerm_container_registry" "acr" {
   tags                          = local.tags
 }
 
+resource "azurerm_user_assigned_identity" "api_acr_pull" {
+  count               = var.enable_container_registry ? 1 : 0
+  name                = "${local.api_name}-acr-pull-id"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  tags                = local.tags
+}
+
+resource "azurerm_role_assignment" "api_acr_pull" {
+  count                = var.enable_container_registry ? 1 : 0
+  scope                = azurerm_container_registry.acr[0].id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.api_acr_pull[0].principal_id
+}
+
 resource "azurerm_container_app_environment" "cae" {
   name                       = local.cae_name
   location                   = azurerm_resource_group.rg.location
@@ -218,7 +233,8 @@ resource "azurerm_container_app" "api" {
   tags                         = local.tags
 
   identity {
-    type = "SystemAssigned"
+    type         = var.enable_container_registry ? "SystemAssigned, UserAssigned" : "SystemAssigned"
+    identity_ids = var.enable_container_registry ? [azurerm_user_assigned_identity.api_acr_pull[0].id] : []
   }
 
   secret {
@@ -236,7 +252,7 @@ resource "azurerm_container_app" "api" {
 
     content {
       server   = registry.value.login_server
-      identity = "system"
+      identity = azurerm_user_assigned_identity.api_acr_pull[0].id
     }
   }
 
@@ -357,6 +373,10 @@ resource "azurerm_container_app" "api" {
       concurrent_requests = "100"
     }
   }
+
+  depends_on = [
+    azurerm_role_assignment.api_acr_pull
+  ]
 }
 
 resource "azurerm_service_plan" "frontend" {
@@ -435,13 +455,6 @@ resource "azurerm_role_assignment" "api_queue_contributor" {
 resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_container_app.api.identity[0].principal_id
-}
-
-resource "azurerm_role_assignment" "api_acr_pull" {
-  count                = var.enable_container_registry ? 1 : 0
-  scope                = azurerm_container_registry.acr[0].id
-  role_definition_name = "AcrPull"
   principal_id         = azurerm_container_app.api.identity[0].principal_id
 }
 

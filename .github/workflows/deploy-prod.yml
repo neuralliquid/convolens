@@ -118,10 +118,38 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
 
+      - name: Resolve Base API Runtime
+        id: base-api
+        run: |
+          DEFAULT_IMAGE="mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+          DEFAULT_PORT="80"
+          CURRENT_IMAGE=$(az containerapp show \
+            --resource-group nl-prod-convolens-rg \
+            --name nl-prod-convolens-api \
+            --query 'properties.template.containers[0].image' \
+            -o tsv 2>/dev/null || true)
+          CURRENT_PORT=$(az containerapp show \
+            --resource-group nl-prod-convolens-rg \
+            --name nl-prod-convolens-api \
+            --query 'properties.configuration.ingress.targetPort' \
+            -o tsv 2>/dev/null || true)
+          if [ -z "$CURRENT_IMAGE" ]; then
+            CURRENT_IMAGE="$DEFAULT_IMAGE"
+          fi
+          if [ "$CURRENT_IMAGE" = "$DEFAULT_IMAGE" ] || [ -z "$CURRENT_PORT" ]; then
+            CURRENT_PORT="$DEFAULT_PORT"
+          fi
+          echo "image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "target-port=$CURRENT_PORT" >> "$GITHUB_OUTPUT"
+
       - name: Terraform Apply Base Infrastructure
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
-        run: terraform -chdir=infra/terraform/env/prod apply -auto-approve
+        run: |
+          terraform -chdir=infra/terraform/env/prod apply \
+            -auto-approve \
+            -var "container_image_api=${{ steps.base-api.outputs.image }}" \
+            -var "api_target_port=${{ steps.base-api.outputs.target-port }}"
 
       - name: Capture Terraform Outputs
         id: tf

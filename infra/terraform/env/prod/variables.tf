@@ -83,7 +83,7 @@ variable "container_image_api" {
 variable "api_target_port" {
   type        = number
   description = "Container App ingress target port for the Convolens API image."
-  default     = 3001
+  default     = 80
 }
 
 variable "frontend_runtime_stack" {
