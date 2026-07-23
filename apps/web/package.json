@@ -31,7 +31,7 @@
     "@swc/helpers": "^0.5.15",
     "@supabase/ssr": "^0.7.0",
     "antd": "^5.26.5",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
