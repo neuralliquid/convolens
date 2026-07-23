@@ -216,7 +216,7 @@ jobs:
             done
           done
           for package in @next/env @swc/helpers baseline-browser-mapping caniuse-lite postcss styled-jsx; do
-            package_dir="$(dirname "$(node -e "const path = require('path'); const nextPackage = require.resolve('next/package.json', { paths: [process.cwd() + '/apps/web'] }); const nextModules = path.dirname(nextPackage).replace(/[\\/]next$/, ''); process.stdout.write(require.resolve(process.argv[1] + '/package.json', { paths: [nextModules, process.cwd() + '/apps/web'] }))" "$package")")"
+            package_dir="$(node -e "const fs = require('fs'); const path = require('path'); const nextPackage = require.resolve('next/package.json', { paths: [process.cwd() + '/apps/web'] }); const nextModules = path.dirname(nextPackage).replace(/[\\/]next$/, ''); const entry = require.resolve(process.argv[1], { paths: [nextModules, process.cwd() + '/apps/web'] }); let dir = path.dirname(entry); while (!fs.existsSync(path.join(dir, 'package.json'))) { const parent = path.dirname(dir); if (parent === dir) throw new Error('package root not found'); dir = parent; } process.stdout.write(dir)" "$package")"
             mkdir -p "deploy-web/apps/web/node_modules/$(dirname "$package")"
             rm -rf "deploy-web/apps/web/node_modules/$package"
             cp -R "$package_dir" "deploy-web/apps/web/node_modules/$package"
