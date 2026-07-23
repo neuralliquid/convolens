@@ -2,6 +2,10 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { GroupService } from '../services/group.service';
 import { createWhatsAppClient, WhatsAppClient } from '../whatsapp/client';
 
+type EventedWhatsAppClient = WhatsAppClient & {
+  on?: (event: string, listener: (...args: any[]) => void) => void;
+};
+
 export class WhatsAppSocket {
   private io: SocketIOServer;
   private groupService = new GroupService();
@@ -60,8 +64,10 @@ export class WhatsAppSocket {
       });
     });
 
-    // Listen for new messages from WhatsApp client
-    this.whatsappClient.on('new_message', async (data: { groupName: string; message: any }) => {
+    const eventedClient = this.whatsappClient as EventedWhatsAppClient;
+
+    // Some client implementations emit directly to Socket.IO instead of exposing EventEmitter.
+    eventedClient.on?.('new_message', async (data: { groupName: string; message: any }) => {
       try {
         // Find the group by name
         const group = await this.groupService.getAllGroups();
