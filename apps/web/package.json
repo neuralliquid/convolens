@@ -28,6 +28,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-toast": "^1.1.5",
+    "@swc/helpers": "^0.5.15",
     "@supabase/ssr": "^0.7.0",
     "antd": "^5.26.5",
     "axios": "^1.16.0",

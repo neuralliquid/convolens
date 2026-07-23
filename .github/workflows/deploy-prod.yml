@@ -206,13 +206,19 @@ jobs:
             mkdir -p deploy-web/apps/web/public
             cp -R apps/web/public/. deploy-web/apps/web/public/
           fi
-          find deploy-web -type l -print0 | while IFS= read -r -d '' link; do
-            target=$(readlink -f "$link" || true)
-            rm "$link"
-            if [ -n "$target" ] && [ -e "$target" ]; then
-              cp -R "$target" "$link"
-            fi
+          while find deploy-web -type l -print -quit | grep -q .; do
+            find deploy-web -type l -print0 | while IFS= read -r -d '' link; do
+              target=$(readlink -f "$link" || true)
+              rm "$link"
+              if [ -n "$target" ] && [ -e "$target" ]; then
+                cp -R "$target" "$link"
+              fi
+            done
           done
+          SWC_HELPERS_DIR="$(dirname "$(node -e "process.stdout.write(require.resolve('@swc/helpers/package.json', { paths: [process.cwd() + '/apps/web'] }))")")"
+          mkdir -p deploy-web/apps/web/node_modules/@swc
+          rm -rf deploy-web/apps/web/node_modules/@swc/helpers
+          cp -R "$SWC_HELPERS_DIR" deploy-web/apps/web/node_modules/@swc/helpers
           cd deploy-web
           zip -r ../web.zip .
 

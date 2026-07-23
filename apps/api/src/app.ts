@@ -2,7 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { json, urlencoded } from 'body-parser';
+import bodyParser from 'body-parser';
 import { initializeDatabase } from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import groupRoutes from './routes/group.routes.js';
@@ -13,6 +13,8 @@ import { correlationMiddleware } from './middleware/correlation.js';
 import { metricsMiddleware, metrics } from './services/metrics.service.js';
 import { idempotencyMiddleware, deduplicationService } from './services/deduplication.service.js';
 import { getAllCircuitBreakerStats } from './services/circuit-breaker.service.js';
+
+const { json, urlencoded } = bodyParser;
 
 export const createApp = (): Application => {
   const app = express();
