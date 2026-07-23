@@ -32,7 +32,16 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: pnpm install --frozen-lockfile
+        env:
+          CI: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
 
       - name: Build
         run: pnpm run build
+        env:
+          CI: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
