@@ -308,12 +308,11 @@ jobs:
           az webapp config appsettings set \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false WEBSITE_RUN_FROM_PACKAGE=0
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false WEBSITE_RUN_FROM_PACKAGE=1
           az webapp deploy \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \
             --src-path web.zip \
-            --clean true \
             --track-status false \
             --type zip
 
