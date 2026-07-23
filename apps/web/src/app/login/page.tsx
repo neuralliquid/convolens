@@ -3,6 +3,7 @@
 import { signIn } from 'next-auth/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import PageWrapper from '../page-wrapper';
@@ -10,12 +11,23 @@ import PageWrapper from '../page-wrapper';
 function LoginPageContent() {
   const searchParams = useSearchParams();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const authError = searchParams.get('error');
+
+  const authErrorMessage =
+    authError === 'mystira' || authError === 'OAuthSignin' || authError === 'OAuthCallback'
+      ? 'Mystira Identity could not start. This production environment is missing or rejecting its OAuth client configuration.'
+      : authError
+        ? 'Sign in failed. Please try again or contact support if this keeps happening.'
+        : null;
 
   const handleMystiraSignIn = async () => {
     setIsSigningIn(true);
     const callbackUrl = searchParams.get('redirectTo') || '/dashboard';
-    await signIn('mystira', { callbackUrl });
-    setIsSigningIn(false);
+    try {
+      await signIn('mystira', { callbackUrl });
+    } finally {
+      setIsSigningIn(false);
+    }
   };
 
   return (
@@ -38,6 +50,12 @@ function LoginPageContent() {
         </CardHeader>
         
         <CardContent className="space-y-6 px-6 pb-6">
+          {authErrorMessage ? (
+            <Alert variant="destructive">
+              <AlertTitle>Sign in is not available</AlertTitle>
+              <AlertDescription>{authErrorMessage}</AlertDescription>
+            </Alert>
+          ) : null}
           <Button
             type="button"
             variant="primary"

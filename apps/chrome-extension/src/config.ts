@@ -12,9 +12,9 @@ const isDevelopment = !chrome.runtime.getManifest().update_url;
 export const API_CONFIG = {
   // Production URLs (updated during build)
   production: {
-    apiUrl: 'https://api.convolens.com',
-    wsUrl: 'wss://api.convolens.com/ws',
-    dashboardUrl: 'https://app.convolens.com',
+    apiUrl: 'https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io',
+    wsUrl: 'wss://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io/ws',
+    dashboardUrl: 'https://convolens.neuralliquid.ai',
   },
   // Development URLs
   development: {
