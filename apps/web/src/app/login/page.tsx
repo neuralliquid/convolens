@@ -17,7 +17,7 @@ function LoginPageContent() {
   useEffect(() => {
     let mounted = true;
 
-    fetch('/api/auth/status', { cache: 'no-store' })
+    fetch('/api/runtime/auth-status', { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (mounted) {
