@@ -113,8 +113,7 @@ jobs:
           az storage container create \
             --name tfstate \
             --account-name nltfstateconvolens \
-            --account-key "$ACCOUNT_KEY" \
-            --fail-on-exist false
+            --account-key "$ACCOUNT_KEY"
 
       - name: Terraform Init
         run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
