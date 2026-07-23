@@ -121,6 +121,7 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
+          set -euo pipefail
           terraform -chdir=infra/terraform/env/${{ matrix.environment }} plan -no-color -out=tfplan | tee plan-output.txt
           {
             echo "plan<<EOF"
