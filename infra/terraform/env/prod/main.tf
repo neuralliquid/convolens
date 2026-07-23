@@ -196,25 +196,10 @@ resource "azurerm_container_registry" "acr" {
   location                      = azurerm_resource_group.rg.location
   resource_group_name           = azurerm_resource_group.rg.name
   sku                           = "Basic"
-  admin_enabled                 = false
+  admin_enabled                 = true
   anonymous_pull_enabled        = false
   public_network_access_enabled = true
   tags                          = local.tags
-}
-
-resource "azurerm_user_assigned_identity" "api_acr_pull" {
-  count               = var.enable_container_registry ? 1 : 0
-  name                = "${local.api_name}-acr-pull-id"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  tags                = local.tags
-}
-
-resource "azurerm_role_assignment" "api_acr_pull" {
-  count                = var.enable_container_registry ? 1 : 0
-  scope                = azurerm_container_registry.acr[0].id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_user_assigned_identity.api_acr_pull[0].principal_id
 }
 
 resource "azurerm_container_app_environment" "cae" {
@@ -233,8 +218,7 @@ resource "azurerm_container_app" "api" {
   tags                         = local.tags
 
   identity {
-    type         = var.enable_container_registry ? "SystemAssigned, UserAssigned" : "SystemAssigned"
-    identity_ids = var.enable_container_registry ? [azurerm_user_assigned_identity.api_acr_pull[0].id] : []
+    type = "SystemAssigned"
   }
 
   secret {
@@ -247,12 +231,22 @@ resource "azurerm_container_app" "api" {
     value = random_password.postgres_admin.result
   }
 
+  dynamic "secret" {
+    for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
+
+    content {
+      name  = "acr-password"
+      value = secret.value.admin_password
+    }
+  }
+
   dynamic "registry" {
     for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
 
     content {
-      server   = registry.value.login_server
-      identity = azurerm_user_assigned_identity.api_acr_pull[0].id
+      server               = registry.value.login_server
+      username             = registry.value.admin_username
+      password_secret_name = "acr-password"
     }
   }
 
@@ -373,10 +367,6 @@ resource "azurerm_container_app" "api" {
       concurrent_requests = "100"
     }
   }
-
-  depends_on = [
-    azurerm_role_assignment.api_acr_pull
-  ]
 }
 
 resource "azurerm_service_plan" "frontend" {
@@ -419,7 +409,7 @@ resource "azurerm_linux_web_app" "frontend" {
     NEXTAUTH_URL                          = var.allowed_origin
     MYSTIRA_IDENTITY_WELL_KNOWN           = var.mystira_identity_well_known
     MYSTIRA_IDENTITY_SCOPE                = var.mystira_identity_scope
-    SCM_DO_BUILD_DURING_DEPLOYMENT        = "true"
+    SCM_DO_BUILD_DURING_DEPLOYMENT        = "false"
     WEBSITE_RUN_FROM_PACKAGE              = "1"
     CONVOLENS_CANONICAL_HOSTNAME          = var.custom_hostname
     }, var.mystira_identity_client_id != "" ? {

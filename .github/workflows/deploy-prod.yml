@@ -227,6 +227,10 @@ jobs:
               --name "${{ steps.tf.outputs.web-name }}" \
               --settings "${SETTINGS[@]}"
           fi
+          az webapp config appsettings set \
+            --resource-group "${{ steps.tf.outputs.resource-group }}" \
+            --name "${{ steps.tf.outputs.web-name }}" \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false WEBSITE_RUN_FROM_PACKAGE=1
           az webapp deploy \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \
