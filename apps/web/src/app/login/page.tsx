@@ -5,20 +5,47 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import PageWrapper from '../page-wrapper';
 
 function LoginPageContent() {
   const searchParams = useSearchParams();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [mystiraConfigured, setMystiraConfigured] = useState<boolean | null>(null);
   const authError = searchParams.get('error');
 
-  const authErrorMessage =
-    authError === 'mystira' || authError === 'OAuthSignin' || authError === 'OAuthCallback'
-      ? 'Mystira Identity could not start. This production environment is missing or rejecting its OAuth client configuration.'
-      : authError
-        ? 'Sign in failed. Please try again or contact support if this keeps happening.'
-        : null;
+  useEffect(() => {
+    let mounted = true;
+
+    fetch('/api/auth/status', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (mounted) {
+          setMystiraConfigured(Boolean(data?.mystiraConfigured));
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setMystiraConfigured(null);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  let authErrorMessage: string | null = null;
+
+  if (mystiraConfigured === false) {
+    authErrorMessage =
+      'Mystira Identity is not configured for this production environment yet. The OAuth client ID and client secret are missing.';
+  } else if (authError === 'mystira' || authError === 'OAuthSignin' || authError === 'OAuthCallback') {
+    authErrorMessage =
+      'Mystira Identity could not start. This production environment is missing or rejecting its OAuth client configuration.';
+  } else if (authError) {
+    authErrorMessage = 'Sign in failed. Please try again or contact support if this keeps happening.';
+  }
 
   const handleMystiraSignIn = async () => {
     setIsSigningIn(true);
@@ -61,7 +88,7 @@ function LoginPageContent() {
             variant="primary"
             className="w-full"
             onClick={handleMystiraSignIn}
-            disabled={isSigningIn}
+            disabled={isSigningIn || mystiraConfigured === false}
           >
             {isSigningIn ? 'Redirecting...' : 'Continue with Mystira Identity'}
           </Button>
