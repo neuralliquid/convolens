@@ -79,18 +79,25 @@ jobs:
       - name: Ensure Terraform Backend
         run: |
           set -euo pipefail
-          az group create \
+          TFSTATE_RG_LOCATION=$(az group show \
             --name nl-tfstate-rg \
-            --location southafricanorth \
-            --tags project=convolens purpose=tfstate environment=prod
+            --query location \
+            -o tsv 2>/dev/null || true)
+          if [ -z "$TFSTATE_RG_LOCATION" ]; then
+            TFSTATE_RG_LOCATION=southafricanorth
+            az group create \
+              --name nl-tfstate-rg \
+              --location "$TFSTATE_RG_LOCATION" \
+              --tags project=convolens purpose=tfstate environment=prod
+          fi
           if ! az storage account show \
             --resource-group nl-tfstate-rg \
             --name nltfstateconvolens \
             --only-show-errors >/dev/null 2>&1; then
             az storage account create \
-              --resource-group nl-tfstate-rg \
-              --name nltfstateconvolens \
-              --location southafricanorth \
+            --resource-group nl-tfstate-rg \
+            --name nltfstateconvolens \
+              --location "$TFSTATE_RG_LOCATION" \
               --sku Standard_LRS \
               --kind StorageV2 \
               --min-tls-version TLS1_2 \
