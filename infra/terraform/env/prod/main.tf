@@ -231,6 +231,15 @@ resource "azurerm_container_app" "api" {
     value = random_password.postgres_admin.result
   }
 
+  dynamic "registry" {
+    for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
+
+    content {
+      server   = registry.value.login_server
+      identity = "system"
+    }
+  }
+
   ingress {
     external_enabled = true
     target_port      = var.api_target_port
@@ -426,6 +435,13 @@ resource "azurerm_role_assignment" "api_queue_contributor" {
 resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_container_app.api.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "api_acr_pull" {
+  count                = var.enable_container_registry ? 1 : 0
+  scope                = azurerm_container_registry.acr[0].id
+  role_definition_name = "AcrPull"
   principal_id         = azurerm_container_app.api.identity[0].principal_id
 }
 
