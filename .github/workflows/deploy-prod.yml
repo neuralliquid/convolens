@@ -76,6 +76,35 @@ jobs:
           NEXT_PUBLIC_API_URL: https://placeholder.invalid/api
           NEXT_PUBLIC_API_BASE_URL: https://placeholder.invalid
 
+      - name: Smoke Test API Build
+        timeout-minutes: 2
+        run: |
+          DB_PATH="${RUNNER_TEMP}/convolens-api-smoke.sqlite"
+          NODE_ENV=production \
+            PORT=3001 \
+            DB_TYPE=sqlite \
+            DATABASE_PATH="$DB_PATH" \
+            DB_MIGRATIONS_RUN=false \
+            node apps/api/dist/index.js > api-startup.log 2>&1 &
+          API_PID=$!
+          for attempt in {1..30}; do
+            if curl -fsS "http://127.0.0.1:3001/health" > /dev/null; then
+              kill "$API_PID"
+              wait "$API_PID" || true
+              exit 0
+            fi
+            if ! kill -0 "$API_PID" 2>/dev/null; then
+              cat api-startup.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat api-startup.log
+          kill "$API_PID"
+          wait "$API_PID" || true
+          echo "API build did not become ready within 30 seconds." >&2
+          exit 1
+
       - name: Ensure Terraform Backend
         run: |
           set -euo pipefail
@@ -225,7 +254,7 @@ jobs:
             rm -rf "deploy-web/apps/web/node_modules/$package"
             cp -R "$package_dir" "deploy-web/apps/web/node_modules/$package"
           done
-          PORT=8080 node deploy-web/apps/web/server.js > web-startup.log 2>&1 &
+          (cd deploy-web/apps/web && PORT=8080 node server.js) > web-startup.log 2>&1 &
           WEB_PID=$!
           for attempt in {1..30}; do
             if curl -fsS "http://127.0.0.1:8080" > /dev/null; then
@@ -276,6 +305,7 @@ jobs:
             --name "${{ steps.tf.outputs.web-name }}" \
             --src-path web.zip \
             --clean true \
+            --track-status false \
             --type zip
 
       - name: Smoke Test
