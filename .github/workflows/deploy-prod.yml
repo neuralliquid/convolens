@@ -199,12 +199,12 @@ jobs:
         run: |
           rm -rf deploy-web web.zip
           mkdir -p deploy-web
-          cp -R apps/web/.next/standalone/. deploy-web/
+          cp -RL apps/web/.next/standalone/. deploy-web/
           mkdir -p deploy-web/apps/web/.next/static
-          cp -R apps/web/.next/static/. deploy-web/apps/web/.next/static/
+          cp -RL apps/web/.next/static/. deploy-web/apps/web/.next/static/
           if [ -d apps/web/public ]; then
             mkdir -p deploy-web/apps/web/public
-            cp -R apps/web/public/. deploy-web/apps/web/public/
+            cp -RL apps/web/public/. deploy-web/apps/web/public/
           fi
           cd deploy-web
           zip -r ../web.zip .

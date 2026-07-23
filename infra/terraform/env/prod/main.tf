@@ -360,6 +360,24 @@ resource "azurerm_container_app" "api" {
         name  = "AZURE_KEY_VAULT_NAME"
         value = azurerm_key_vault.kv.name
       }
+
+      startup_probe {
+        transport               = "HTTP"
+        port                    = var.api_target_port
+        path                    = "/health"
+        interval_seconds        = 10
+        timeout                 = 5
+        failure_count_threshold = 30
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        port                    = var.api_target_port
+        path                    = "/health"
+        interval_seconds        = 10
+        timeout                 = 5
+        failure_count_threshold = 6
+      }
     }
 
     http_scale_rule {
