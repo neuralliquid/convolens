@@ -67,6 +67,7 @@ logs
 .cache
 .temp
 .tmp
+.aztmp/
 actionlint
 infra/bicep/*.json
 **/.terraform/

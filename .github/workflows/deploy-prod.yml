@@ -5,12 +5,17 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   TF_VERSION: '1.14.7'
   TF_IN_AUTOMATION: 'true'
   TF_INPUT: '0'
   ENVIRONMENT: prod
+  ARM_USE_OIDC: 'true'
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
   deploy:
@@ -38,32 +43,22 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Parse Azure Credentials
-        id: azure-creds
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Verify Azure OIDC Configuration
         run: |
           set -euo pipefail
-          CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientId')
-          CLIENT_SECRET=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientSecret')
-          TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.tenantId')
-          SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.subscriptionId')
-          for v in "$CLIENT_ID" "$CLIENT_SECRET" "$TENANT_ID" "$SUBSCRIPTION_ID"; do
-            if [ "$v" = "null" ] || [ -z "$v" ]; then
-              echo "Error: AZURE_CREDENTIALS must include clientId/clientSecret/tenantId/subscriptionId for the temporary secret-based deploy path" >&2
+          for v in "$ARM_CLIENT_ID" "$ARM_TENANT_ID" "$ARM_SUBSCRIPTION_ID"; do
+            if [ -z "$v" ]; then
+              echo "Error: AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID repository variables are required for OIDC deploys." >&2
               exit 1
             fi
           done
-          echo "client-id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
-          echo "::add-mask::$CLIENT_SECRET"
-          echo "client-secret=$CLIENT_SECRET" >> "$GITHUB_OUTPUT"
-          echo "tenant-id=$TENANT_ID" >> "$GITHUB_OUTPUT"
-          echo "subscription-id=$SUBSCRIPTION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Azure Login
-        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
+        uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Install dependencies
         timeout-minutes: 10
@@ -115,29 +110,15 @@ jobs:
             --fail-on-exist false
 
       - name: Terraform Init
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
 
       - name: Terraform Apply Base Infrastructure
         env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
         run: terraform -chdir=infra/terraform/env/prod apply -auto-approve
 
       - name: Capture Terraform Outputs
         id: tf
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: |
           terraform -chdir=infra/terraform/env/prod output -json > tf-outputs.json
           echo "resource-group=$(jq -r '.resource_group_name.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
@@ -170,10 +151,6 @@ jobs:
             -var "container_image_api=${{ steps.api-image.outputs.image }}" \
             -var "api_target_port=3001"
         env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_CLIENT_SECRET: ${{ steps.azure-creds.outputs.client-secret }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
 
       - name: Rebuild Web With Production API URL
@@ -199,13 +176,23 @@ jobs:
           zip -r ../web.zip .
 
       - name: Deploy Web App
+        env:
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          MYSTIRA_IDENTITY_CLIENT_SECRET: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}
         run: |
-          az webapp config appsettings set \
-            --resource-group "${{ steps.tf.outputs.resource-group }}" \
-            --name "${{ steps.tf.outputs.web-name }}" \
-            --settings \
-              NEXTAUTH_SECRET="${{ secrets.NEXTAUTH_SECRET }}" \
-              MYSTIRA_IDENTITY_CLIENT_SECRET="${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}"
+          SETTINGS=()
+          if [ -n "$NEXTAUTH_SECRET" ]; then
+            SETTINGS+=(NEXTAUTH_SECRET="$NEXTAUTH_SECRET")
+          fi
+          if [ -n "$MYSTIRA_IDENTITY_CLIENT_SECRET" ]; then
+            SETTINGS+=(MYSTIRA_IDENTITY_CLIENT_SECRET="$MYSTIRA_IDENTITY_CLIENT_SECRET")
+          fi
+          if [ "${#SETTINGS[@]}" -gt 0 ]; then
+            az webapp config appsettings set \
+              --resource-group "${{ steps.tf.outputs.resource-group }}" \
+              --name "${{ steps.tf.outputs.web-name }}" \
+              --settings "${SETTINGS[@]}"
+          fi
           az webapp deploy \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \

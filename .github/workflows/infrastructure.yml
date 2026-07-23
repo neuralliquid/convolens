@@ -44,6 +44,9 @@ env:
   TF_IN_AUTOMATION: 'true'
   TF_INPUT: '0'
   ARM_USE_OIDC: 'true'
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
   # =============================================================================
@@ -95,45 +98,28 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Parse Azure Credentials
-        id: azure-creds
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Verify Azure OIDC Configuration
         run: |
           set -euo pipefail
-          CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientId')
-          TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.tenantId')
-          SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.subscriptionId')
-          for v in "$CLIENT_ID" "$TENANT_ID" "$SUBSCRIPTION_ID"; do
-            if [ "$v" = "null" ] || [ -z "$v" ]; then
-              echo "Error: AZURE_CREDENTIALS missing clientId/tenantId/subscriptionId" >&2
+          for v in "$ARM_CLIENT_ID" "$ARM_TENANT_ID" "$ARM_SUBSCRIPTION_ID"; do
+            if [ -z "$v" ]; then
+              echo "Error: AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID repository variables are required for OIDC deploys." >&2
               exit 1
             fi
           done
-          echo "client-id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
-          echo "tenant-id=$TENANT_ID" >> "$GITHUB_OUTPUT"
-          echo "subscription-id=$SUBSCRIPTION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Azure Login (OIDC)
-        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
+        uses: azure/login@v2
         with:
-          client-id: ${{ steps.azure-creds.outputs.client-id }}
-          tenant-id: ${{ steps.azure-creds.outputs.tenant-id }}
-          subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Terraform Init
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} init -backend-config=backend.hcl
 
       - name: Terraform Plan
         id: plan
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: |
           terraform -chdir=infra/terraform/env/${{ matrix.environment }} plan -no-color -out=tfplan | tee plan-output.txt
           {
@@ -188,31 +174,22 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Parse Azure Credentials
-        id: azure-creds
-        env:
-          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Verify Azure OIDC Configuration
         run: |
           set -euo pipefail
-          CLIENT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.clientId')
-          TENANT_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.tenantId')
-          SUBSCRIPTION_ID=$(echo "$AZURE_CREDENTIALS" | jq -r '.subscriptionId')
-          for v in "$CLIENT_ID" "$TENANT_ID" "$SUBSCRIPTION_ID"; do
-            if [ "$v" = "null" ] || [ -z "$v" ]; then
-              echo "Error: AZURE_CREDENTIALS missing clientId/tenantId/subscriptionId" >&2
+          for v in "$ARM_CLIENT_ID" "$ARM_TENANT_ID" "$ARM_SUBSCRIPTION_ID"; do
+            if [ -z "$v" ]; then
+              echo "Error: AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID repository variables are required for OIDC deploys." >&2
               exit 1
             fi
           done
-          echo "client-id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
-          echo "tenant-id=$TENANT_ID" >> "$GITHUB_OUTPUT"
-          echo "subscription-id=$SUBSCRIPTION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Azure Login (OIDC)
-        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
+        uses: azure/login@v2
         with:
-          client-id: ${{ steps.azure-creds.outputs.client-id }}
-          tenant-id: ${{ steps.azure-creds.outputs.tenant-id }}
-          subscription-id: ${{ steps.azure-creds.outputs.subscription-id }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Bootstrap Dev Key Vault Access
         id: bootstrap-dev-keyvault
@@ -220,7 +197,7 @@ jobs:
         run: |
           set -euo pipefail
           DEPLOYER_OBJECT_ID=$(az ad sp show \
-            --id "${{ steps.azure-creds.outputs.client-id }}" \
+            --id "$ARM_CLIENT_ID" \
             --query id \
             -o tsv)
           if [ -z "$DEPLOYER_OBJECT_ID" ]; then
@@ -234,18 +211,11 @@ jobs:
           echo "deployer-object-id=$DEPLOYER_OBJECT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Terraform Init
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} init -backend-config=backend.hcl
 
       - name: Import Bootstrapped Dev Key Vault Access
         if: matrix.environment == 'dev'
         env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
           DEPLOYER_OBJECT_ID: ${{ steps.bootstrap-dev-keyvault.outputs.deployer-object-id }}
         run: |
           set -euo pipefail
@@ -254,18 +224,10 @@ jobs:
           terraform -chdir=infra/terraform/env/${{ matrix.environment }} import -input=false azurerm_key_vault_access_policy.deployer "$POLICY_ID"
 
       - name: Terraform Apply
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} apply -auto-approve
 
       - name: Capture Outputs
         id: outputs
-        env:
-          ARM_CLIENT_ID: ${{ steps.azure-creds.outputs.client-id }}
-          ARM_TENANT_ID: ${{ steps.azure-creds.outputs.tenant-id }}
-          ARM_SUBSCRIPTION_ID: ${{ steps.azure-creds.outputs.subscription-id }}
         run: |
           terraform -chdir=infra/terraform/env/${{ matrix.environment }} output -json > tf-outputs.json
           CONTAINER_APP_URL=$(jq -r '.container_app_url.value // ""' tf-outputs.json)
