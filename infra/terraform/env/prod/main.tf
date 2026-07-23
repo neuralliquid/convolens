@@ -231,6 +231,11 @@ resource "azurerm_container_app" "api" {
     value = random_password.postgres_admin.result
   }
 
+  secret {
+    name  = "jwt-secret"
+    value = var.api_jwt_secret
+  }
+
   dynamic "secret" {
     for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
 
@@ -283,6 +288,10 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "NODE_ENV"
         value = "production"
+      }
+      env {
+        name        = "JWT_SECRET"
+        secret_name = "jwt-secret"
       }
       env {
         name  = "PORT"

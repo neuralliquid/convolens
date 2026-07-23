@@ -86,6 +86,17 @@ variable "api_target_port" {
   default     = 80
 }
 
+variable "api_jwt_secret" {
+  type        = string
+  description = "JWT signing secret for the production API."
+  sensitive   = true
+
+  validation {
+    condition     = length(var.api_jwt_secret) >= 32
+    error_message = "api_jwt_secret must be at least 32 characters."
+  }
+}
+
 variable "frontend_runtime_stack" {
   type        = string
   description = "Linux App Service runtime stack for the Next.js frontend."

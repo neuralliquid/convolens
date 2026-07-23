@@ -78,9 +78,16 @@ jobs:
 
       - name: Smoke Test API Build
         timeout-minutes: 2
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
         run: |
+          if [ -z "$JWT_SECRET" ]; then
+            echo "Error: JWT_SECRET or NEXTAUTH_SECRET repository secret is required for production API startup." >&2
+            exit 1
+          fi
           DB_PATH="${RUNNER_TEMP}/convolens-api-smoke.sqlite"
           NODE_ENV=production \
+            JWT_SECRET="$JWT_SECRET" \
             PORT=3001 \
             DB_TYPE=sqlite \
             DATABASE_PATH="$DB_PATH" \
@@ -174,6 +181,7 @@ jobs:
       - name: Terraform Apply Base Infrastructure
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+          TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
         run: |
           terraform -chdir=infra/terraform/env/prod apply \
             -auto-approve \
@@ -215,6 +223,7 @@ jobs:
             -var "api_target_port=3001"
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+          TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
 
       - name: Rebuild Web With Production API URL
         timeout-minutes: 15
