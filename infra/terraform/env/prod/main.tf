@@ -82,12 +82,6 @@ resource "azurerm_key_vault" "kv" {
   }
 }
 
-resource "azurerm_role_assignment" "deployer_key_vault_secrets_officer" {
-  scope                = azurerm_key_vault.kv.id
-  role_definition_name = "Key Vault Secrets Officer"
-  principal_id         = data.azurerm_client_config.current.object_id
-}
-
 resource "azurerm_storage_account" "st" {
   name                            = local.storage_name
   location                        = azurerm_resource_group.rg.location
@@ -188,16 +182,12 @@ resource "azurerm_key_vault_secret" "postgres_password" {
   name         = "postgres-admin-password"
   value        = random_password.postgres_admin.result
   key_vault_id = azurerm_key_vault.kv.id
-
-  depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
 
 resource "azurerm_key_vault_secret" "appinsights_connection_string" {
   name         = "appinsights-connection-string"
   value        = azurerm_application_insights.ai.connection_string
   key_vault_id = azurerm_key_vault.kv.id
-
-  depends_on = [azurerm_role_assignment.deployer_key_vault_secrets_officer]
 }
 
 resource "azurerm_container_registry" "acr" {
@@ -391,20 +381,21 @@ resource "azurerm_linux_web_app" "frontend" {
     }
   }
 
-  app_settings = {
+  app_settings = merge({
     NODE_ENV                              = "production"
     NEXT_PUBLIC_API_URL                   = "https://${azurerm_container_app.api.ingress[0].fqdn}/api"
     NEXT_PUBLIC_API_BASE_URL              = "https://${azurerm_container_app.api.ingress[0].fqdn}"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
     AZURE_APP_INSIGHTS_CONNECTION_STRING  = azurerm_application_insights.ai.connection_string
-    NEXTAUTH_URL                          = "https://${azurerm_linux_web_app.frontend.default_hostname}"
+    NEXTAUTH_URL                          = var.allowed_origin
     MYSTIRA_IDENTITY_WELL_KNOWN           = var.mystira_identity_well_known
-    MYSTIRA_IDENTITY_CLIENT_ID            = var.mystira_identity_client_id
     MYSTIRA_IDENTITY_SCOPE                = var.mystira_identity_scope
     SCM_DO_BUILD_DURING_DEPLOYMENT        = "true"
     WEBSITE_RUN_FROM_PACKAGE              = "1"
     CONVOLENS_CANONICAL_HOSTNAME          = var.custom_hostname
-  }
+    }, var.mystira_identity_client_id != "" ? {
+    MYSTIRA_IDENTITY_CLIENT_ID = var.mystira_identity_client_id
+  } : {})
 }
 
 resource "azurerm_redis_cache" "redis" {
