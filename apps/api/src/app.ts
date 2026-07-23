@@ -3,7 +3,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import bodyParser from 'body-parser';
-import { initializeDatabase } from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import groupRoutes from './routes/group.routes.js';
 import chatExportRoutes from './routes/chat-export.routes.js';
@@ -92,43 +91,5 @@ export const createApp = (): Application => {
 
   return app;
 };
-
-// Initialize database and start server if this file is run directly
-if (require.main === module) {
-  (async () => {
-    try {
-      await initializeDatabase();
-      const app = createApp();
-      const PORT = process.env.PORT || 3001;
-      
-      const server = app.listen(PORT, () => {
-        logger.info(`Server is running on port ${PORT}`);
-      });
-
-      // Set up WebSocket
-      const io = require('socket.io')(server, {
-        cors: {
-          origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-          methods: ['GET', 'POST']
-        }
-      });
-      
-      require('./sockets/whatsapp.socket').initializeSocket(io);
-      
-      // Handle graceful shutdown
-      process.on('SIGTERM', () => {
-        logger.info('SIGTERM received. Shutting down gracefully');
-        server.close(() => {
-          logger.info('Process terminated');
-          process.exit(0);
-        });
-      });
-
-    } catch (error) {
-      logger.error('Failed to start server:', error);
-      process.exit(1);
-    }
-  })();
-}
 
 export default createApp;

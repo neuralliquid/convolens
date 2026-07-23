@@ -46,10 +46,10 @@ export class Group {
   @Column({ type: 'varchar', nullable: true })
   avatarUrl?: string;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ default: false })
+  @Column({ type: 'boolean', default: false })
   isArchived: boolean;
 
   @ManyToOne(() => User, user => user.ownedGroups, { onDelete: 'SET NULL', nullable: true })
@@ -79,6 +79,6 @@ export class Group {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   archivedAt?: Date;
 }

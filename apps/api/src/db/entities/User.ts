@@ -24,14 +24,14 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', unique: true })
   email: string;
 
-  @Column()
+  @Column({ type: 'varchar' })
   @Exclude()
   password: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   name?: string;
 
   @Column({
@@ -41,10 +41,10 @@ export class User {
   })
   role: UserRole;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   lastLogin?: Date;
 
   @OneToMany(() => Group, group => group.owner)

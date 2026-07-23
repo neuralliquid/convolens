@@ -1,9 +1,11 @@
 import 'reflect-metadata';
 import dotenv from 'dotenv';
 import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import { createApp } from './app';
 import { logger } from './utils/logger';
 import { initializeDatabase } from './config/database';
+import { initializeSocket } from './sockets/whatsapp.socket';
 
 dotenv.config();
 
@@ -21,7 +23,7 @@ async function startServer() {
     const server = http.createServer(app);
     
     // Set up WebSocket
-    const io = require('socket.io')(server, {
+    const io = new SocketIOServer(server, {
       cors: {
         origin: process.env.FRONTEND_URL || 'http://localhost:3000',
         methods: ['GET', 'POST']
@@ -29,7 +31,7 @@ async function startServer() {
     });
     
     // Initialize WebSocket handlers
-    require('./sockets/whatsapp.socket').initializeSocket(io);
+    initializeSocket(io);
     
     // Start server
     server.listen(PORT, () => {
@@ -51,9 +53,6 @@ async function startServer() {
   }
 }
 
-// Start the server if this file is run directly
-if (require.main === module) {
-  startServer();
-}
+startServer();
 
 export { startServer };

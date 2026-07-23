@@ -32,20 +32,20 @@ export class Message {
   @Column('text')
   content: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   senderName: string;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'senderId' })
   sender: Relation<User>;
 
-  @Column({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   senderId?: string;
 
-  @Column({ default: false })
+  @Column({ type: 'boolean', default: false })
   isMedia: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   mediaUrl?: string;
 
   @Column({ type: 'simple-json', nullable: true })
@@ -67,6 +67,6 @@ export class Message {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   deletedAt?: Date;
 }

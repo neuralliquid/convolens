@@ -411,7 +411,7 @@ resource "azurerm_linux_web_app" "frontend" {
 
   site_config {
     always_on        = false
-    app_command_line = "node apps/web/server.js"
+    app_command_line = "cd apps/web && node server.js"
 
     application_stack {
       node_version = var.frontend_runtime_stack
@@ -428,7 +428,7 @@ resource "azurerm_linux_web_app" "frontend" {
     MYSTIRA_IDENTITY_WELL_KNOWN           = var.mystira_identity_well_known
     MYSTIRA_IDENTITY_SCOPE                = var.mystira_identity_scope
     SCM_DO_BUILD_DURING_DEPLOYMENT        = "false"
-    WEBSITE_RUN_FROM_PACKAGE              = "1"
+    WEBSITE_RUN_FROM_PACKAGE              = "0"
     CONVOLENS_CANONICAL_HOSTNAME          = var.custom_hostname
     }, var.mystira_identity_client_id != "" ? {
     MYSTIRA_IDENTITY_CLIENT_ID = var.mystira_identity_client_id
