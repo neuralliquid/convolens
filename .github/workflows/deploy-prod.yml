@@ -225,6 +225,27 @@ jobs:
             rm -rf "deploy-web/apps/web/node_modules/$package"
             cp -R "$package_dir" "deploy-web/apps/web/node_modules/$package"
           done
+          PORT=8080 node deploy-web/apps/web/server.js > web-startup.log 2>&1 &
+          WEB_PID=$!
+          for attempt in {1..30}; do
+            if curl -fsS "http://127.0.0.1:8080" > /dev/null; then
+              kill "$WEB_PID"
+              wait "$WEB_PID" || true
+              break
+            fi
+            if ! kill -0 "$WEB_PID" 2>/dev/null; then
+              cat web-startup.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if kill -0 "$WEB_PID" 2>/dev/null; then
+            cat web-startup.log
+            kill "$WEB_PID"
+            wait "$WEB_PID" || true
+            echo "Web package did not become ready within 30 seconds." >&2
+            exit 1
+          fi
           cd deploy-web
           zip -r ../web.zip .
 
@@ -249,11 +270,12 @@ jobs:
           az webapp config appsettings set \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \
-            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false WEBSITE_RUN_FROM_PACKAGE=1
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false WEBSITE_RUN_FROM_PACKAGE=0
           az webapp deploy \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \
             --src-path web.zip \
+            --clean true \
             --type zip
 
       - name: Smoke Test
