@@ -18,6 +18,14 @@ const loginError = document.getElementById("loginError");
 const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
 const userAvatar = document.getElementById("userAvatar");
+const actionStatus = document.getElementById("actionStatus");
+
+function setActionStatus(message = "", type = "info") {
+  actionStatus.textContent = message;
+  actionStatus.className = message
+    ? `action-status show ${type}`
+    : "action-status";
+}
 
 // Initialize popup
 async function init() {
@@ -81,19 +89,21 @@ async function checkWhatsAppStatus() {
 
 // Event Listeners
 loginBtn.addEventListener("click", async () => {
-  loginBtn.textContent = "Connecting...";
+  setActionStatus("");
+  loginBtn.textContent = "Connecting…";
   loginBtn.disabled = true;
 
   const result = await chrome.runtime.sendMessage({
     action: "SYNC_MYSTIRA_AUTH",
   });
 
-  loginBtn.textContent = "Connect Mystira Session";
+  loginBtn.textContent = "I've signed in — connect";
   loginBtn.disabled = false;
 
   if (result.success) {
     showLoggedIn(result.data?.user);
     loginError.textContent = "";
+    setActionStatus("Connected. Choose a WhatsApp chat to send.", "success");
   } else {
     loginError.textContent =
       result.error || "Complete sign in, then try again.";
@@ -115,15 +125,18 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 extractBtn.addEventListener("click", async () => {
+  const defaultLabel = "Send Current Chat";
+  setActionStatus("");
+
   try {
     const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
 
     if (tabs.length === 0) {
-      alert("Please open WhatsApp Web first");
+      setActionStatus("Open WhatsApp Web and select a chat first.", "error");
       return;
     }
 
-    extractBtn.textContent = "Extracting...";
+    extractBtn.textContent = "Reading chat…";
     extractBtn.disabled = true;
 
     const response = await chrome.tabs.sendMessage(tabs[0].id, {
@@ -137,24 +150,39 @@ extractBtn.addEventListener("click", async () => {
       });
 
       if (sendResult.success) {
-        extractBtn.textContent = "Sent!";
-        setTimeout(() => {
-          extractBtn.textContent = "Extract Current Chat";
-          extractBtn.disabled = false;
-        }, 2000);
+        extractBtn.textContent = "Sent";
+        const messageCount = response.data?.messages?.length;
+        setActionStatus(
+          messageCount
+            ? `${messageCount} messages received by ConvoLens.`
+            : "Chat received by ConvoLens.",
+          "success",
+        );
       } else {
-        alert("Failed to send: " + sendResult.error);
-        extractBtn.textContent = "Extract Current Chat";
-        extractBtn.disabled = false;
+        const wasSaved = sendResult.error?.toLowerCase().includes("saved");
+        setActionStatus(
+          sendResult.error ||
+            "ConvoLens could not receive this chat. Please try again.",
+          wasSaved ? "info" : "error",
+        );
       }
     } else {
-      alert("Failed to extract: " + response.error);
-      extractBtn.textContent = "Extract Current Chat";
-      extractBtn.disabled = false;
+      setActionStatus(
+        response.error ||
+          "No readable messages were found in the selected chat.",
+        "error",
+      );
     }
   } catch (error) {
-    alert("Error: " + error.message);
-    extractBtn.textContent = "Extract Current Chat";
+    setActionStatus(
+      error?.message ||
+        "The extension could not read this chat. Please try again.",
+      "error",
+    );
+  } finally {
+    window.setTimeout(() => {
+      extractBtn.textContent = defaultLabel;
+    }, 1500);
     extractBtn.disabled = false;
   }
 });

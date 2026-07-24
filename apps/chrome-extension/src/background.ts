@@ -180,7 +180,13 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
     // Queue for offline sync if network error
     if (isNetworkError(error)) {
       await queuePendingUpload(chatData);
-      return { success: false, error: "Network error. Saved for later sync." };
+      return {
+        success: false,
+        error:
+          (error as Error).name === "TimeoutError"
+            ? "ConvoLens took too long to respond. This chat was saved for automatic retry."
+            : "Connection lost. This chat was saved for automatic retry.",
+      };
     }
 
     return { success: false, error: (error as Error).message };
@@ -193,24 +199,26 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries: number = 3,
+  maxRetries: number = 2,
 ): Promise<any> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const controller = new AbortController();
+    let didTimeout = false;
+    const timeoutId = setTimeout(() => {
+      didTimeout = true;
+      controller.abort();
+    }, 60000);
+
     try {
       // Track API call count persistently
       await incrementApiCallCount();
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response
@@ -241,21 +249,31 @@ async function fetchWithRetry(
 
       return await response.json();
     } catch (error) {
-      lastError = error as Error;
-      console.warn(`[Background] Fetch attempt ${attempt + 1} failed:`, error);
+      const normalizedError = didTimeout
+        ? Object.assign(
+            new Error(
+              "ConvoLens took too long to respond. The chat was saved for automatic retry.",
+            ),
+            { name: "TimeoutError" },
+          )
+        : (error as Error);
+      lastError = normalizedError;
+      console.warn(
+        `[Background] Fetch attempt ${attempt + 1} failed:`,
+        normalizedError,
+      );
 
-      // Don't retry on abort or auth errors
-      if (
-        (error as Error).name === "AbortError" ||
-        (error as Error).message.includes("Authentication")
-      ) {
-        throw error;
+      // Authentication failures cannot recover through retries.
+      if (normalizedError.message.includes("Authentication")) {
+        throw normalizedError;
       }
 
       if (attempt < maxRetries - 1) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -264,6 +282,8 @@ async function fetchWithRetry(
 
 function isNetworkError(error: any): boolean {
   return (
+    error.name === "AbortError" ||
+    error.name === "TimeoutError" ||
     error.name === "TypeError" ||
     error.message?.includes("fetch") ||
     error.message?.includes("network") ||

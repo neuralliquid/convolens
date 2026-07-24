@@ -1,8 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "ConvoLens - WhatsApp Chat Analyzer",
+  "name": "ConvoLens Alpha - WhatsApp Intake",
   "version": "1.0.0",
-  "description": "ConvoLens: See Your Conversations Clearly. Extract and analyze your WhatsApp Web conversations with AI-powered summaries. Get instant insights, key topics, and intelligent summaries.",
+  "description": "Send the WhatsApp Web conversation you choose into the ConvoLens alpha workspace.",
+
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
 
   "permissions": ["storage", "activeTab", "alarms", "notifications"],
 
@@ -17,7 +24,12 @@
 
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "ConvoLens"
+    "default_title": "ConvoLens Alpha",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
   },
 
   "content_scripts": [
