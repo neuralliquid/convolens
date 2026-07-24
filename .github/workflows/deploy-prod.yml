@@ -8,11 +8,11 @@ permissions:
   id-token: write
 
 env:
-  TF_VERSION: '1.14.7'
-  TF_IN_AUTOMATION: 'true'
-  TF_INPUT: '0'
+  TF_VERSION: "1.14.7"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
   ENVIRONMENT: prod
-  ARM_USE_OIDC: 'true'
+  ARM_USE_OIDC: "true"
   ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
@@ -64,15 +64,15 @@ jobs:
         timeout-minutes: 10
         run: pnpm install --frozen-lockfile --reporter=append-only
         env:
-          CI: 'true'
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+          CI: "true"
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
       - name: Build API and Web
         timeout-minutes: 15
         run: pnpm run build
         env:
-          CI: 'true'
+          CI: "true"
           NEXT_PUBLIC_API_URL: https://placeholder.invalid/api
           NEXT_PUBLIC_API_BASE_URL: https://placeholder.invalid
 
@@ -178,6 +178,43 @@ jobs:
           echo "image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
           echo "target-port=$CURRENT_PORT" >> "$GITHUB_OUTPUT"
 
+      - name: Preload Web Secrets Into Existing Key Vault
+        env:
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          MYSTIRA_IDENTITY_CLIENT_SECRET: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if ! az keyvault show --name nl-prod-convolens-kv --only-show-errors >/dev/null 2>&1; then
+            echo "Key Vault is not provisioned yet; the base Terraform apply will create it."
+            exit 0
+          fi
+          if [ -z "$NEXTAUTH_SECRET" ] || [ -z "$MYSTIRA_IDENTITY_CLIENT_SECRET" ]; then
+            echo "Error: NEXTAUTH_SECRET and MYSTIRA_IDENTITY_CLIENT_SECRET are required." >&2
+            exit 1
+          fi
+          az keyvault secret set \
+            --vault-name nl-prod-convolens-kv \
+            --name nextauth-secret \
+            --value "$NEXTAUTH_SECRET" \
+            --output none
+          az keyvault secret set \
+            --vault-name nl-prod-convolens-kv \
+            --name mystira-identity-client-secret \
+            --value "$MYSTIRA_IDENTITY_CLIENT_SECRET" \
+            --output none
+          if az webapp show \
+            --resource-group nl-prod-convolens-rg \
+            --name nl-prod-convolens-web \
+            --only-show-errors >/dev/null 2>&1; then
+            az webapp config appsettings set \
+              --resource-group nl-prod-convolens-rg \
+              --name nl-prod-convolens-web \
+              --settings \
+                'NEXTAUTH_SECRET=@Microsoft.KeyVault(VaultName=nl-prod-convolens-kv;SecretName=nextauth-secret)' \
+                'MYSTIRA_IDENTITY_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=nl-prod-convolens-kv;SecretName=mystira-identity-client-secret)' \
+              --output none
+          fi
+
       - name: Terraform Apply Base Infrastructure
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
@@ -187,6 +224,27 @@ jobs:
             -auto-approve \
             -var "container_image_api=${{ steps.base-api.outputs.image }}" \
             -var "api_target_port=${{ steps.base-api.outputs.target-port }}"
+
+      - name: Ensure Web Secrets In Key Vault
+        env:
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          MYSTIRA_IDENTITY_CLIENT_SECRET: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NEXTAUTH_SECRET" ] || [ -z "$MYSTIRA_IDENTITY_CLIENT_SECRET" ]; then
+            echo "Error: NEXTAUTH_SECRET and MYSTIRA_IDENTITY_CLIENT_SECRET are required." >&2
+            exit 1
+          fi
+          az keyvault secret set \
+            --vault-name nl-prod-convolens-kv \
+            --name nextauth-secret \
+            --value "$NEXTAUTH_SECRET" \
+            --output none
+          az keyvault secret set \
+            --vault-name nl-prod-convolens-kv \
+            --name mystira-identity-client-secret \
+            --value "$MYSTIRA_IDENTITY_CLIENT_SECRET" \
+            --output none
 
       - name: Capture Terraform Outputs
         id: tf
@@ -229,7 +287,7 @@ jobs:
         timeout-minutes: 15
         run: pnpm --filter @convolens/web... build
         env:
-          CI: 'true'
+          CI: "true"
           NEXT_PUBLIC_API_URL: ${{ steps.tf.outputs.api-url }}/api
           NEXT_PUBLIC_API_BASE_URL: ${{ steps.tf.outputs.api-url }}
 
@@ -288,23 +346,7 @@ jobs:
           zip -r ../web.zip .
 
       - name: Deploy Web App
-        env:
-          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-          MYSTIRA_IDENTITY_CLIENT_SECRET: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}
         run: |
-          SETTINGS=()
-          if [ -n "$NEXTAUTH_SECRET" ]; then
-            SETTINGS+=(NEXTAUTH_SECRET="$NEXTAUTH_SECRET")
-          fi
-          if [ -n "$MYSTIRA_IDENTITY_CLIENT_SECRET" ]; then
-            SETTINGS+=(MYSTIRA_IDENTITY_CLIENT_SECRET="$MYSTIRA_IDENTITY_CLIENT_SECRET")
-          fi
-          if [ "${#SETTINGS[@]}" -gt 0 ]; then
-            az webapp config appsettings set \
-              --resource-group "${{ steps.tf.outputs.resource-group }}" \
-              --name "${{ steps.tf.outputs.web-name }}" \
-              --settings "${SETTINGS[@]}"
-          fi
           az webapp config appsettings set \
             --resource-group "${{ steps.tf.outputs.resource-group }}" \
             --name "${{ steps.tf.outputs.web-name }}" \

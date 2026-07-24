@@ -442,8 +442,10 @@ resource "azurerm_linux_web_app" "frontend" {
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.ai.connection_string
     AZURE_APP_INSIGHTS_CONNECTION_STRING  = azurerm_application_insights.ai.connection_string
     NEXTAUTH_URL                          = var.allowed_origin
+    NEXTAUTH_SECRET                       = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.kv.name};SecretName=nextauth-secret)"
     MYSTIRA_IDENTITY_WELL_KNOWN           = var.mystira_identity_well_known
     MYSTIRA_IDENTITY_SCOPE                = var.mystira_identity_scope
+    MYSTIRA_IDENTITY_CLIENT_SECRET        = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.kv.name};SecretName=mystira-identity-client-secret)"
     SCM_DO_BUILD_DURING_DEPLOYMENT        = "false"
     WEBSITE_RUN_FROM_PACKAGE              = "1"
     CONVOLENS_CANONICAL_HOSTNAME          = var.custom_hostname
