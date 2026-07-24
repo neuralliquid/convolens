@@ -315,8 +315,31 @@ jobs:
             --src-path web.zip \
             --track-status false \
             --type zip
+          az webapp restart \
+            --resource-group "${{ steps.tf.outputs.resource-group }}" \
+            --name "${{ steps.tf.outputs.web-name }}"
 
       - name: Smoke Test
         run: |
-          curl -fsS --max-time 30 "${{ steps.tf.outputs.api-url }}/health"
-          curl -fsSI --max-time 30 "${{ steps.tf.outputs.web-url }}"
+          smoke() {
+            local method="$1"
+            local url="$2"
+            for attempt in {1..12}; do
+              local curl_args=(-fsS --max-time 30)
+              if [ -n "$method" ]; then
+                curl_args+=("$method")
+              fi
+              if curl "${curl_args[@]}" "$url" >/dev/null; then
+                return 0
+              fi
+              sleep 10
+            done
+            local curl_args=(-fsS --max-time 30)
+            if [ -n "$method" ]; then
+              curl_args+=("$method")
+            fi
+            curl "${curl_args[@]}" "$url" >/dev/null
+          }
+
+          smoke "" "${{ steps.tf.outputs.api-url }}/health"
+          smoke "-I" "${{ steps.tf.outputs.web-url }}"
