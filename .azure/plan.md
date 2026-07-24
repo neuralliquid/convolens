@@ -1,6 +1,6 @@
 # Convolens Mystira Azure Go-Live Plan
 
-Status: Validated — deployment blocked on credential rotation
+Status: Deployed — operator extension smoke pending
 Recipe: Terraform
 Date: 2026-07-16
 Target subscription: bb4e3882-2079-4bab-8974-611bc0b8bb58
@@ -178,10 +178,20 @@ Do not rely on the Puppeteer WhatsApp Web client for production go-live unless a
 - Azure Policy assignment validation found only the default Defender for Cloud audit initiative and no deny assignment blocking the deployment.
 - A final no-refresh production plan using the current API image and port reported `0 to add, 2 to change, 0 to destroy`. The expected in-place changes add the Mystira API validation settings, Key Vault references, and `offline_access` for web token refresh.
 - An earlier live-refresh validation rendered the two protected web values into transient local output. Its saved plan was securely deleted, and a targeted remote-state inspection confirmed neither value is stored in Terraform state.
-- Rotate `NEXTAUTH_SECRET` and the Mystira Identity client secret through their approved owners, then update the protected GitHub production environment before deployment.
+- Credential rotation was deferred by the operator for this deployment. The existing protected GitHub production values remain in use and should be rotated in a later maintenance window.
 - App Service uses non-secret Key Vault references for the protected web settings. The deployment workflow writes their values directly from the protected GitHub environment into Key Vault, keeping the values out of Terraform configuration, plan output, and state.
 - Main CI run `30115398626` passed for merge commit `f267b0e`; focused API auth tests, web token-refresh tests, API/web builds, extension packaging, Prettier, targeted lint, and `git diff --check` also passed.
 - Pre-deployment public checks returned HTTP 200 for `/features`, `/api/runtime/auth-status` with `mystiraConfigured: true`, and the production API `/health`.
+
+### Deployment Proof — 2026-07-24
+
+- Production workflow run `30122447628` completed successfully for merge commit `00e980399261f974cb4fbccc503afa676af1942f`, including the Key Vault preload, both Terraform applies, API image build, App Service deployment, and workflow smoke test.
+- Azure Container Apps reports revision `nl-prod-convolens-api--0000024` ready and running image `nlprodconvolensacr.azurecr.io/convolens-api:00e980399261f974cb4fbccc503afa676af1942f`.
+- App Service is running with normal availability, and both protected web settings are configured as Key Vault references.
+- Independent checks returned HTTP 200 for the custom-domain home and features pages, `/api/runtime/auth-status` with `mystiraConfigured: true`, the production API `/health`, and `/api/extension/config`.
+- The Mystira token-exchange route returned 400 for a missing token and 401 for an invalid token; the protected extension chat-export route returned 401 without authentication.
+- The production extension archive was rebuilt and verified to contain the manifest, background/content bundles, popup, options UI, and CSS targeting the live API.
+- Remaining acceptance step: an operator with a fresh Mystira session and a benign selected WhatsApp chat must click `Summarize` and confirm authenticated API receipt. This proves extraction and receipt only; persistence and AI summary generation remain TODO.
 
 Production requirements:
 
