@@ -343,3 +343,10 @@ jobs:
 
           smoke "" "${{ steps.tf.outputs.api-url }}/health"
           smoke "-I" "${{ steps.tf.outputs.web-url }}"
+          for attempt in {1..12}; do
+            if curl -fsS --max-time 30 "${{ steps.tf.outputs.web-url }}/api/runtime/auth-status" | jq -e '.mystiraConfigured == true' >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          curl -fsS --max-time 30 "${{ steps.tf.outputs.web-url }}/api/runtime/auth-status" | jq -e '.mystiraConfigured == true' >/dev/null
