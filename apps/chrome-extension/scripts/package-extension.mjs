@@ -20,6 +20,7 @@ const completion = new Promise((resolveCompletion, rejectCompletion) => {
 archive.pipe(output);
 archive.file("manifest.json", { name: "manifest.json" });
 archive.directory("dist", "dist");
+archive.directory("icons", "icons");
 archive.directory("popup", "popup");
 archive.directory("options", "options");
 await archive.finalize();

@@ -1,23 +1,29 @@
-import { Header, Footer } from "@/components/layouts"
-import { AuthProvider, AppProvider } from "@convolens/contexts"
-import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
-import "./globals.css"
+import { Header, Footer } from "@/components/layouts";
+import { AuthProvider, AppProvider } from "@convolens/contexts";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
+import "./globals.css";
 
 export const metadata = {
-  title: "ConvoLens - WhatsApp Conversation Analyzer",
-  description: "Analyze and summarize your WhatsApp conversations with AI",
+  title: "ConvoLens Alpha - Conversation Intake",
+  description:
+    "Bring selected WhatsApp conversations into the ConvoLens alpha workspace.",
+  icons: {
+    icon: "/favicon.svg",
+  },
   openGraph: {
-    title: "ConvoLens - WhatsApp Conversation Analyzer",
-    description: "Analyze and summarize your WhatsApp conversations with AI",
+    title: "ConvoLens Alpha - Conversation Intake",
+    description:
+      "WhatsApp is the first live connector in a growing multi-platform conversation intake workspace.",
     siteName: "ConvoLens",
   },
   twitter: {
-    title: "ConvoLens - WhatsApp Conversation Analyzer",
-    description: "Analyze and summarize your WhatsApp conversations with AI",
+    title: "ConvoLens Alpha - Conversation Intake",
+    description:
+      "WhatsApp is the first live connector in a growing multi-platform conversation intake workspace.",
     card: "summary_large_image",
   },
-}
+};
 
 export default function RootLayout({ children }) {
   return (
@@ -44,5 +50,5 @@ export default function RootLayout({ children }) {
         </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }

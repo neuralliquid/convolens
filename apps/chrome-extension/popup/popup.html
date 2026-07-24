@@ -24,10 +24,28 @@
       }
 
       .header {
-        background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
-        padding: 20px;
+        background: linear-gradient(135deg, #16a36a 0%, #0b6b57 100%);
+        padding: 16px 20px;
         color: white;
-        text-align: center;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-icon {
+        width: 40px;
+        height: 40px;
+        flex: 0 0 auto;
+      }
+
+      .brand-copy {
+        min-width: 0;
+      }
+
+      .brand-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
 
       .header h1 {
@@ -35,10 +53,20 @@
         font-weight: 700;
       }
 
+      .alpha-badge {
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
       .header p {
         font-size: 12px;
         opacity: 0.9;
-        margin-top: 4px;
+        margin-top: 3px;
       }
 
       .content {
@@ -152,6 +180,33 @@
         margin-top: 8px;
       }
 
+      .action-status {
+        display: none;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .action-status.show {
+        display: block;
+      }
+
+      .action-status.info {
+        color: #1e3a8a;
+        background: #eff6ff;
+      }
+
+      .action-status.success {
+        color: #065f46;
+        background: #ecfdf5;
+      }
+
+      .action-status.error {
+        color: #991b1b;
+        background: #fef2f2;
+      }
+
       .user-info {
         display: flex;
         align-items: center;
@@ -179,9 +234,16 @@
         color: #333;
       }
 
+      .user-details {
+        min-width: 0;
+      }
+
       .user-details p {
         font-size: 12px;
         color: #666;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .footer {
@@ -200,13 +262,19 @@
   </head>
   <body>
     <div class="header">
-      <h1>ConvoLens</h1>
-      <p>WhatsApp Chat Analyzer</p>
+      <img class="brand-icon" src="../icons/icon-48.png" alt="" />
+      <div class="brand-copy">
+        <div class="brand-title">
+          <h1>ConvoLens</h1>
+          <span class="alpha-badge">Alpha</span>
+        </div>
+        <p>WhatsApp conversation intake</p>
+      </div>
     </div>
 
     <div class="content">
       <div class="status-card">
-        <h3>Connection Status</h3>
+        <h3>WhatsApp connection</h3>
         <div class="status-indicator">
           <span class="status-dot" id="statusDot"></span>
           <span id="statusText">Checking...</span>
@@ -218,16 +286,16 @@
         <div id="loggedOut" style="display: none">
           <div class="login-form show">
             <p style="font-size: 13px; color: #666; margin-bottom: 12px">
-              Sign in through ConvoLens with Mystira Identity, then reopen this
-              popup to connect the extension.
+              Sign in once with Mystira Identity, then connect that session to
+              the extension.
             </p>
             <div class="error" id="loginError"></div>
             <div class="actions">
-              <button class="btn-primary" id="loginBtn">
-                Connect Mystira Session
+              <button class="btn-primary" id="signupBtn">
+                Sign in to ConvoLens
               </button>
-              <button class="btn-secondary" id="signupBtn">
-                Open ConvoLens Sign In
+              <button class="btn-secondary" id="loginBtn">
+                I&apos;ve signed in — connect
               </button>
             </div>
           </div>
@@ -247,9 +315,15 @@
               Open Dashboard
             </button>
             <button class="btn-secondary" id="extractBtn">
-              Extract Current Chat
+              Send Current Chat
             </button>
             <button class="btn-secondary" id="logoutBtn">Sign Out</button>
+            <div
+              class="action-status"
+              id="actionStatus"
+              role="status"
+              aria-live="polite"
+            ></div>
           </div>
         </div>
       </div>
@@ -257,10 +331,7 @@
 
     <div class="footer">
       <a href="https://convolens.neuralliquid.ai" target="_blank">ConvoLens</a>
-      |
-      <a href="https://convolens.neuralliquid.ai/features" target="_blank"
-        >Features</a
-      >
+      Alpha · WhatsApp is the first connector
     </div>
 
     <script src="popup.js"></script>

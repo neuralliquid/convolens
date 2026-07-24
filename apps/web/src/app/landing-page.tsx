@@ -1,273 +1,216 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import Link from "next/link"
-import { ArrowRight, MessageSquare, BarChart2, Search, Shield, Zap } from "lucide-react"
-import styles from "./landing-page.module.css"
-import { useEffect, useRef, ComponentType, MouseEvent as ReactMouseEvent } from "react"
-import { initMouseTracking, initStaggeredAnimations } from "@/lib/animation-utils"
-import "./enhanced-styles.css"
+import Link from "next/link";
+import {
+  ArrowRight,
+  FileText,
+  Layers3,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+import styles from "./landing-page.module.css";
+import "./enhanced-styles.css";
 
-interface FeatureCardProps {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-}
+const availableNow = [
+  "WhatsApp Web capture",
+  "WhatsApp .txt import",
+  "Mystira Identity sign-in",
+];
 
-type MouseEvent = ReactMouseEvent<HTMLDivElement>;
+const capabilities = [
+  {
+    icon: MessageSquare,
+    title: "Capture a conversation",
+    description:
+      "Choose the WhatsApp chat you want to send. ConvoLens does not scan your entire account.",
+  },
+  {
+    icon: FileText,
+    title: "Keep useful context",
+    description:
+      "Bring message text, senders, and timestamps into one structured intake flow.",
+  },
+  {
+    icon: Layers3,
+    title: "Grow beyond one platform",
+    description:
+      "WhatsApp is the first live connector. Additional conversation sources are planned as the alpha develops.",
+  },
+];
 
-const FeatureCard = ({ icon: Icon, title, description }: FeatureCardProps) => {
-  const cardRef = useRef<HTMLDivElement>(null)
-  
-  useEffect(() => {
-    const card = cardRef.current
-    if (!card) return
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      const rect = card.getBoundingClientRect()
-      const x = ((e.clientX - rect.left) / rect.width) * 100
-      const y = ((e.clientY - rect.top) / rect.height) * 100
-      card.style.setProperty('--x', `${x}%`)
-      card.style.setProperty('--y', `${y}%`)
-    }
-    
-    const mouseMoveHandler = (e: MouseEvent) => handleMouseMove(e as unknown as MouseEvent<HTMLDivElement>)
-    card.addEventListener('mousemove', mouseMoveHandler as EventListener)
-    return () => card.removeEventListener('mousemove', mouseMoveHandler as EventListener)
-  }, [])
-  
-  return (
-    <div 
-      ref={cardRef}
-      className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-gray-700 hover-card"
-    >
-      <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-4">
-        <Icon className="h-6 w-6 text-green-600 dark:text-green-400" />
-      </div>
-      <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{title}</h3>
-      <p className="text-gray-600 dark:text-gray-400">{description}</p>
-    </div>
-  )
-}
-
-const LandingPage = () => {
-  useEffect(() => {
-    // Initialize mouse tracking for hover cards
-    initMouseTracking('.hover-card')
-    
-    // Initialize staggered animations for feature cards
-    initStaggeredAnimations('.feature-card', {
-      threshold: 0.1,
-      baseDelay: 100,
-      className: 'animate-fade-in'
-    })
-    
-    // Initialize staggered animations for testimonials
-    initStaggeredAnimations('.testimonial-card', {
-      threshold: 0.1,
-      baseDelay: 150,
-      className: 'animate-fade-in'
-    })
-  }, [])
-  
+export default function LandingPage() {
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Vector Shapes Background - Only in hero section */}
-      <div className={`${styles.vectorShapes} vector-shapes`}>
+      <div
+        className={`${styles.vectorShapes} vector-shapes`}
+        aria-hidden="true"
+      >
         <div className="vector-circle"></div>
         <div className="vector-square"></div>
         <div className="vector-hexagon"></div>
         <div className="vector-diamond"></div>
       </div>
-      
-      {/* Hero Section */}
-      <section className={`relative pt-24 pb-32 overflow-hidden bg-gradient ${styles.heroGradient}`}>
-        <div className="absolute inset-0 z-0 opacity-30 dark:opacity-20">
-          <div className="absolute right-0 top-0 w-80 h-80 bg-green-300 dark:bg-green-700 rounded-full filter blur-3xl -translate-y-1/2 translate-x-1/4"></div>
-          <div className="absolute left-0 bottom-0 w-80 h-80 bg-green-200 dark:bg-green-800 rounded-full filter blur-3xl translate-y-1/2 -translate-x-1/4"></div>
+
+      <section
+        className={`relative overflow-hidden bg-gradient pb-28 pt-24 ${styles.heroGradient}`}
+      >
+        <div
+          className="absolute inset-0 z-0 opacity-30 dark:opacity-20"
+          aria-hidden="true"
+        >
+          <div className="absolute right-0 top-0 h-80 w-80 -translate-y-1/2 translate-x-1/4 rounded-full bg-green-300 blur-3xl dark:bg-green-700"></div>
+          <div className="absolute bottom-0 left-0 h-80 w-80 -translate-x-1/4 translate-y-1/2 rounded-full bg-green-200 blur-3xl dark:bg-green-800"></div>
         </div>
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center">
-            <div className="lg:w-1/2 lg:pr-12">
-              <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-gray-900 dark:text-white leading-tight text-gradient">
-                Understand your WhatsApp conversations better
-              </h1>
-              <p className="mt-6 text-xl text-gray-600 dark:text-gray-300 max-w-2xl">
-                Analyze, summarize, and gain insights from your WhatsApp chats with our powerful AI-driven tools.
-              </p>
-              <div className="mt-10 flex flex-col sm:flex-row gap-4">
-                <Link 
-                  href="/login"
-                  className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-center btn-glow"
-                >
-                  Sign in
-                </Link>
-                <Link 
-                  href="/features" 
-                  className="px-8 py-3 glassmorphism text-gray-900 dark:text-white font-medium rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-center flex items-center justify-center"
-                >
-                  Learn More <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+
+        <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8">
+          <div>
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-green-200 bg-white/80 px-4 py-2 text-sm font-semibold text-green-800 shadow-sm backdrop-blur dark:border-green-800 dark:bg-gray-900/75 dark:text-green-300">
+              <Sparkles className="h-4 w-4" />
+              ConvoLens Alpha is open
+            </div>
+            <h1 className="max-w-4xl text-4xl font-bold leading-tight text-gray-900 dark:text-white sm:text-5xl md:text-6xl">
+              Bring important conversations into focus.
+            </h1>
+            <p className="mt-6 max-w-2xl text-xl leading-8 text-gray-600 dark:text-gray-300">
+              ConvoLens is an early conversation-intake workspace. WhatsApp is
+              the first live connector, with a multi-platform future being
+              shaped through the alpha.
+            </p>
+            <div className="mt-9 flex flex-col gap-4 sm:flex-row">
+              <Link
+                href="/login?redirectTo=/dashboard"
+                className="btn-glow rounded-lg bg-green-700 px-8 py-3 text-center font-semibold text-white shadow-md transition hover:bg-green-800 hover:shadow-lg"
+              >
+                Join the alpha
+              </Link>
+              <Link
+                href="/features"
+                className="glassmorphism flex items-center justify-center rounded-lg px-8 py-3 text-center font-semibold text-gray-900 shadow-md transition hover:shadow-lg dark:text-white"
+              >
+                See what works today
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-white/70 bg-white/85 p-7 shadow-2xl backdrop-blur dark:border-gray-700 dark:bg-gray-900/85">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-green-700 dark:text-green-300">
+                  Available now
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+                  Start with one WhatsApp chat
+                </h2>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">
+                <MessageSquare className="h-6 w-6" />
               </div>
             </div>
-            <div className="lg:w-1/2 mt-12 lg:mt-0">
-              <div className="relative w-full max-w-lg mx-auto">
-                <div className="absolute top-0 -left-4 w-72 h-72 bg-green-300 dark:bg-green-700 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
-                <div className="absolute top-0 -right-4 w-72 h-72 bg-green-400 dark:bg-green-600 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
-                <div className="absolute -bottom-8 left-20 w-72 h-72 bg-green-200 dark:bg-green-800 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
-                <div className="relative">
-                  <div className="relative shadow-2xl rounded-2xl overflow-hidden border-8 border-white dark:border-gray-800 hover-card">
-                    <Image 
-                      src="/images/dashboard.png" 
-                      alt="ConvoLens Dashboard"
-                      width={600} 
-                      height={400} 
-                      className="w-full h-auto"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ol className="mt-7 space-y-4">
+              {availableNow.map((item, index) => (
+                <li
+                  key={item}
+                  className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-gray-800 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-100"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-700 text-sm font-bold text-white">
+                    {index + 1}
+                  </span>
+                  <span className="font-medium">{item}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-6 text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Alpha access means the workflow and product will keep evolving. We
+              will be explicit about what is live and what is still planned.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 bg-gray-50 dark:bg-gray-900 relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl text-shadow">
-              Powerful features to analyze your conversations
+      <section className="relative z-10 bg-gray-50 py-20 dark:bg-gray-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-green-700 dark:text-green-300">
+              Alpha workflow
+            </p>
+            <h2 className="mt-3 text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+              A clearer way to bring conversations in
             </h2>
-            <p className="mt-4 text-xl text-gray-600 dark:text-gray-400">
-              Everything you need to understand and get insights from your WhatsApp chats.
+            <p className="mt-4 text-lg leading-8 text-gray-600 dark:text-gray-400">
+              Start with the channels available today while we build toward a
+              shared intake layer for more of the places conversations happen.
             </p>
           </div>
 
-          <div className="mt-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            <div className="feature-card">
-              <FeatureCard 
-                icon={MessageSquare}
-                title="Chat Analysis"
-                description="Analyze message patterns, response times, and conversation flow to understand communication dynamics."
-              />
-            </div>
-            <div className="feature-card">
-              <FeatureCard 
-                icon={BarChart2}
-                title="Visual Analytics"
-                description="View beautiful charts and visualizations that make it easy to understand your conversation data."
-              />
-            </div>
-            <div className="feature-card">
-              <FeatureCard 
-                icon={Search}
-                title="Smart Search"
-                description="Quickly find messages across all your conversations with our powerful search capabilities."
-              />
-            </div>
-            <div className="feature-card">
-              <FeatureCard 
-                icon={Shield}
-                title="Privacy Focused"
-                description="Your data never leaves your device. All processing happens locally for maximum privacy."
-              />
-            </div>
-            <div className="feature-card">
-              <FeatureCard 
-                icon={Zap}
-                title="Fast Processing"
-                description="Our optimized algorithms process even large chat histories in seconds."
-              />
-            </div>
-            <div className="feature-card">
-              <div className="bg-gradient-to-br from-green-500 to-green-600 dark:from-green-600 dark:to-green-700 p-6 rounded-xl shadow-md text-white hover-card">
-                <h3 className="text-xl font-semibold mb-2">Ready to get started?</h3>
-                <p className="mb-4">Try ConvoLens today and gain new insights from your conversations.</p>
-                <Link 
-                  href="/login"
-                  className="inline-block px-5 py-2 bg-white text-green-600 font-medium rounded-lg hover:bg-gray-100 transition-colors duration-200 btn-glow"
-                >
-                  Sign in
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-20 bg-white dark:bg-gray-800 relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl text-shadow">
-              Loved by users worldwide
-            </h2>
-            <p className="mt-4 text-xl text-gray-600 dark:text-gray-400">
-              See what people are saying about ConvoLens
-            </p>
-          </div>
-
-          <div className="mt-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {[
-              {
-                quote: "ConvoLens helped me understand communication patterns in my team chat that I never noticed before.",
-                author: "Sarah J.",
-                role: "Project Manager"
-              },
-              {
-                quote: "The insights I got from analyzing my business chats were invaluable. Highly recommended!",
-                author: "Michael T.",
-                role: "Small Business Owner"
-              },
-              {
-                quote: "Clean interface, powerful features, and respects my privacy. What more could I ask for?",
-                author: "Priya K.",
-                role: "Software Developer"
-              }
-            ].map((testimonial, i) => (
-              <div key={i} className="testimonial-card">
-                <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl shadow-md hover-card">
-                  <div className="flex items-center mb-4">
-                    <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center">
-                      <span className="text-green-600 dark:text-green-400 font-bold">{testimonial.author[0]}</span>
-                    </div>
-                    <div className="ml-4">
-                      <h4 className="font-semibold text-gray-900 dark:text-white">{testimonial.author}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">{testimonial.role}</p>
-                    </div>
-                  </div>
-                  <p className="text-gray-600 dark:text-gray-300 italic">"<span className="text-shadow">{testimonial.quote}</span>"</p>
+          <div className="mt-14 grid gap-8 md:grid-cols-3">
+            {capabilities.map(({ icon: Icon, title, description }) => (
+              <article
+                key={title}
+                className="rounded-2xl border border-gray-200 bg-white p-7 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
+                  <Icon className="h-6 w-6 text-green-700 dark:text-green-300" />
                 </div>
-              </div>
+                <h3 className="mt-5 text-xl font-semibold text-gray-900 dark:text-white">
+                  {title}
+                </h3>
+                <p className="mt-3 leading-7 text-gray-600 dark:text-gray-400">
+                  {description}
+                </p>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className={`py-20 bg-gradient relative z-10 ${styles.ctaGradient}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold sm:text-4xl text-white text-shadow">
-            Ready to understand your conversations better?
-          </h2>
-          <p className="mt-4 text-xl text-green-100 max-w-2xl mx-auto">
-            Join thousands of users who are gaining insights from their WhatsApp chats.
-          </p>
-          <div className="mt-10">
-            <Link 
-              href="/login"
-              className="px-8 py-3 bg-white text-green-700 font-medium rounded-lg shadow-md hover:bg-gray-100 transition-colors duration-200 inline-block transform-none"
-              style={{ backfaceVisibility: 'hidden' }}
-            >
-              Sign in
-            </Link>
+      <section className="relative z-10 bg-white py-20 dark:bg-gray-800">
+        <div className="mx-auto grid max-w-5xl gap-8 px-4 sm:px-6 md:grid-cols-2 lg:px-8">
+          <div className="rounded-2xl border border-green-100 bg-green-50 p-8 dark:border-green-900 dark:bg-green-950/30">
+            <ShieldCheck className="h-8 w-8 text-green-700 dark:text-green-300" />
+            <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-white">
+              You choose what enters ConvoLens
+            </h2>
+            <p className="mt-3 leading-7 text-gray-700 dark:text-gray-300">
+              The extension reads the selected WhatsApp Web chat when you
+              activate it, then sends that conversation to the ConvoLens service
+              for processing. It does not silently ingest every chat.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-8 dark:border-amber-900 dark:bg-amber-950/25">
+            <Sparkles className="h-8 w-8 text-amber-700 dark:text-amber-300" />
+            <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-white">
+              Alpha, without invented social proof
+            </h2>
+            <p className="mt-3 leading-7 text-gray-700 dark:text-gray-300">
+              We are launching now, so there are no customer reviews or usage
+              claims to show yet. Early users will help shape the workflow as it
+              becomes multi-platform.
+            </p>
           </div>
         </div>
       </section>
-    </div>
-  )
-}
 
-export default LandingPage
+      <section
+        className={`relative z-10 bg-gradient py-20 ${styles.ctaGradient}`}
+      >
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-white sm:text-4xl">
+            Start with the conversation in front of you.
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-xl text-green-100">
+            Sign in, choose an intake method, and send your first WhatsApp
+            conversation into the ConvoLens alpha.
+          </p>
+          <Link
+            href="/login?redirectTo=/dashboard"
+            className="mt-9 inline-block rounded-lg bg-white px-8 py-3 font-semibold text-green-800 shadow-md transition hover:bg-gray-100"
+          >
+            Sign in to the alpha
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}

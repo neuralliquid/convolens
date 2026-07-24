@@ -15,14 +15,15 @@
 
 #convolens-fab {
   position: fixed;
-  bottom: 24px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   right: 24px;
   z-index: 10000;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* =============================================================================
@@ -33,15 +34,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
-  background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #16a36a 0%, #0b6b57 100%);
   color: white;
   border: none;
   border-radius: 24px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
+  box-shadow: 0 4px 14px rgba(11, 107, 87, 0.32);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -108,7 +109,7 @@
 }
 
 .ws-status-success .ws-status-icon {
-  background: #25D366;
+  background: #25d366;
 }
 
 .ws-status-error .ws-status-icon {
@@ -158,7 +159,7 @@
 
 .ws-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #25D366 0%, #34d058 100%);
+  background: linear-gradient(90deg, #25d366 0%, #34d058 100%);
   border-radius: 2px;
   transition: width 0.3s ease;
   width: 0%;
@@ -193,7 +194,8 @@
 }
 
 @keyframes ws-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -241,7 +243,7 @@
 
 @media (max-width: 768px) {
   #convolens-fab {
-    bottom: 16px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     right: 16px;
   }
 
