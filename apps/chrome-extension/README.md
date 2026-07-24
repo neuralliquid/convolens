@@ -18,12 +18,14 @@ Production-ready Chrome extension for WhatsApp Web integration, enabling AI-powe
 ### Development
 
 1. Install dependencies:
+
    ```bash
    cd apps/chrome-extension
    npm install
    ```
 
 2. Build the extension:
+
    ```bash
    npm run build
    ```
@@ -40,6 +42,10 @@ Production-ready Chrome extension for WhatsApp Web integration, enabling AI-powe
 npm run build:prod
 npm run package  # Creates convolens-extension.zip
 ```
+
+To install a packaged release, extract `convolens-extension.zip` first, then
+use Chrome's **Load unpacked** action to select the extracted directory. The ZIP
+contains the manifest, compiled scripts, popup, settings page, and icons.
 
 ## Usage
 
@@ -69,17 +75,18 @@ apps/chrome-extension/
 │   ├── content.ts         # WhatsApp Web content script
 │   └── content.css        # Content script styles
 ├── dist/                  # Compiled TypeScript output
-└── icons/                 # Extension icons (16, 32, 48, 128px)
 ```
 
 ## Configuration
 
-The extension supports custom API endpoints via the settings page. Environment-aware configuration:
+The extension defaults to the production ConvoLens endpoints, including when it
+is loaded unpacked. A custom API endpoint can be set in the settings page for a
+local or non-production development environment.
 
-| Environment | API URL | Dashboard URL |
-|------------|---------|---------------|
-| Development | `http://localhost:3001` | `http://localhost:3000` |
-| Production | `https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io` | `https://convolens.neuralliquid.ai` |
+| Environment                | API URL                                                                                  | Dashboard URL                        |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------ |
+| Default                    | `https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io` | `https://convolens.neuralliquid.ai`  |
+| Local development override | `http://localhost:3001`                                                                  | configured in the local source build |
 
 ## Development
 
@@ -106,12 +113,12 @@ The extension uses data-testid selectors (most stable) with fallback class selec
 
 ```typescript
 // Primary (stable)
-'[data-testid="msg-container"]'
-'[data-testid="msg-text"]'
+'[data-testid="msg-container"]';
+'[data-testid="msg-text"]';
 
 // Fallback (less stable)
-'.message-in, .message-out'
-'.selectable-text span[dir="ltr"]'
+".message-in, .message-out";
+'.selectable-text span[dir="ltr"]';
 ```
 
 ## Security
