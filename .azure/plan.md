@@ -1,6 +1,7 @@
 # Convolens Mystira Azure Go-Live Plan
 
-Status: Draft - pending approval
+Status: Validated — deployment blocked on credential rotation
+Recipe: Terraform
 Date: 2026-07-16
 Target subscription: bb4e3882-2079-4bab-8974-611bc0b8bb58
 Target tenant: 9530cd32-9e33-47f0-9247-ed964730b580
@@ -167,6 +168,20 @@ Minimal go-live slice for WhatsApp-to-Baton:
 Do not rely on the Puppeteer WhatsApp Web client for production go-live unless a separate security/session/runbook decision is made. The Chrome extension path is the recommended first-class ingestion path; manual export is the fallback.
 
 ## 7. Security and Compliance
+
+### Validation Proof — 2026-07-24
+
+- Approved subscription `bb4e3882-2079-4bab-8974-611bc0b8bb58` and tenant `9530cd32-9e33-47f0-9247-ed964730b580` were confirmed enabled through Azure CLI and Azure MCP.
+- `terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl -input=false` succeeded against the production remote backend.
+- `terraform -chdir=infra/terraform/env/prod fmt -check -recursive` and `terraform -chdir=infra/terraform/env/prod validate` passed with Terraform 1.14.7, matching the production workflow.
+- `terraform -chdir=infra/terraform/env/prod state list` returned the expected production App Service, Container App, storage, Key Vault, telemetry, registry, queue, and role-assignment resources.
+- Azure Policy assignment validation found only the default Defender for Cloud audit initiative and no deny assignment blocking the deployment.
+- A final no-refresh production plan using the current API image and port reported `0 to add, 2 to change, 0 to destroy`. The expected in-place changes add the Mystira API validation settings, Key Vault references, and `offline_access` for web token refresh.
+- An earlier live-refresh validation rendered the two protected web values into transient local output. Its saved plan was securely deleted, and a targeted remote-state inspection confirmed neither value is stored in Terraform state.
+- Rotate `NEXTAUTH_SECRET` and the Mystira Identity client secret through their approved owners, then update the protected GitHub production environment before deployment.
+- App Service uses non-secret Key Vault references for the protected web settings. The deployment workflow writes their values directly from the protected GitHub environment into Key Vault, keeping the values out of Terraform configuration, plan output, and state.
+- Main CI run `30115398626` passed for merge commit `f267b0e`; focused API auth tests, web token-refresh tests, API/web builds, extension packaging, Prettier, targeted lint, and `git diff --check` also passed.
+- Pre-deployment public checks returned HTTP 200 for `/features`, `/api/runtime/auth-status` with `mystiraConfigured: true`, and the production API `/health`.
 
 Production requirements:
 
