@@ -4,12 +4,7 @@
   "version": "1.0.0",
   "description": "ConvoLens: See Your Conversations Clearly. Extract and analyze your WhatsApp Web conversations with AI-powered summaries. Get instant insights, key topics, and intelligent summaries.",
 
-  "permissions": [
-    "storage",
-    "activeTab",
-    "alarms",
-    "notifications"
-  ],
+  "permissions": ["storage", "activeTab", "alarms", "notifications"],
 
   "host_permissions": [
     "https://web.whatsapp.com/*",
@@ -22,27 +17,14 @@
 
   "action": {
     "default_popup": "popup/popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    },
     "default_title": "ConvoLens"
-  },
-
-  "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
   },
 
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
       "js": ["dist/content.js"],
-      "css": ["src/content.css"],
+      "css": ["dist/content.css"],
       "run_at": "document_idle"
     }
   ],
@@ -53,13 +35,6 @@
   },
 
   "options_page": "options/options.html",
-
-  "web_accessible_resources": [
-    {
-      "resources": ["icons/*", "assets/*"],
-      "matches": ["https://web.whatsapp.com/*"]
-    }
-  ],
 
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"

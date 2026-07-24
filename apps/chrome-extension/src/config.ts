@@ -5,28 +5,29 @@
  * Supports both development and production environments.
  */
 
-// Environment detection
-const isDevelopment = !chrome.runtime.getManifest().update_url;
-
 // API Configuration
 export const API_CONFIG = {
   // Production URLs (updated during build)
   production: {
-    apiUrl: 'https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io',
-    wsUrl: 'wss://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io/ws',
-    dashboardUrl: 'https://convolens.neuralliquid.ai',
+    apiUrl:
+      "https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io",
+    wsUrl:
+      "wss://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io/ws",
+    dashboardUrl: "https://convolens.neuralliquid.ai",
   },
   // Development URLs
   development: {
-    apiUrl: 'http://localhost:3001',
-    wsUrl: 'ws://localhost:3001/ws',
-    dashboardUrl: 'http://localhost:3000',
+    apiUrl: "http://localhost:3001",
+    wsUrl: "ws://localhost:3001/ws",
+    dashboardUrl: "http://localhost:3000",
   },
 };
 
-// Get current environment config
+// Chrome does not expose a reliable runtime distinction between an unpacked
+// production install and an unpacked developer build. Use production by default
+// so the documented "Load unpacked" path works for operators.
 export function getConfig() {
-  return isDevelopment ? API_CONFIG.development : API_CONFIG.production;
+  return API_CONFIG.production;
 }
 
 // WhatsApp Web DOM Selectors
@@ -47,14 +48,14 @@ export const SELECTORS = {
   // Fallback selectors (class-based - less stable)
   fallback: {
     chatList: '.copyable-area [role="listitem"]',
-    messageList: '.message-list',
-    messageContainer: '.message-in, .message-out',
+    messageList: ".message-list",
+    messageContainer: ".message-in, .message-out",
     messageText: '.selectable-text span[dir="ltr"]',
     messageTime: '.copyable-text span[dir="auto"]',
     senderName: 'span[dir="auto"]._ahxt',
-    chatHeader: 'header._ao8g',
+    chatHeader: "header._ao8g",
     contactName: 'span[dir="auto"]._ao3e',
-    scrollableMessageList: '._asmz',
+    scrollableMessageList: "._asmz",
   },
 };
 
@@ -83,11 +84,11 @@ export const RATE_LIMIT_CONFIG = {
 
 // Storage keys
 export const STORAGE_KEYS = {
-  authToken: 'authToken',
-  user: 'user',
-  settings: 'settings',
-  extractionHistory: 'extractionHistory',
-  pendingUploads: 'pendingUploads',
+  authToken: "authToken",
+  user: "user",
+  settings: "settings",
+  extractionHistory: "extractionHistory",
+  pendingUploads: "pendingUploads",
 };
 
 // =============================================================================
@@ -108,9 +109,9 @@ export function generateCorrelationId(): string {
  */
 export function getTracingHeaders(): Record<string, string> {
   return {
-    'x-correlation-id': generateCorrelationId(),
-    'x-source': 'chrome-extension',
-    'x-extension-version': chrome.runtime.getManifest().version,
+    "x-correlation-id": generateCorrelationId(),
+    "x-source": "chrome-extension",
+    "x-extension-version": chrome.runtime.getManifest().version,
   };
 }
 
@@ -120,7 +121,7 @@ export interface ExtensionSettings {
   showNotifications: boolean;
   extractMediaMetadata: boolean;
   maxStoredExtractions: number;
-  theme: 'light' | 'dark' | 'auto';
+  theme: "light" | "dark" | "auto";
   apiEndpoint: string;
 }
 
@@ -129,27 +130,27 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   showNotifications: true,
   extractMediaMetadata: true,
   maxStoredExtractions: 50,
-  theme: 'auto',
-  apiEndpoint: '',
+  theme: "auto",
+  apiEndpoint: "",
 };
 
 // Message types for extension communication - Discriminated union for type safety
 
 export interface GetCurrentChatMessage {
-  action: 'GET_CURRENT_CHAT';
+  action: "GET_CURRENT_CHAT";
 }
 
 export interface CheckStatusMessage {
-  action: 'CHECK_STATUS';
+  action: "CHECK_STATUS";
 }
 
 export interface SetAuthTokenMessage {
-  action: 'SET_AUTH_TOKEN';
+  action: "SET_AUTH_TOKEN";
   token: string | null;
 }
 
 export interface SendChatDataMessage {
-  action: 'SEND_CHAT_DATA';
+  action: "SEND_CHAT_DATA";
   data: {
     chatName: string;
     chatId: string;
@@ -162,49 +163,49 @@ export interface SendChatDataMessage {
       timestamp: string;
       isOutgoing: boolean;
       isMedia: boolean;
-      mediaType?: 'image' | 'video' | 'audio' | 'document' | 'sticker';
+      mediaType?: "image" | "video" | "audio" | "document" | "sticker";
       replyTo?: string;
     }>;
-    source: 'chrome-extension';
+    source: "chrome-extension";
     version: string;
     isGroup: boolean;
   };
 }
 
 export interface OpenDashboardMessage {
-  action: 'OPEN_DASHBOARD';
+  action: "OPEN_DASHBOARD";
   path?: string;
 }
 
 export interface GetAuthStatusMessage {
-  action: 'GET_AUTH_STATUS';
+  action: "GET_AUTH_STATUS";
 }
 
 export interface LoginMessage {
-  action: 'LOGIN';
+  action: "LOGIN";
   email: string;
   password: string;
 }
 
 export interface LogoutMessage {
-  action: 'LOGOUT';
+  action: "LOGOUT";
 }
 
 export interface GetSettingsMessage {
-  action: 'GET_SETTINGS';
+  action: "GET_SETTINGS";
 }
 
 export interface UpdateSettingsMessage {
-  action: 'UPDATE_SETTINGS';
+  action: "UPDATE_SETTINGS";
   settings: Partial<ExtensionSettings>;
 }
 
 export interface ClearPendingUploadsMessage {
-  action: 'CLEAR_PENDING_UPLOADS';
+  action: "CLEAR_PENDING_UPLOADS";
 }
 
 export interface RetryPendingUploadsMessage {
-  action: 'RETRY_PENDING_UPLOADS';
+  action: "RETRY_PENDING_UPLOADS";
 }
 
 // Union type of all message types
@@ -223,7 +224,7 @@ export type ExtensionMessage =
   | RetryPendingUploadsMessage;
 
 // Helper type to extract action names
-export type MessageAction = ExtensionMessage['action'];
+export type MessageAction = ExtensionMessage["action"];
 
 // Response types with proper typing
 export interface SuccessResponse<T = unknown> {

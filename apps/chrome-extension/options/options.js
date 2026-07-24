@@ -4,11 +4,11 @@
 
 // Storage keys (must match config.ts)
 const STORAGE_KEYS = {
-  authToken: 'authToken',
-  user: 'user',
-  settings: 'settings',
-  extractionHistory: 'extractionHistory',
-  pendingUploads: 'pendingUploads',
+  authToken: "authToken",
+  user: "user",
+  settings: "settings",
+  extractionHistory: "extractionHistory",
+  pendingUploads: "pendingUploads",
 };
 
 // Default settings
@@ -17,43 +17,45 @@ const DEFAULT_SETTINGS = {
   showNotifications: true,
   extractMediaMetadata: true,
   maxStoredExtractions: 50,
-  theme: 'auto',
-  apiEndpoint: '',
+  theme: "auto",
+  apiEndpoint: "",
 };
+
+const DASHBOARD_URL = "https://convolens.neuralliquid.ai";
 
 // DOM Elements
 const elements = {
   // Account
-  loggedOut: document.getElementById('loggedOut'),
-  loggedIn: document.getElementById('loggedIn'),
-  userEmail: document.getElementById('userEmail'),
-  loginBtn: document.getElementById('loginBtn'),
-  logoutBtn: document.getElementById('logoutBtn'),
+  loggedOut: document.getElementById("loggedOut"),
+  loggedIn: document.getElementById("loggedIn"),
+  userEmail: document.getElementById("userEmail"),
+  loginBtn: document.getElementById("loginBtn"),
+  logoutBtn: document.getElementById("logoutBtn"),
 
   // Settings
-  showNotifications: document.getElementById('showNotifications'),
-  extractMediaMetadata: document.getElementById('extractMediaMetadata'),
-  theme: document.getElementById('theme'),
-  apiEndpoint: document.getElementById('apiEndpoint'),
-  maxStoredExtractions: document.getElementById('maxStoredExtractions'),
+  showNotifications: document.getElementById("showNotifications"),
+  extractMediaMetadata: document.getElementById("extractMediaMetadata"),
+  theme: document.getElementById("theme"),
+  apiEndpoint: document.getElementById("apiEndpoint"),
+  maxStoredExtractions: document.getElementById("maxStoredExtractions"),
 
   // Stats
-  totalExtractions: document.getElementById('totalExtractions'),
-  pendingUploads: document.getElementById('pendingUploads'),
-  totalMessages: document.getElementById('totalMessages'),
+  totalExtractions: document.getElementById("totalExtractions"),
+  pendingUploads: document.getElementById("pendingUploads"),
+  totalMessages: document.getElementById("totalMessages"),
 
   // History
-  historyList: document.getElementById('historyList'),
+  historyList: document.getElementById("historyList"),
 
   // Actions
-  retryPending: document.getElementById('retryPending'),
-  clearData: document.getElementById('clearData'),
-  statusMessage: document.getElementById('statusMessage'),
+  retryPending: document.getElementById("retryPending"),
+  clearData: document.getElementById("clearData"),
+  statusMessage: document.getElementById("statusMessage"),
 
   // Footer
-  version: document.getElementById('version'),
-  helpLink: document.getElementById('helpLink'),
-  privacyLink: document.getElementById('privacyLink'),
+  version: document.getElementById("version"),
+  helpLink: document.getElementById("helpLink"),
+  privacyLink: document.getElementById("privacyLink"),
 };
 
 // =============================================================================
@@ -74,27 +76,25 @@ async function init() {
   setupEventListeners();
 
   // Set up links
-  const isDev = !chrome.runtime.getManifest().update_url;
-  const baseUrl = isDev ? 'http://localhost:3000' : 'https://app.convolens.com';
-  elements.helpLink.href = `${baseUrl}/help`;
-  elements.privacyLink.href = `${baseUrl}/privacy`;
+  elements.helpLink.href = `${DASHBOARD_URL}/help`;
+  elements.privacyLink.href = `${DASHBOARD_URL}/privacy`;
 }
 
 function setupEventListeners() {
   // Auth buttons
-  elements.loginBtn.addEventListener('click', handleLogin);
-  elements.logoutBtn.addEventListener('click', handleLogout);
+  elements.loginBtn.addEventListener("click", handleLogin);
+  elements.logoutBtn.addEventListener("click", handleLogout);
 
   // Settings changes
-  elements.showNotifications.addEventListener('change', saveSettings);
-  elements.extractMediaMetadata.addEventListener('change', saveSettings);
-  elements.theme.addEventListener('change', saveSettings);
-  elements.apiEndpoint.addEventListener('blur', saveSettings);
-  elements.maxStoredExtractions.addEventListener('change', saveSettings);
+  elements.showNotifications.addEventListener("change", saveSettings);
+  elements.extractMediaMetadata.addEventListener("change", saveSettings);
+  elements.theme.addEventListener("change", saveSettings);
+  elements.apiEndpoint.addEventListener("blur", saveSettings);
+  elements.maxStoredExtractions.addEventListener("change", saveSettings);
 
   // Actions
-  elements.retryPending.addEventListener('click', handleRetryPending);
-  elements.clearData.addEventListener('click', handleClearData);
+  elements.retryPending.addEventListener("click", handleRetryPending);
+  elements.clearData.addEventListener("click", handleClearData);
 }
 
 // =============================================================================
@@ -102,28 +102,28 @@ function setupEventListeners() {
 // =============================================================================
 
 async function loadAuthStatus() {
-  const response = await chrome.runtime.sendMessage({ action: 'GET_AUTH_STATUS' });
+  const response = await chrome.runtime.sendMessage({
+    action: "GET_AUTH_STATUS",
+  });
 
   if (response.data?.isAuthenticated) {
-    elements.loggedOut.style.display = 'none';
-    elements.loggedIn.style.display = 'block';
-    elements.userEmail.textContent = response.data.user?.email || 'Connected';
+    elements.loggedOut.style.display = "none";
+    elements.loggedIn.style.display = "block";
+    elements.userEmail.textContent = response.data.user?.email || "Connected";
   } else {
-    elements.loggedOut.style.display = 'block';
-    elements.loggedIn.style.display = 'none';
+    elements.loggedOut.style.display = "block";
+    elements.loggedIn.style.display = "none";
   }
 }
 
 function handleLogin() {
-  const isDev = !chrome.runtime.getManifest().update_url;
-  const baseUrl = isDev ? 'http://localhost:3000' : 'https://app.convolens.com';
-  chrome.tabs.create({ url: `${baseUrl}/login?extension=true` });
+  chrome.tabs.create({ url: `${DASHBOARD_URL}/login?extension=true` });
 }
 
 async function handleLogout() {
-  await chrome.runtime.sendMessage({ action: 'LOGOUT' });
+  await chrome.runtime.sendMessage({ action: "LOGOUT" });
   await loadAuthStatus();
-  showStatus('Logged out successfully', 'success');
+  showStatus("Logged out successfully", "success");
 }
 
 // =============================================================================
@@ -131,14 +131,15 @@ async function handleLogout() {
 // =============================================================================
 
 async function loadSettings() {
-  const response = await chrome.runtime.sendMessage({ action: 'GET_SETTINGS' });
+  const response = await chrome.runtime.sendMessage({ action: "GET_SETTINGS" });
   const settings = response.data || DEFAULT_SETTINGS;
 
   elements.showNotifications.checked = settings.showNotifications;
   elements.extractMediaMetadata.checked = settings.extractMediaMetadata;
   elements.theme.value = settings.theme;
-  elements.apiEndpoint.value = settings.apiEndpoint || '';
-  elements.maxStoredExtractions.value = settings.maxStoredExtractions.toString();
+  elements.apiEndpoint.value = settings.apiEndpoint || "";
+  elements.maxStoredExtractions.value =
+    settings.maxStoredExtractions.toString();
 }
 
 async function saveSettings() {
@@ -151,14 +152,14 @@ async function saveSettings() {
   };
 
   const response = await chrome.runtime.sendMessage({
-    action: 'UPDATE_SETTINGS',
+    action: "UPDATE_SETTINGS",
     settings,
   });
 
   if (response.success) {
-    showStatus('Settings saved', 'success');
+    showStatus("Settings saved", "success");
   } else {
-    showStatus('Failed to save settings', 'error');
+    showStatus("Failed to save settings", "error");
   }
 }
 
@@ -179,16 +180,19 @@ async function loadStats() {
   elements.pendingUploads.textContent = pending.length.toString();
 
   // Calculate total messages
-  const totalMessages = history.reduce((sum, item) => sum + (item.messageCount || 0), 0);
+  const totalMessages = history.reduce(
+    (sum, item) => sum + (item.messageCount || 0),
+    0,
+  );
   elements.totalMessages.textContent = formatNumber(totalMessages);
 }
 
 function formatNumber(num) {
   if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
+    return (num / 1000000).toFixed(1) + "M";
   }
   if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
+    return (num / 1000).toFixed(1) + "K";
   }
   return num.toString();
 }
@@ -198,7 +202,9 @@ function formatNumber(num) {
 // =============================================================================
 
 async function loadHistory() {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.extractionHistory]);
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEYS.extractionHistory,
+  ]);
   const history = stored[STORAGE_KEYS.extractionHistory] || [];
 
   if (history.length === 0) {
@@ -210,7 +216,8 @@ async function loadHistory() {
 
   elements.historyList.innerHTML = history
     .slice(0, 20)
-    .map(item => `
+    .map(
+      (item) => `
       <div class="history-item">
         <div>
           <div class="history-name">${escapeHtml(item.chatName)}</div>
@@ -218,12 +225,13 @@ async function loadHistory() {
         </div>
         <div class="history-meta">${formatDate(item.extractedAt)}</div>
       </div>
-    `)
-    .join('');
+    `,
+    )
+    .join("");
 }
 
 function escapeHtml(text) {
-  const div = document.createElement('div');
+  const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
 }
@@ -236,7 +244,7 @@ function formatDate(isoString) {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMins < 1) return 'Just now';
+  if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
@@ -250,31 +258,37 @@ function formatDate(isoString) {
 
 async function handleRetryPending() {
   elements.retryPending.disabled = true;
-  elements.retryPending.textContent = 'Retrying...';
+  elements.retryPending.textContent = "Retrying...";
 
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'RETRY_PENDING_UPLOADS' });
+    const response = await chrome.runtime.sendMessage({
+      action: "RETRY_PENDING_UPLOADS",
+    });
 
     if (response.success) {
       const { processed, failed, remaining } = response.data;
       showStatus(
         `Processed: ${processed}, Failed: ${failed}, Remaining: ${remaining}`,
-        processed > 0 ? 'success' : 'error'
+        processed > 0 ? "success" : "error",
       );
       await loadStats();
     } else {
-      showStatus(response.error || 'Failed to retry uploads', 'error');
+      showStatus(response.error || "Failed to retry uploads", "error");
     }
   } catch (error) {
-    showStatus('Error: ' + error.message, 'error');
+    showStatus("Error: " + error.message, "error");
   } finally {
     elements.retryPending.disabled = false;
-    elements.retryPending.textContent = 'Retry Pending Uploads';
+    elements.retryPending.textContent = "Retry Pending Uploads";
   }
 }
 
 async function handleClearData() {
-  if (!confirm('Are you sure you want to clear all extension data? This cannot be undone.')) {
+  if (
+    !confirm(
+      "Are you sure you want to clear all extension data? This cannot be undone.",
+    )
+  ) {
     return;
   }
 
@@ -288,12 +302,12 @@ async function handleClearData() {
       [STORAGE_KEYS.extractionHistory]: [],
     });
 
-    showStatus('All data cleared', 'success');
+    showStatus("All data cleared", "success");
     await loadAuthStatus();
     await loadStats();
     await loadHistory();
   } catch (error) {
-    showStatus('Error: ' + error.message, 'error');
+    showStatus("Error: " + error.message, "error");
   }
 }
 
@@ -306,7 +320,7 @@ function showStatus(message, type) {
   elements.statusMessage.className = `status show ${type}`;
 
   setTimeout(() => {
-    elements.statusMessage.classList.remove('show');
+    elements.statusMessage.classList.remove("show");
   }, 3000);
 }
 
