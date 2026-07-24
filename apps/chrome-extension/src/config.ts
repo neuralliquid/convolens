@@ -50,7 +50,7 @@ export const SELECTORS = {
     chatList: '.copyable-area [role="listitem"]',
     messageList: ".message-list",
     messageContainer: ".message-in, .message-out",
-    messageText: '.selectable-text span[dir="ltr"]',
+    messageText: ".selectable-text.copyable-text[dir]",
     messageTime: '.copyable-text span[dir="auto"]',
     senderName: 'span[dir="auto"]._ahxt',
     chatHeader: "header._ao8g",
@@ -85,6 +85,7 @@ export const RATE_LIMIT_CONFIG = {
 // Storage keys
 export const STORAGE_KEYS = {
   authToken: "authToken",
+  authTokenExpiresAt: "authTokenExpiresAt",
   user: "user",
   settings: "settings",
   extractionHistory: "extractionHistory",
@@ -181,6 +182,10 @@ export interface GetAuthStatusMessage {
   action: "GET_AUTH_STATUS";
 }
 
+export interface SyncMystiraAuthMessage {
+  action: "SYNC_MYSTIRA_AUTH";
+}
+
 export interface LoginMessage {
   action: "LOGIN";
   email: string;
@@ -216,6 +221,7 @@ export type ExtensionMessage =
   | SendChatDataMessage
   | OpenDashboardMessage
   | GetAuthStatusMessage
+  | SyncMystiraAuthMessage
   | LoginMessage
   | LogoutMessage
   | GetSettingsMessage

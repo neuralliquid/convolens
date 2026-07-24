@@ -306,6 +306,14 @@ resource "azurerm_container_app" "api" {
         value = var.allowed_origin
       }
       env {
+        name  = "MYSTIRA_IDENTITY_WELL_KNOWN"
+        value = var.mystira_identity_well_known
+      }
+      env {
+        name  = "MYSTIRA_IDENTITY_CLIENT_ID"
+        value = var.mystira_identity_client_id
+      }
+      env {
         name  = "DB_TYPE"
         value = var.enable_postgres ? "postgres" : "sqlite"
       }

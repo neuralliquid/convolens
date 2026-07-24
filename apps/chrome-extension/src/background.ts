@@ -22,8 +22,7 @@ import {
   type UpdateSettingsMessage,
   type SendChatDataMessage,
   type OpenDashboardMessage,
-  type SetAuthTokenMessage,
-} from './config';
+} from "./config";
 
 // =============================================================================
 // Types
@@ -41,75 +40,85 @@ interface RateLimitState {
 }
 
 // Storage key for persistent rate limiting
-const RATE_LIMIT_STORAGE_KEY = 'ws_rate_limit_state';
+const RATE_LIMIT_STORAGE_KEY = "ws_rate_limit_state";
 
 // =============================================================================
 // Message Handler
 // =============================================================================
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: ExtensionResponse) => void) => {
+  (
+    message: ExtensionMessage,
+    sender: chrome.runtime.MessageSender,
+    sendResponse: (response: ExtensionResponse) => void,
+  ) => {
     handleMessage(message, sender)
       .then(sendResponse)
-      .catch(error => sendResponse({ success: false, error: error.message }));
+      .catch((error) => sendResponse({ success: false, error: error.message }));
     return true; // Indicates async response
-  }
+  },
 );
 
-async function handleMessage(message: ExtensionMessage, sender: chrome.runtime.MessageSender): Promise<ExtensionResponse> {
-  console.log('[Background] Received message:', message.action);
+async function handleMessage(
+  message: ExtensionMessage,
+  _sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse> {
+  console.log("[Background] Received message:", message.action);
 
   switch (message.action) {
-    case 'SEND_CHAT_DATA': {
+    case "SEND_CHAT_DATA": {
       const typedMessage = message as SendChatDataMessage;
       return await sendChatData(typedMessage.data);
     }
 
-    case 'OPEN_DASHBOARD': {
+    case "OPEN_DASHBOARD": {
       const typedMessage = message as OpenDashboardMessage;
       return await openDashboard(typedMessage.path);
     }
 
-    case 'GET_AUTH_STATUS':
+    case "GET_AUTH_STATUS":
       return await getAuthStatus();
 
-    case 'LOGIN': {
+    case "SYNC_MYSTIRA_AUTH":
+      return await syncMystiraSession();
+
+    case "LOGIN": {
       const typedMessage = message as LoginMessage;
       // Validate required fields
       if (!typedMessage.email || !typedMessage.password) {
-        return { success: false, error: 'Email and password are required' };
+        return { success: false, error: "Email and password are required" };
       }
       return await handleLogin(typedMessage.email, typedMessage.password);
     }
 
-    case 'LOGOUT':
+    case "LOGOUT":
       return await handleLogout();
 
-    case 'GET_SETTINGS':
+    case "GET_SETTINGS":
       return await getSettings();
 
-    case 'UPDATE_SETTINGS': {
+    case "UPDATE_SETTINGS": {
       const typedMessage = message as UpdateSettingsMessage;
-      if (!typedMessage.settings || typeof typedMessage.settings !== 'object') {
-        return { success: false, error: 'Settings object is required' };
+      if (!typedMessage.settings || typeof typedMessage.settings !== "object") {
+        return { success: false, error: "Settings object is required" };
       }
       return await updateSettings(typedMessage.settings);
     }
 
-    case 'RETRY_PENDING_UPLOADS':
+    case "RETRY_PENDING_UPLOADS":
       return await retryPendingUploads();
 
-    case 'CLEAR_PENDING_UPLOADS':
+    case "CLEAR_PENDING_UPLOADS":
       return await clearPendingUploads();
 
-    case 'GET_CURRENT_CHAT':
-    case 'CHECK_STATUS':
-    case 'SET_AUTH_TOKEN':
+    case "GET_CURRENT_CHAT":
+    case "CHECK_STATUS":
+    case "SET_AUTH_TOKEN":
       // These are handled by content script, not background
-      return { success: false, error: 'Action handled by content script' };
+      return { success: false, error: "Action handled by content script" };
 
     default:
-      return { success: false, error: 'Unknown action' };
+      return { success: false, error: "Unknown action" };
   }
 }
 
@@ -122,10 +131,20 @@ async function handleMessage(message: ExtensionMessage, sender: chrome.runtime.M
  */
 async function sendChatData(chatData: any): Promise<ExtensionResponse> {
   try {
-    // Check authentication
-    const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
-    if (!stored[STORAGE_KEYS.authToken]) {
-      return { success: false, error: 'Not authenticated. Please log in first.' };
+    let stored = await chrome.storage.local.get([
+      STORAGE_KEYS.authToken,
+      STORAGE_KEYS.authTokenExpiresAt,
+    ]);
+    const expiresAt = Number(stored[STORAGE_KEYS.authTokenExpiresAt] || 0);
+    if (
+      !stored[STORAGE_KEYS.authToken] ||
+      (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
+    ) {
+      const syncResult = await syncMystiraSession();
+      if (!syncResult.success) {
+        return syncResult;
+      }
+      stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
     }
 
     // Check rate limiting (persistent across service worker restarts)
@@ -133,32 +152,35 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
     if (!canProceed) {
       // Queue for later
       await queuePendingUpload(chatData);
-      return { success: false, error: 'Rate limited. Queued for later.' };
+      return { success: false, error: "Rate limited. Queued for later." };
     }
 
     // Send with retry (include tracing headers for distributed tracing)
     const config = await getApiConfig();
-    const result = await fetchWithRetry(`${config.apiUrl}/api/chat-export/extension`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${stored[STORAGE_KEYS.authToken]}`,
-        ...getTracingHeaders(),
+    const result = await fetchWithRetry(
+      `${config.apiUrl}/api/chat-export/extension`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${stored[STORAGE_KEYS.authToken]}`,
+          ...getTracingHeaders(),
+        },
+        body: JSON.stringify(chatData),
       },
-      body: JSON.stringify(chatData),
-    });
+    );
 
     // Track successful upload in history
     await trackExtractionHistory(chatData);
 
     return { success: true, data: result };
   } catch (error) {
-    console.error('[Background] Send error:', error);
+    console.error("[Background] Send error:", error);
 
     // Queue for offline sync if network error
     if (isNetworkError(error)) {
       await queuePendingUpload(chatData);
-      return { success: false, error: 'Network error. Saved for later sync.' };
+      return { success: false, error: "Network error. Saved for later sync." };
     }
 
     return { success: false, error: (error as Error).message };
@@ -168,7 +190,11 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
 /**
  * Fetch with retry and exponential backoff
  */
-async function fetchWithRetry(url: string, options: RequestInit, maxRetries: number = 3): Promise<any> {
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 3,
+): Promise<any> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -187,20 +213,30 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries: num
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: `HTTP ${response.status}` }));
 
         // Don't retry on auth errors
         if (response.status === 401 || response.status === 403) {
           await handleLogout();
-          throw new Error('Authentication expired. Please log in again.');
+          throw new Error("Authentication expired. Please log in again.");
         }
 
         // Don't retry on client errors (except rate limiting)
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-          throw new Error(errorData.message || `Request failed: ${response.status}`);
+        if (
+          response.status >= 400 &&
+          response.status < 500 &&
+          response.status !== 429
+        ) {
+          throw new Error(
+            errorData.message || `Request failed: ${response.status}`,
+          );
         }
 
-        throw new Error(errorData.message || `Request failed: ${response.status}`);
+        throw new Error(
+          errorData.message || `Request failed: ${response.status}`,
+        );
       }
 
       return await response.json();
@@ -209,25 +245,30 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries: num
       console.warn(`[Background] Fetch attempt ${attempt + 1} failed:`, error);
 
       // Don't retry on abort or auth errors
-      if ((error as Error).name === 'AbortError' || (error as Error).message.includes('Authentication')) {
+      if (
+        (error as Error).name === "AbortError" ||
+        (error as Error).message.includes("Authentication")
+      ) {
         throw error;
       }
 
       if (attempt < maxRetries - 1) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }
 
-  throw lastError || new Error('Request failed after all retries');
+  throw lastError || new Error("Request failed after all retries");
 }
 
 function isNetworkError(error: any): boolean {
-  return error.name === 'TypeError' ||
-         error.message?.includes('fetch') ||
-         error.message?.includes('network') ||
-         error.message?.includes('offline');
+  return (
+    error.name === "TypeError" ||
+    error.message?.includes("fetch") ||
+    error.message?.includes("network") ||
+    error.message?.includes("offline")
+  );
 }
 
 // =============================================================================
@@ -235,7 +276,23 @@ function isNetworkError(error: any): boolean {
 // =============================================================================
 
 async function getAuthStatus(): Promise<ExtensionResponse> {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken, STORAGE_KEYS.user]);
+  let stored = await chrome.storage.local.get([
+    STORAGE_KEYS.authToken,
+    STORAGE_KEYS.authTokenExpiresAt,
+    STORAGE_KEYS.user,
+  ]);
+  const expiresAt = Number(stored[STORAGE_KEYS.authTokenExpiresAt] || 0);
+  if (
+    !stored[STORAGE_KEYS.authToken] ||
+    (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
+  ) {
+    await syncMystiraSession();
+    stored = await chrome.storage.local.get([
+      STORAGE_KEYS.authToken,
+      STORAGE_KEYS.user,
+    ]);
+  }
+
   return {
     success: true,
     data: {
@@ -245,18 +302,120 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
   };
 }
 
-async function handleLogin(email: string, password: string): Promise<ExtensionResponse> {
+async function syncMystiraSession(): Promise<ExtensionResponse> {
+  try {
+    const config = getConfig();
+    const sessionResponse = await fetch(
+      `${config.dashboardUrl}/api/auth/session`,
+      {
+        credentials: "include",
+        cache: "no-store",
+      },
+    );
+
+    if (!sessionResponse.ok) {
+      return {
+        success: false,
+        error: "Could not read the ConvoLens sign-in session.",
+      };
+    }
+
+    const session = await sessionResponse.json();
+    if (!session?.user || typeof session.idToken !== "string") {
+      return {
+        success: false,
+        error:
+          "Not authenticated. Sign in to ConvoLens with Mystira Identity first.",
+      };
+    }
+
+    const apiConfig = await getApiConfig();
+    const exchangeResponse = await fetch(
+      `${apiConfig.apiUrl}/api/auth/mystira/exchange`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getTracingHeaders(),
+        },
+        body: JSON.stringify({ idToken: session.idToken }),
+      },
+    );
+
+    if (!exchangeResponse.ok) {
+      return {
+        success: false,
+        error: "ConvoLens could not authorize the Mystira Identity session.",
+      };
+    }
+
+    const exchanged = await exchangeResponse.json();
+    if (
+      typeof exchanged.token !== "string" ||
+      typeof exchanged.expiresIn !== "number" ||
+      !exchanged.user
+    ) {
+      return {
+        success: false,
+        error: "ConvoLens returned an invalid extension session.",
+      };
+    }
+
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.authToken]: exchanged.token,
+      [STORAGE_KEYS.authTokenExpiresAt]:
+        Date.now() + exchanged.expiresIn * 1000,
+      [STORAGE_KEYS.user]: exchanged.user,
+    });
+    await notifyContentScripts(exchanged.token);
+
+    return {
+      success: true,
+      data: {
+        isAuthenticated: true,
+        user: exchanged.user,
+      },
+    };
+  } catch (error) {
+    console.error("[Background] Mystira session sync failed:", error);
+    return {
+      success: false,
+      error:
+        "Unable to connect the extension to the ConvoLens sign-in session.",
+    };
+  }
+}
+
+async function notifyContentScripts(token: string | null): Promise<void> {
+  const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+  await Promise.all(
+    tabs.map((tab) =>
+      tab.id
+        ? chrome.tabs
+            .sendMessage(tab.id, { action: "SET_AUTH_TOKEN", token })
+            .catch(() => undefined)
+        : Promise.resolve(),
+    ),
+  );
+}
+
+async function handleLogin(
+  email: string,
+  password: string,
+): Promise<ExtensionResponse> {
   try {
     const config = await getApiConfig();
 
     const response = await fetch(`${config.apiUrl}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Login failed' }));
+      const error = await response
+        .json()
+        .catch(() => ({ message: "Login failed" }));
       return { success: false, error: error.message };
     }
 
@@ -267,13 +426,7 @@ async function handleLogin(email: string, password: string): Promise<ExtensionRe
       [STORAGE_KEYS.user]: user,
     });
 
-    // Notify content scripts
-    const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
-    for (const tab of tabs) {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, { action: 'SET_AUTH_TOKEN', token }).catch(() => {});
-      }
-    }
+    await notifyContentScripts(token);
 
     // Process any pending uploads
     retryPendingUploads().catch(console.error);
@@ -285,15 +438,12 @@ async function handleLogin(email: string, password: string): Promise<ExtensionRe
 }
 
 async function handleLogout(): Promise<ExtensionResponse> {
-  await chrome.storage.local.remove([STORAGE_KEYS.authToken, STORAGE_KEYS.user]);
-
-  // Notify content scripts
-  const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
-  for (const tab of tabs) {
-    if (tab.id) {
-      chrome.tabs.sendMessage(tab.id, { action: 'SET_AUTH_TOKEN', token: null }).catch(() => {});
-    }
-  }
+  await chrome.storage.local.remove([
+    STORAGE_KEYS.authToken,
+    STORAGE_KEYS.authTokenExpiresAt,
+    STORAGE_KEYS.user,
+  ]);
+  await notifyContentScripts(null);
 
   return { success: true };
 }
@@ -308,9 +458,15 @@ async function getSettings(): Promise<ExtensionResponse> {
   return { success: true, data: settings };
 }
 
-async function updateSettings(newSettings: Partial<ExtensionSettings>): Promise<ExtensionResponse> {
+async function updateSettings(
+  newSettings: Partial<ExtensionSettings>,
+): Promise<ExtensionResponse> {
   const stored = await chrome.storage.local.get([STORAGE_KEYS.settings]);
-  const settings = { ...DEFAULT_SETTINGS, ...stored[STORAGE_KEYS.settings], ...newSettings };
+  const settings = {
+    ...DEFAULT_SETTINGS,
+    ...stored[STORAGE_KEYS.settings],
+    ...newSettings,
+  };
   await chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings });
   return { success: true, data: settings };
 }
@@ -350,18 +506,23 @@ async function queuePendingUpload(data: any): Promise<void> {
   }
 
   if (dropped > 0) {
-    console.warn(`[Background] Queue full. Dropped ${dropped} oldest upload(s) to make room.`);
+    console.warn(
+      `[Background] Queue full. Dropped ${dropped} oldest upload(s) to make room.`,
+    );
   }
 
   await chrome.storage.local.set({ [STORAGE_KEYS.pendingUploads]: pending });
-  console.log('[Background] Queued pending upload. Total:', pending.length);
+  console.log("[Background] Queued pending upload. Total:", pending.length);
 }
 
 async function retryPendingUploads(): Promise<ExtensionResponse> {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.pendingUploads, STORAGE_KEYS.authToken]);
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEYS.pendingUploads,
+    STORAGE_KEYS.authToken,
+  ]);
 
   if (!stored[STORAGE_KEYS.authToken]) {
-    return { success: false, error: 'Not authenticated' };
+    return { success: false, error: "Not authenticated" };
   }
 
   const pending: PendingUpload[] = stored[STORAGE_KEYS.pendingUploads] || [];
@@ -376,7 +537,7 @@ async function retryPendingUploads(): Promise<ExtensionResponse> {
   for (const upload of pending) {
     // Skip if too many attempts
     if (upload.attempts >= 5) {
-      console.warn('[Background] Dropping upload after max attempts');
+      console.warn("[Background] Dropping upload after max attempts");
       continue;
     }
 
@@ -396,7 +557,7 @@ async function retryPendingUploads(): Promise<ExtensionResponse> {
     }
 
     // Small delay between retries
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   await chrome.storage.local.set({ [STORAGE_KEYS.pendingUploads]: remaining });
@@ -418,7 +579,9 @@ async function clearPendingUploads(): Promise<ExtensionResponse> {
 
 async function trackExtractionHistory(chatData: any): Promise<void> {
   try {
-    const stored = await chrome.storage.local.get([STORAGE_KEYS.extractionHistory]);
+    const stored = await chrome.storage.local.get([
+      STORAGE_KEYS.extractionHistory,
+    ]);
     const history = stored[STORAGE_KEYS.extractionHistory] || [];
 
     history.unshift({
@@ -432,9 +595,11 @@ async function trackExtractionHistory(chatData: any): Promise<void> {
       history.pop();
     }
 
-    await chrome.storage.local.set({ [STORAGE_KEYS.extractionHistory]: history });
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.extractionHistory]: history,
+    });
   } catch (error) {
-    console.error('[Background] Failed to track history:', error);
+    console.error("[Background] Failed to track history:", error);
   }
 }
 
@@ -486,7 +651,7 @@ async function checkApiRateLimit(): Promise<boolean> {
 
 async function openDashboard(path?: string): Promise<ExtensionResponse> {
   const config = await getApiConfig();
-  const url = `${config.dashboardUrl}${path || '/dashboard'}`;
+  const url = `${config.dashboardUrl}${path || "/dashboard"}`;
   await chrome.tabs.create({ url });
   return { success: true };
 }
@@ -496,9 +661,9 @@ async function openDashboard(path?: string): Promise<ExtensionResponse> {
 // =============================================================================
 
 chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('[Background] Extension installed:', details.reason);
+  console.log("[Background] Extension installed:", details.reason);
 
-  if (details.reason === 'install') {
+  if (details.reason === "install") {
     // Initialize default settings
     await chrome.storage.local.set({
       [STORAGE_KEYS.settings]: DEFAULT_SETTINGS,
@@ -508,28 +673,30 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
     // Open welcome page
     const config = getConfig();
-    await chrome.tabs.create({ url: `${config.dashboardUrl}/extension-welcome` });
+    await chrome.tabs.create({
+      url: `${config.dashboardUrl}/extension-welcome`,
+    });
   }
 
-  if (details.reason === 'update') {
+  if (details.reason === "update") {
     // Process any pending uploads after update
     setTimeout(() => retryPendingUploads().catch(console.error), 5000);
   }
 });
 
 // Periodic sync of pending uploads
-chrome.alarms.create('syncPendingUploads', { periodInMinutes: 5 });
+chrome.alarms.create("syncPendingUploads", { periodInMinutes: 5 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'syncPendingUploads') {
+  if (alarm.name === "syncPendingUploads") {
     retryPendingUploads().catch(console.error);
   }
 });
 
 // Listen for network status changes
-self.addEventListener('online', () => {
-  console.log('[Background] Back online, syncing pending uploads');
+self.addEventListener("online", () => {
+  console.log("[Background] Back online, syncing pending uploads");
   retryPendingUploads().catch(console.error);
 });
 
-console.log('[Background] Service worker initialized');
+console.log("[Background] Service worker initialized");
