@@ -1,6 +1,6 @@
 # Convolens Mystira Azure Go-Live Plan
 
-Status: Deployed — operator extension smoke pending
+Status: Validated — durable intake deployment pending
 Recipe: Terraform
 Date: 2026-07-16
 Target subscription: bb4e3882-2079-4bab-8974-611bc0b8bb58
@@ -182,6 +182,16 @@ Do not rely on the Puppeteer WhatsApp Web client for production go-live unless a
 - App Service uses non-secret Key Vault references for the protected web settings. The deployment workflow writes their values directly from the protected GitHub environment into Key Vault, keeping the values out of Terraform configuration, plan output, and state.
 - Main CI run `30115398626` passed for merge commit `f267b0e`; focused API auth tests, web token-refresh tests, API/web builds, extension packaging, Prettier, targeted lint, and `git diff --check` also passed.
 - Pre-deployment public checks returned HTTP 200 for `/features`, `/api/runtime/auth-status` with `mystiraConfigured: true`, and the production API `/health`.
+
+### Durable Intake Validation Proof — 2026-07-25
+
+- Production target remains the approved subscription `bb4e3882-2079-4bab-8974-611bc0b8bb58`, tenant `9530cd32-9e33-47f0-9247-ed964730b580`, and South Africa North region.
+- API CI passed all 7 suites and 77 tests, including transaction, durable idempotency, user isolation, and SQLite migration coverage.
+- A production-mode runtime smoke proved add, list, restart, reload, stable duplicate detection, and database-backed `/ready` behavior.
+- Web production build, extension typecheck/build, focused web auth/session tests, Terraform format/validate, and workflow lint all passed.
+- Protected OIDC infrastructure plan run `30135613432` resolved the current production API image and target port before planning.
+- The reviewed production plan is limited to `4 to add, 1 to change, 0 to destroy`: PostgreSQL Flexible Server `B_Standard_B1ms`, the `convolens` database, its Azure-services firewall rule, the generated password in Key Vault, and an in-place API database/readiness configuration update.
+- Estimated recurring PostgreSQL compute and 32 GiB storage cost is approximately USD 20.53/month before taxes, excess backup, and egress, within the existing USD 75 resource-group budget.
 
 ### Deployment Proof — 2026-07-24
 
