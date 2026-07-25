@@ -120,6 +120,9 @@ jobs:
 
       - name: Terraform Plan
         id: plan
+        env:
+          TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+          TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
         run: |
           set -euo pipefail
           terraform -chdir=infra/terraform/env/${{ matrix.environment }} plan -no-color -out=tfplan | tee plan-output.txt
