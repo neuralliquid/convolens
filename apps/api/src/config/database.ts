@@ -5,6 +5,7 @@ import { User } from '../db/entities/User';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 import { CreateConversationIntake1753400000000 } from '../db/migrations/1753400000000-CreateConversationIntake';
+import { postgresNativeUuidOptions } from './postgres-uuid';
 import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -39,6 +40,7 @@ const sqliteOptions: DataSourceOptions = {
 
 const postgresOptions: DataSourceOptions = {
   ...commonOptions,
+  ...postgresNativeUuidOptions,
   type: 'postgres',
   host: process.env.DB_HOST,
   port: Number.parseInt(process.env.DB_PORT || '5432', 10),
