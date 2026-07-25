@@ -1,23 +1,10 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import multer, { FileFilterCallback } from 'multer';
+import { Router, Request } from 'express';
+import multer from 'multer';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { parseWhatsAppExport, isValidWhatsAppExport } from '../services/chat-export.service.js';
 import { logger } from '../utils/logger.js';
-import { deduplicationService } from '../services/deduplication.service.js';
 import { metrics } from '../services/metrics.service.js';
-
-declare global {
-  namespace Express {
-    interface Request {
-      file?: Express.Multer.File;
-      user?: {
-        id: string;
-        email: string;
-        name?: string;
-      };
-    }
-  }
-}
+import { conversationIntakeService } from '../services/conversation-intake.service.js';
 
 const router = Router();
 const upload = multer({
@@ -104,6 +91,7 @@ function isValidMessage(msg: unknown): msg is ExtractedMessage {
   if (typeof obj.text !== 'string') return false;
   if (typeof obj.sender !== 'string') return false;
   if (typeof obj.timestamp !== 'string') return false;
+  if (Number.isNaN(Date.parse(obj.timestamp))) return false;
 
   // Required boolean fields
   if (typeof obj.isOutgoing !== 'boolean') return false;
@@ -121,15 +109,15 @@ function isValidMessage(msg: unknown): msg is ExtractedMessage {
 }
 
 /**
- * Sanitize string to prevent XSS
+ * Bound connector-provided labels and remove control characters.
  */
 function sanitizeString(str: string, maxLength: number = 10000): string {
   return str
     .slice(0, maxLength)
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
+    .split('')
+    .map((character) => (character >= ' ' && character !== '\u007F' ? character : ' '))
+    .join('')
+    .trim();
 }
 
 // =============================================================================
@@ -141,141 +129,239 @@ function sanitizeString(str: string, maxLength: number = 10000): string {
  * @description Upload and process a WhatsApp chat export file
  * @access Private
  */
-router.post(
-  '/upload',
-  authenticateToken,
-  upload.single('file'),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-      }
-
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const fileContent = req.file.buffer.toString('utf-8');
-
-      // Validate it's a valid WhatsApp export
-      if (!isValidWhatsAppExport(fileContent)) {
-        return res.status(400).json({
-          error: 'Invalid file format. Please upload a valid WhatsApp chat export.'
-        });
-      }
-
-      const chatData = await parseWhatsAppExport(fileContent);
-
-      // TODO: Store chatData in the database
-      // await saveChatData(chatData, userId);
-
-      res.status(200).json({
-        message: 'File processed successfully',
-        data: {
-          messageCount: chatData.messages.length,
-          participants: chatData.participants,
-          dateRange: {
-            start: chatData.messages[0]?.timestamp,
-            end: chatData.messages[chatData.messages.length - 1]?.timestamp,
-          },
-        },
-      });
-    } catch (error) {
-      logger.error('Error processing chat export:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to process file';
-      res.status(500).json({ error: errorMessage });
+router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const fileContent = req.file.buffer.toString('utf-8');
+
+    // Validate it's a valid WhatsApp export
+    if (!isValidWhatsAppExport(fileContent)) {
+      return res.status(400).json({
+        error: 'Invalid file format. Please upload a valid WhatsApp chat export.',
+      });
+    }
+
+    const chatData = await parseWhatsAppExport(fileContent);
+
+    const saved = await conversationIntakeService.save({
+      userId,
+      sourcePlatform: 'whatsapp',
+      sourceKind: 'upload',
+      displayName: req.file.originalname.replace(/\.txt$/i, '') || 'WhatsApp export',
+      isGroup: chatData.participants.length > 2,
+      participants: chatData.participants,
+      provenance: {
+        originalFileName: req.file.originalname,
+        connectorVersion: chatData.metadata.version,
+        captureInitiatedBy: 'user',
+        consentBasis: 'user-selected-conversation',
+      },
+      messages: chatData.messages.map((message) => ({
+        senderName: message.sender,
+        content: message.content,
+        sentAt: message.timestamp,
+        isMedia: message.isMedia,
+      })),
+    });
+
+    return res.status(200).json({
+      message: saved.duplicate
+        ? 'Conversation was already received'
+        : 'File processed successfully',
+      duplicate: saved.duplicate,
+      data: {
+        intakeId: saved.conversation.id,
+        displayName: saved.conversation.displayName,
+        messageCount: chatData.messages.length,
+        participants: chatData.participants,
+        receivedAt: saved.conversation.receivedAt,
+        dashboardUrl: `/dashboard/conversations/${saved.conversation.id}`,
+        dateRange: {
+          start: chatData.messages[0]?.timestamp,
+          end: chatData.messages[chatData.messages.length - 1]?.timestamp,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Error processing chat export:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process file';
+    return res.status(500).json({ error: errorMessage });
   }
-);
+});
 
 /**
  * @route POST /api/chat-export/extension
  * @description Receive chat data from Chrome extension
  * @access Private
  */
-router.post(
-  '/extension',
-  authenticateToken,
-  async (req, res) => {
-    const startTime = Date.now();
-    let success = false;
-
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const chatData = req.body;
-
-      // Validate the chat data structure
-      if (!isValidExtensionChatData(chatData)) {
-        logger.warn(`Invalid extension chat data from user ${userId}`);
-        metrics.trackExtraction(false, 'chrome-extension');
-        return res.status(400).json({
-          error: 'Invalid chat data format. Please ensure the extension is up to date.'
-        });
-      }
-
-      // Additional validation: check message count matches array length
-      if (chatData.messageCount !== chatData.messages.length) {
-        logger.warn(`Message count mismatch from user ${userId}: claimed ${chatData.messageCount}, got ${chatData.messages.length}`);
-        metrics.trackExtraction(false, 'chrome-extension');
-        return res.status(400).json({
-          error: 'Message count mismatch'
-        });
-      }
-
-      // Check for duplicate extraction (same chat within 5 minute window)
-      const extractionHash = deduplicationService.generateExtractionHash(chatData.chatId, userId, 5);
-      if (deduplicationService.isDuplicate(extractionHash)) {
-        const cachedResult = deduplicationService.getCachedResult<{ chatId: string }>(extractionHash);
-        logger.info(`Duplicate extraction detected for chat ${chatData.chatId} from user ${userId}`);
-        return res.status(200).json({
-          message: 'Chat data already received (duplicate)',
-          data: cachedResult || { chatId: chatData.chatId },
-          duplicate: true,
-        });
-      }
-
-      // Sanitize chat name to prevent XSS
-      const sanitizedChatName = sanitizeString(chatData.chatName, 200);
-
-      logger.info(`Received extension chat data: ${sanitizedChatName} with ${chatData.messages.length} messages from user ${userId}`);
-
-      // TODO: Store chatData in the database
-      // await saveChatData(chatData, userId);
-
-      // TODO: Queue for AI summarization
-      // await queueForSummarization(chatData, userId);
-
-      const result = {
-        chatId: chatData.chatId,
-        chatName: sanitizedChatName,
-        messageCount: chatData.messages.length,
-        receivedAt: new Date().toISOString(),
-      };
-
-      // Mark as processed for deduplication
-      deduplicationService.markProcessed(extractionHash, result);
-
-      success = true;
-      metrics.trackExtraction(true, 'chrome-extension', chatData.messages.length);
-
-      res.status(200).json({
-        message: 'Chat data received successfully',
-        data: result,
-      });
-    } catch (error) {
-      logger.error('Error processing extension chat data:', error);
-      metrics.trackExtraction(false, 'chrome-extension');
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to process chat data';
-      res.status(500).json({ error: errorMessage });
+router.post('/extension', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
+
+    const chatData = req.body;
+
+    // Validate the chat data structure
+    if (!isValidExtensionChatData(chatData)) {
+      logger.warn(`Invalid extension chat data from user ${userId}`);
+      metrics.trackExtraction(false, 'chrome-extension');
+      return res.status(400).json({
+        error: 'Invalid chat data format. Please ensure the extension is up to date.',
+      });
+    }
+
+    // Additional validation: check message count matches array length
+    if (chatData.messageCount !== chatData.messages.length) {
+      logger.warn(
+        `Message count mismatch from user ${userId}: claimed ${chatData.messageCount}, got ${chatData.messages.length}`
+      );
+      metrics.trackExtraction(false, 'chrome-extension');
+      return res.status(400).json({
+        error: 'Message count mismatch',
+      });
+    }
+
+    // Limit the connector-provided label before logging and persistence.
+    const sanitizedChatName = sanitizeString(chatData.chatName, 200);
+
+    logger.info(
+      `Received extension chat data: ${sanitizedChatName} with ${chatData.messages.length} messages from user ${userId}`
+    );
+
+    const saved = await conversationIntakeService.save({
+      userId,
+      sourcePlatform: 'whatsapp',
+      sourceKind: 'extension',
+      sourceConversationId: chatData.chatId,
+      displayName: sanitizedChatName,
+      isGroup: chatData.isGroup,
+      participants: [...new Set(chatData.messages.map((message) => message.sender))],
+      sourceExtractedAt: new Date(chatData.extractedAt),
+      provenance: {
+        connectorVersion: chatData.version,
+        captureInitiatedBy: 'user',
+        consentBasis: 'user-selected-conversation',
+      },
+      messages: chatData.messages.map((message) => ({
+        sourceMessageId: message.id,
+        senderName: message.sender,
+        content: message.text,
+        sentAt: new Date(message.timestamp),
+        isOutgoing: message.isOutgoing,
+        isMedia: message.isMedia,
+        mediaType: message.mediaType,
+        replyToSourceMessageId: message.replyTo,
+      })),
+    });
+
+    const result = {
+      chatId: chatData.chatId,
+      intakeId: saved.conversation.id,
+      chatName: saved.conversation.displayName,
+      messageCount: chatData.messages.length,
+      receivedAt: saved.conversation.receivedAt,
+      dashboardUrl: `/dashboard/conversations/${saved.conversation.id}`,
+    };
+
+    metrics.trackExtraction(true, 'chrome-extension', chatData.messages.length);
+
+    return res.status(200).json({
+      message: saved.duplicate
+        ? 'Conversation was already received'
+        : 'Chat data received successfully',
+      data: result,
+      duplicate: saved.duplicate,
+    });
+  } catch (error) {
+    logger.error('Error processing extension chat data:', error);
+    metrics.trackExtraction(false, 'chrome-extension');
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process chat data';
+    return res.status(500).json({ error: errorMessage });
   }
-);
+});
+
+/**
+ * @route GET /api/chat-export
+ * @description List durable conversation intakes for the current user
+ * @access Private
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const conversations = await conversationIntakeService.listForUser(userId);
+    return res.json({ data: { conversations } });
+  } catch (error) {
+    logger.error('Error listing conversation intakes:', error);
+    return res.status(500).json({ error: 'Failed to load conversations' });
+  }
+});
+
+/**
+ * @route GET /api/chat-export/:id
+ * @description Get one durable conversation intake for the current user
+ * @access Private
+ */
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const conversation = await conversationIntakeService.getForUser(userId, req.params.id);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    return res.json({
+      data: {
+        conversation: {
+          id: conversation.id,
+          sourcePlatform: conversation.sourcePlatform,
+          sourceKind: conversation.sourceKind,
+          sourceConversationId: conversation.sourceConversationId,
+          displayName: conversation.displayName,
+          isGroup: conversation.isGroup,
+          participants: conversation.participants || [],
+          status: conversation.status,
+          errorCode: conversation.errorCode,
+          sourceExtractedAt: conversation.sourceExtractedAt,
+          provenance: conversation.provenance,
+          receivedAt: conversation.receivedAt,
+          updatedAt: conversation.updatedAt,
+          messages: conversation.messages.map((message) => ({
+            id: message.id,
+            position: message.position,
+            sourceMessageId: message.sourceMessageId,
+            senderName: message.senderName,
+            content: message.content,
+            sentAt: message.sentAt,
+            isOutgoing: message.isOutgoing,
+            isMedia: message.isMedia,
+            mediaType: message.mediaType,
+            replyToSourceMessageId: message.replyToSourceMessageId,
+          })),
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Error loading conversation intake:', error);
+    return res.status(500).json({ error: 'Failed to load conversation' });
+  }
+});
 
 export { router as default };

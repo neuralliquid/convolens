@@ -1,25 +1,26 @@
-import { 
-  Entity, 
-  PrimaryGeneratedColumn, 
-  Column, 
-  CreateDateColumn, 
-  UpdateDateColumn, 
-  BeforeInsert, 
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  BeforeInsert,
   BeforeUpdate,
-  OneToMany 
+  OneToMany,
 } from 'typeorm';
 import type { Relation } from 'typeorm';
 import bcrypt from 'bcryptjs';
 import { Group } from './Group';
 import { Message } from './Message';
 import { Exclude } from 'class-transformer';
+import { dateColumnType } from '../column-types';
 
 export enum UserRole {
   ADMIN = 'admin',
   USER = 'user',
 }
 
-@Entity()
+@Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -44,16 +45,16 @@ export class User {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: dateColumnType, nullable: true })
   lastLogin?: Date;
 
-  @OneToMany(() => Group, group => group.owner)
+  @OneToMany(() => Group, (group) => group.owner)
   ownedGroups: Relation<Group[]>;
 
-  @OneToMany(() => Group, group => group.members)
+  @OneToMany(() => Group, (group) => group.members)
   groups: Relation<Group[]>;
 
-  @OneToMany(() => Message, message => message.sender)
+  @OneToMany(() => Message, (message) => message.sender)
   messages: Relation<Message[]>;
 
   @CreateDateColumn()

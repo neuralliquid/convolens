@@ -1,16 +1,17 @@
-import { 
-  Entity, 
-  PrimaryGeneratedColumn, 
-  Column, 
-  ManyToOne, 
-  CreateDateColumn, 
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
   UpdateDateColumn,
   JoinColumn,
-  Index
+  Index,
 } from 'typeorm';
 import type { Relation } from 'typeorm';
 import { Group } from './Group';
 import { User } from './User';
+import { dateColumnType } from '../column-types';
 
 export interface MessageMetadata {
   whatsappMessageId?: string;
@@ -51,9 +52,9 @@ export class Message {
   @Column({ type: 'simple-json', nullable: true })
   metadata?: MessageMetadata;
 
-  @ManyToOne(() => Group, group => group.messages, { 
+  @ManyToOne(() => Group, (group) => group.messages, {
     onDelete: 'CASCADE',
-    nullable: false
+    nullable: false,
   })
   @JoinColumn({ name: 'groupId' })
   group: Relation<Group>;
@@ -67,6 +68,6 @@ export class Message {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: dateColumnType, nullable: true })
   deletedAt?: Date;
 }

@@ -1,0 +1,45 @@
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { DataSource } from 'typeorm';
+import { CreateConversationIntake1753400000000 } from '../1753400000000-CreateConversationIntake';
+
+describe('CreateConversationIntake migration', () => {
+  let dataSource: DataSource;
+
+  beforeAll(async () => {
+    dataSource = new DataSource({
+      type: 'sqlite',
+      database: ':memory:',
+      synchronize: false,
+      migrationsRun: false,
+      entities: [],
+      migrations: [CreateConversationIntake1753400000000],
+    });
+    await dataSource.initialize();
+    await dataSource.runMigrations();
+  });
+
+  afterAll(async () => {
+    await dataSource.destroy();
+  });
+
+  it('creates durable intake and message tables with the idempotency index', async () => {
+    const queryRunner = dataSource.createQueryRunner();
+    const intakeTable = await queryRunner.getTable('conversation_intakes');
+    const messageTable = await queryRunner.getTable('conversation_messages');
+    await queryRunner.release();
+
+    expect(intakeTable).toBeDefined();
+    expect(messageTable).toBeDefined();
+    expect(
+      intakeTable?.indices.some(
+        (index) => index.name === 'UQ_conversation_intakes_user_content_hash' && index.isUnique
+      )
+    ).toBe(true);
+    expect(
+      messageTable?.foreignKeys.some(
+        (foreignKey) =>
+          foreignKey.name === 'FK_conversation_messages_intake' && foreignKey.onDelete === 'CASCADE'
+      )
+    ).toBe(true);
+  });
+});

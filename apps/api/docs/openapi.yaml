@@ -164,6 +164,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/chat-export:
+    get:
+      summary: List stored conversation intakes
+      description: List up to 100 durable conversation records for the signed-in user
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User-scoped conversation list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      conversations:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ConversationSummary'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/chat-export/{id}:
+    get:
+      summary: Get a stored conversation intake
+      description: Load one durable conversation and its messages for the signed-in user
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User-scoped conversation detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      conversation:
+                        $ref: '#/components/schemas/ConversationDetail'
+        '404':
+          description: Conversation not found for this user
+
   /api/chat-export/upload:
     post:
       summary: Upload chat export file
@@ -425,9 +486,16 @@ components:
       properties:
         message:
           type: string
+        duplicate:
+          type: boolean
         data:
           type: object
           properties:
+            intakeId:
+              type: string
+              format: uuid
+            displayName:
+              type: string
             messageCount:
               type: integer
             participants:
@@ -443,6 +511,8 @@ components:
                 end:
                   type: string
                   format: date-time
+            dashboardUrl:
+              type: string
 
     ExtensionChatData:
       type: object
@@ -516,6 +586,9 @@ components:
           properties:
             chatId:
               type: string
+            intakeId:
+              type: string
+              format: uuid
             chatName:
               type: string
             messageCount:
@@ -523,8 +596,75 @@ components:
             receivedAt:
               type: string
               format: date-time
+            dashboardUrl:
+              type: string
         duplicate:
           type: boolean
+
+    ConversationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourcePlatform:
+          type: string
+        sourceKind:
+          type: string
+          enum: [extension, upload]
+        displayName:
+          type: string
+        isGroup:
+          type: boolean
+        participants:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [received]
+        messageCount:
+          type: integer
+        sourceExtractedAt:
+          type: string
+          format: date-time
+        receivedAt:
+          type: string
+          format: date-time
+
+    ConversationDetail:
+      allOf:
+        - $ref: '#/components/schemas/ConversationSummary'
+        - type: object
+          properties:
+            provenance:
+              type: object
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConversationMessage'
+
+    ConversationMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        senderName:
+          type: string
+        content:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+        isOutgoing:
+          type: boolean
+        isMedia:
+          type: boolean
+        mediaType:
+          type: string
 
     SelectorResponse:
       type: object

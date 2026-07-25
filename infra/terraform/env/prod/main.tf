@@ -390,7 +390,7 @@ resource "azurerm_container_app" "api" {
       readiness_probe {
         transport               = "HTTP"
         port                    = var.api_target_port
-        path                    = "/health"
+        path                    = "/ready"
         interval_seconds        = 10
         timeout                 = 5
         failure_count_threshold = 6

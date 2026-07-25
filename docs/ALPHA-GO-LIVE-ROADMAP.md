@@ -129,9 +129,9 @@ accumulated, governed memory and outcome history.
 | WhatsApp extension identity | Branded icon set and clearer alpha purpose are implemented locally. | Package and installation proof required. |
 | WhatsApp selected-chat capture | Extraction and authenticated POST work. | Keep the consent boundary explicit. |
 | Timeout/offline behavior | Blocking alerts and raw abort text are replaced locally with inline status and a single persistent retry queue. | Must be tested against a real cold API revision. |
-| Durable conversation storage | The API routes still contain `TODO` storage calls. A 200 response does not currently prove durable persistence. | **Stop-ship for a functional alpha.** |
+| Durable conversation storage | Implemented in PR #120 with transactional records/messages, stable content-hash idempotency, user-scoped list/detail, and a PostgreSQL production plan. Production deployment and live restart/reload proof remain pending. | Code-complete; keep the functional alpha gate closed until production proof passes. |
 | Summary generation from intake | The extension intake route does not queue or generate a summary. | **Stop-ship if the product promises summaries.** |
-| Conversation history | Dashboard currently presents an honest empty state, not user data. | Add real list/reload proof before cohort opening. |
+| Conversation history | PR #120 renders stored conversations and message detail from user-scoped APIs. | Verify the production web token exchange and reload journey before cohort opening. |
 | Extension distribution | Direct to invited testers; no self-serve public install path. | Acceptable for a small invite-only cohort only. |
 | Privacy, retention, deletion | No complete public policy and in-product deletion flow found. | **Stop-ship for external cohort data.** |
 | Monitoring | API health exists; end-to-end intake/auth alerting is not yet proven. | Add business-flow telemetry and alerts before cohort opening. |

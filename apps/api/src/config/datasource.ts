@@ -1,8 +1,10 @@
-import { DataSource } from 'typeorm';
-import type { DataSourceOptions } from 'typeorm';
+import { DataSource, type DataSourceOptions } from 'typeorm';
 import { User } from '../db/entities/User';
 import { Group } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
+import { ConversationIntake } from '../db/entities/ConversationIntake';
+import { ConversationMessage } from '../db/entities/ConversationMessage';
+import { CreateConversationIntake1753400000000 } from '../db/migrations/1753400000000-CreateConversationIntake';
 import { logger } from '../utils/logger';
 
 // Load environment variables
@@ -11,18 +13,20 @@ dotenv.config();
 
 const isProduction = process.env.NODE_ENV === 'production';
 const dbType = process.env.DB_TYPE || 'sqlite';
-const migrationsRun = process.env.DB_MIGRATIONS_RUN === undefined
-  ? isProduction
-  : process.env.DB_MIGRATIONS_RUN === 'true';
+const migrationsRun =
+  process.env.DB_MIGRATIONS_RUN === undefined
+    ? isProduction
+    : process.env.DB_MIGRATIONS_RUN === 'true';
 
 const commonOptions = {
   synchronize: !isProduction && process.env.DB_SYNCHRONIZE !== 'false',
-  logging: process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development'
-    ? 'all'
-    : ['error', 'warn'],
+  logging:
+    process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development'
+      ? 'all'
+      : ['error', 'warn'],
   logger: isProduction ? 'file' : 'debug',
-  entities: [User, Group, Message],
-  migrations: ['dist/db/migrations/*.js'],
+  entities: [User, Group, Message, ConversationIntake, ConversationMessage],
+  migrations: [CreateConversationIntake1753400000000],
   migrationsRun,
   migrationsTableName: 'migrations',
   cache: {
@@ -50,6 +54,12 @@ const postgresOptions: DataSourceOptions = {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'convolens',
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  extra: {
+    max: Number.parseInt(process.env.DB_POOL_MAX || '10', 10),
+    connectionTimeoutMillis: Number.parseInt(process.env.DB_CONNECTION_TIMEOUT_MS || '5000', 10),
+    idleTimeoutMillis: Number.parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000', 10),
+    options: '-c statement_timeout=30000',
+  },
 };
 
 const getDataSourceOptions = (): DataSourceOptions => {
