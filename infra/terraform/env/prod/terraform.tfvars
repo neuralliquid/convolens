@@ -10,7 +10,7 @@ custom_hostname = "convolens.neuralliquid.ai"
 
 enable_budget_alerts      = true
 enable_container_registry = true
-enable_postgres           = false
+enable_postgres           = true
 enable_redis              = false
 
 admin_email           = ""

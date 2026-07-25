@@ -9,11 +9,12 @@ import {
   JoinTable,
   JoinColumn,
   ManyToMany,
-  Index
+  Index,
 } from 'typeorm';
 import type { Relation } from 'typeorm';
 import { Message } from './Message';
 import { User } from './User';
+import { dateColumnType } from '../column-types';
 
 export interface GroupMetadata {
   whatsappGroupId?: string;
@@ -52,22 +53,22 @@ export class Group {
   @Column({ type: 'boolean', default: false })
   isArchived: boolean;
 
-  @ManyToOne(() => User, user => user.ownedGroups, { onDelete: 'SET NULL', nullable: true })
+  @ManyToOne(() => User, (user) => user.ownedGroups, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'ownerId' })
   owner: Relation<User>;
 
   @Column({ type: 'uuid', nullable: true })
   ownerId?: string;
 
-  @ManyToMany(() => User, user => user.groups)
+  @ManyToMany(() => User, (user) => user.groups)
   @JoinTable({
     name: 'group_members',
     joinColumn: { name: 'groupId', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'userId' }
+    inverseJoinColumn: { name: 'userId' },
   })
   members: Relation<User[]>;
 
-  @OneToMany(() => Message, message => message.group, { cascade: true })
+  @OneToMany(() => Message, (message) => message.group, { cascade: true })
   messages: Relation<Message[]>;
 
   @Column({ type: 'simple-json', nullable: true })
@@ -79,6 +80,6 @@ export class Group {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: dateColumnType, nullable: true })
   archivedAt?: Date;
 }

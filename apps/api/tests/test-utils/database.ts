@@ -6,16 +6,14 @@ export async function setupTestDatabase(): Promise<DataSource> {
   const testDataSource = new DataSource({
     ...AppDataSource.options,
     database: ':memory:', // Use in-memory SQLite for tests
-    synchronize: true,    // Auto-create schema
-    dropSchema: true,     // Drop schema each time connection is set up
-    logging: false,       // Disable logging for tests
+    synchronize: true, // Auto-create schema
+    dropSchema: true, // Drop schema each time connection is set up
+    migrationsRun: false,
+    logging: false, // Disable logging for tests
   });
 
   await testDataSource.initialize();
-  
-  // Run migrations if needed
-  await testDataSource.runMigrations();
-  
+
   return testDataSource;
 }
 
@@ -39,27 +37,27 @@ export async function resetTestDatabase(): Promise<void> {
     await setupTestDatabase();
     return;
   }
-  
+
   // Get all entities
   const entities = AppDataSource.entityMetadatas;
-  
+
   // Create a query runner
   const queryRunner = AppDataSource.createQueryRunner();
-  
+
   try {
     await queryRunner.startTransaction();
-    
+
     // Disable foreign key checks
     await queryRunner.query('PRAGMA foreign_keys = OFF');
-    
+
     // Truncate all tables
     for (const entity of entities) {
       await queryRunner.query(`DELETE FROM ${entity.tableName}`);
     }
-    
+
     // Re-enable foreign key checks
     await queryRunner.query('PRAGMA foreign_keys = ON');
-    
+
     await queryRunner.commitTransaction();
   } catch (err) {
     await queryRunner.rollbackTransaction();

@@ -22,14 +22,15 @@ export default function ImportChatPage() {
   const [activeTab, setActiveTab] = useState("file");
 
   const { uploadFile } = useFileUpload("/api/chat-export/upload", {
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast({
         title: "Conversation received",
-        description: "Your WhatsApp export passed the alpha intake checks.",
+        description: result?.duplicate
+          ? "This conversation was already in your workspace."
+          : "Your WhatsApp export is now stored in your alpha workspace.",
         variant: "default",
       });
-      // Redirect to chat view or dashboard
-      router.push("/dashboard");
+      router.push(result?.data?.dashboardUrl || "/dashboard");
     },
     onError: (error) => {
       console.error("Upload error:", error);

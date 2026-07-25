@@ -1,5 +1,5 @@
+import { randomUUID } from 'node:crypto';
 import { logger } from '../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface ChatMessage {
   id: string;
@@ -22,10 +22,12 @@ export interface ChatExportData {
 
 // Regular expression to match WhatsApp message format:
 // [DD/MM/YYYY, HH:MM:SS] Sender: Message
-const MESSAGE_REGEX = /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(?:AM|PM)?\]\s(.+?):\s(.+)$/i;
+const MESSAGE_REGEX =
+  /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(?:AM|PM)?\]\s(.+?):\s(.+)$/i;
 
 // Alternative format for system messages
-const SYSTEM_MESSAGE_REGEX = /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(?:AM|PM)?\]\s(.+)$/i;
+const SYSTEM_MESSAGE_REGEX =
+  /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(?:AM|PM)?\]\s(.+)$/i;
 
 // Media indicator in WhatsApp exports
 const MEDIA_INDICATOR = '<Media omitted>';
@@ -35,11 +37,9 @@ const MEDIA_INDICATOR = '<Media omitted>';
  * @param fileContent The raw text content of the WhatsApp export file
  * @returns Parsed chat data
  */
-export async function parseWhatsAppExport(
-  fileContent: string
-): Promise<ChatExportData> {
+export async function parseWhatsAppExport(fileContent: string): Promise<ChatExportData> {
   try {
-    const lines = fileContent.split('\n').filter(line => line.trim() !== '');
+    const lines = fileContent.split('\n').filter((line) => line.trim() !== '');
     const participants = new Set<string>();
     const messages: ChatMessage[] = [];
 
@@ -77,7 +77,14 @@ export async function parseWhatsAppExport(
         if (isPM && hours24 < 12) hours24 += 12;
         if (!isPM && hours24 === 12) hours24 = 0;
 
-        const timestamp = new Date(yearFull, month - 1, day, hours24, parseInt(minutes, 10), parseInt(seconds, 10));
+        const timestamp = new Date(
+          yearFull,
+          month - 1,
+          day,
+          hours24,
+          parseInt(minutes, 10),
+          parseInt(seconds, 10)
+        );
 
         if (isNaN(timestamp.getTime())) {
           logger.warn(`Invalid timestamp in line: ${line}`);
@@ -100,12 +107,12 @@ export async function parseWhatsAppExport(
 
         // Add the message
         messages.push({
-          id: uuidv4(),
+          id: randomUUID(),
           timestamp,
           sender: isSystemMessage ? 'System' : trimmedSender,
           content: isMedia ? MEDIA_INDICATOR : trimmedContent,
           isMedia,
-          mediaUrl: isMedia ? undefined : undefined
+          mediaUrl: isMedia ? undefined : undefined,
         });
       } catch (error) {
         logger.warn(`Error processing line: ${line}`, error);
@@ -122,8 +129,8 @@ export async function parseWhatsAppExport(
       metadata: {
         exportDate: new Date(),
         platform: 'whatsapp',
-        version: '1.0.0'
-      }
+        version: '1.0.0',
+      },
     };
   } catch (error) {
     logger.error('Error parsing WhatsApp export:', error);
@@ -145,5 +152,5 @@ export function isValidWhatsAppExport(content: string): boolean {
   ];
 
   // Check if any of the patterns match
-  return patterns.some(pattern => pattern.test(content));
+  return patterns.some((pattern) => pattern.test(content));
 }

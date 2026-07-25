@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@convolens/contexts";
 import {
@@ -9,6 +10,7 @@ import {
   FileText,
   MessageSquare,
   Sparkles,
+  Users,
 } from "lucide-react";
 import PageWrapper from "../page-wrapper";
 import { PageHeader } from "@/components/ui/page-header";
@@ -36,15 +38,66 @@ const onboardingSteps = [
   },
 ];
 
+interface ConversationSummary {
+  id: string;
+  sourcePlatform: string;
+  sourceKind: "extension" | "upload";
+  displayName: string;
+  isGroup: boolean;
+  participants: string[];
+  status: string;
+  messageCount: number;
+  receivedAt: string;
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+  const [conversationError, setConversationError] = useState<string>();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace("/login?redirectTo=/dashboard");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+
+    fetch("/api/chat-export", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Failed to load conversations");
+        }
+        return payload as { data?: { conversations?: ConversationSummary[] } };
+      })
+      .then((payload) => {
+        if (!cancelled) {
+          setConversations(payload.data?.conversations || []);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setConversationError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load conversations",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingConversations(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (
@@ -84,10 +137,14 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-sm font-semibold uppercase tracking-wider text-green-800 dark:text-green-300">
-                First-time setup
+                {conversations.length > 0
+                  ? "Alpha workspace"
+                  : "First-time setup"}
               </p>
               <h2 className="mt-1 text-xl font-bold text-foreground">
-                Send your first conversation in three steps
+                {conversations.length > 0
+                  ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"} received`
+                  : "Send your first conversation in three steps"}
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                 This is an alpha workspace. We will show confirmed intake
@@ -111,32 +168,83 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {conversationError ? (
+        <section className="mt-8 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">
+          <p className="font-semibold">Conversations could not be loaded</p>
+          <p className="mt-1">{conversationError}</p>
+        </section>
+      ) : null}
+
       <section className="mt-8 grid gap-6 md:grid-cols-2">
-        <StyledCard
-          title="No conversations yet"
-          icon={<FileText className="h-6 w-6" />}
-        >
-          <p className="text-muted-foreground">
-            Your real conversation activity will appear here after a successful
-            intake. ConvoLens does not seed this dashboard with demo records.
-          </p>
-        </StyledCard>
-        <StyledCard
-          title="Ready when you are"
-          icon={<MessageSquare className="h-6 w-6" />}
-        >
-          <p className="mb-4 text-muted-foreground">
-            Choose the browser extension or a WhatsApp export file on the next
-            screen.
-          </p>
-          <Button
-            className="w-full"
-            variant="primary"
-            onClick={() => router.push("/dashboard/import")}
+        {isLoadingConversations ? (
+          <StyledCard
+            title="Loading your conversations"
+            icon={<MessageSquare className="h-6 w-6" />}
           >
-            Choose an intake method
-          </Button>
-        </StyledCard>
+            <p className="text-muted-foreground">
+              Checking your durable alpha workspace…
+            </p>
+          </StyledCard>
+        ) : conversations.length > 0 ? (
+          conversations.map((conversation) => (
+            <StyledCard
+              key={conversation.id}
+              title={conversation.displayName}
+              icon={
+                conversation.isGroup ? (
+                  <Users className="h-6 w-6" />
+                ) : (
+                  <MessageSquare className="h-6 w-6" />
+                )
+              }
+            >
+              <p className="text-sm text-muted-foreground">
+                {conversation.messageCount} messages ·{" "}
+                {conversation.participants.length} participants ·{" "}
+                {conversation.sourceKind === "extension"
+                  ? "Browser extension"
+                  : "Chat export"}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Received {new Date(conversation.receivedAt).toLocaleString()}
+              </p>
+              <Button asChild className="mt-4 w-full" variant="outline">
+                <Link href={`/dashboard/conversations/${conversation.id}`}>
+                  View conversation
+                </Link>
+              </Button>
+            </StyledCard>
+          ))
+        ) : (
+          <>
+            <StyledCard
+              title="No conversations yet"
+              icon={<FileText className="h-6 w-6" />}
+            >
+              <p className="text-muted-foreground">
+                Your real conversation activity will appear here after a
+                successful intake. ConvoLens does not seed this dashboard with
+                demo records.
+              </p>
+            </StyledCard>
+            <StyledCard
+              title="Ready when you are"
+              icon={<MessageSquare className="h-6 w-6" />}
+            >
+              <p className="mb-4 text-muted-foreground">
+                Choose the browser extension or a WhatsApp export file on the
+                next screen.
+              </p>
+              <Button
+                className="w-full"
+                variant="primary"
+                onClick={() => router.push("/dashboard/import")}
+              >
+                Choose an intake method
+              </Button>
+            </StyledCard>
+          </>
+        )}
       </section>
     </PageWrapper>
   );

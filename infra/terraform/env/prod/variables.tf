@@ -70,7 +70,7 @@ variable "postgres_backup_retention_days" {
 
 variable "enable_postgres" {
   type        = bool
-  description = "Provision PostgreSQL Flexible Server. Keep false for the internal eval apply to minimize recurring cost."
+  description = "Provision PostgreSQL Flexible Server as the durable conversation source of truth."
   default     = false
 }
 

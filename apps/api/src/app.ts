@@ -12,6 +12,7 @@ import { correlationMiddleware } from './middleware/correlation.js';
 import { metricsMiddleware, metrics } from './services/metrics.service.js';
 import { idempotencyMiddleware, deduplicationService } from './services/deduplication.service.js';
 import { getAllCircuitBreakerStats } from './services/circuit-breaker.service.js';
+import { AppDataSource } from './config/database.js';
 
 const { json, urlencoded } = bodyParser;
 
@@ -26,11 +27,13 @@ export const createApp = (): Application => {
 
   // Security middleware
   app.use(helmet());
-  app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-    exposedHeaders: ['x-correlation-id', 'x-request-id'],
-  }));
+  app.use(
+    cors({
+      origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+      credentials: true,
+      exposedHeaders: ['x-correlation-id', 'x-request-id'],
+    })
+  );
   app.use(json());
   app.use(urlencoded({ extended: true }));
 
@@ -46,6 +49,27 @@ export const createApp = (): Application => {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
     });
+  });
+
+  app.get('/ready', async (_req: Request, res: Response) => {
+    try {
+      if (!AppDataSource.isInitialized) {
+        throw new Error('Database is not initialized');
+      }
+      await AppDataSource.query('SELECT 1');
+      return res.status(200).json({
+        status: 'ready',
+        database: 'ok',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error('Readiness check failed:', error);
+      return res.status(503).json({
+        status: 'not-ready',
+        database: 'unavailable',
+        timestamp: new Date().toISOString(),
+      });
+    }
   });
 
   // Metrics endpoint (for monitoring)
@@ -85,7 +109,7 @@ export const createApp = (): Application => {
     logger.error('Error:', err);
     res.status(500).json({
       message: 'Internal Server Error',
-      error: process.env.NODE_ENV === 'development' ? err.message : {}
+      error: process.env.NODE_ENV === 'development' ? err.message : {},
     });
   });
 

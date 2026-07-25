@@ -91,7 +91,7 @@ jobs:
             PORT=3001 \
             DB_TYPE=sqlite \
             DATABASE_PATH="$DB_PATH" \
-            DB_MIGRATIONS_RUN=false \
+            DB_MIGRATIONS_RUN=true \
             node apps/api/dist/index.js > api-startup.log 2>&1 &
           API_PID=$!
           for attempt in {1..30}; do
@@ -154,6 +154,19 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
 
+      - name: Verify PostgreSQL SKU Availability
+        run: |
+          set -euo pipefail
+          AVAILABLE_SKUS=$(az postgres flexible-server list-skus \
+            --location southafricanorth \
+            --query '[].name' \
+            -o tsv)
+          if ! grep -Eq '(^|_)Standard_B1ms$' <<< "$AVAILABLE_SKUS"; then
+            echo "PostgreSQL Flexible Server SKU Standard_B1ms is not available in southafricanorth." >&2
+            echo "$AVAILABLE_SKUS"
+            exit 1
+          fi
+
       - name: Resolve Base API Runtime
         id: base-api
         run: |
@@ -215,15 +228,18 @@ jobs:
               --output none
           fi
 
-      - name: Terraform Apply Base Infrastructure
+      - name: Terraform Plan Base Infrastructure
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
         run: |
-          terraform -chdir=infra/terraform/env/prod apply \
-            -auto-approve \
+          terraform -chdir=infra/terraform/env/prod plan \
+            -out=base.tfplan \
             -var "container_image_api=${{ steps.base-api.outputs.image }}" \
             -var "api_target_port=${{ steps.base-api.outputs.target-port }}"
+
+      - name: Terraform Apply Base Infrastructure
+        run: terraform -chdir=infra/terraform/env/prod apply base.tfplan
 
       - name: Ensure Web Secrets In Key Vault
         env:
@@ -273,15 +289,18 @@ jobs:
             .
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
-      - name: Terraform Apply API Image
+      - name: Terraform Plan API Image
         run: |
-          terraform -chdir=infra/terraform/env/prod apply \
-            -auto-approve \
+          terraform -chdir=infra/terraform/env/prod plan \
+            -out=api-image.tfplan \
             -var "container_image_api=${{ steps.api-image.outputs.image }}" \
             -var "api_target_port=3001"
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+
+      - name: Terraform Apply API Image
+        run: terraform -chdir=infra/terraform/env/prod apply api-image.tfplan
 
       - name: Rebuild Web With Production API URL
         timeout-minutes: 15
@@ -383,7 +402,7 @@ jobs:
             curl "${curl_args[@]}" "$url" >/dev/null
           }
 
-          smoke "" "${{ steps.tf.outputs.api-url }}/health"
+          smoke "" "${{ steps.tf.outputs.api-url }}/ready"
           smoke "-I" "${{ steps.tf.outputs.web-url }}"
           for attempt in {1..12}; do
             if curl -fsS --max-time 30 "${{ steps.tf.outputs.web-url }}/api/runtime/auth-status" | jq -e '.mystiraConfigured == true' >/dev/null; then
