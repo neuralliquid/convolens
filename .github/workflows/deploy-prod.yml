@@ -159,7 +159,7 @@ jobs:
           set -euo pipefail
           AVAILABLE_SKUS=$(az postgres flexible-server list-skus \
             --location southafricanorth \
-            --query '[].name' \
+            --query '[].supportedServerEditions[].supportedServerSkus[].name' \
             -o tsv)
           if ! grep -Eq '(^|_)Standard_B1ms$' <<< "$AVAILABLE_SKUS"; then
             echo "PostgreSQL Flexible Server SKU Standard_B1ms is not available in southafricanorth." >&2
