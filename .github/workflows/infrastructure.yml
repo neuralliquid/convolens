@@ -118,6 +118,31 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=infra/terraform/env/${{ matrix.environment }} init -backend-config=backend.hcl
 
+      - name: Resolve Current Production API Runtime
+        id: prod-api
+        if: matrix.environment == 'prod'
+        run: |
+          set -euo pipefail
+          DEFAULT_IMAGE="mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+          CURRENT_IMAGE=$(az containerapp show \
+            --resource-group nl-prod-convolens-rg \
+            --name nl-prod-convolens-api \
+            --query 'properties.template.containers[0].image' \
+            -o tsv 2>/dev/null || true)
+          CURRENT_PORT=$(az containerapp show \
+            --resource-group nl-prod-convolens-rg \
+            --name nl-prod-convolens-api \
+            --query 'properties.configuration.ingress.targetPort' \
+            -o tsv 2>/dev/null || true)
+          if [ -z "$CURRENT_IMAGE" ]; then
+            CURRENT_IMAGE="$DEFAULT_IMAGE"
+          fi
+          if [ "$CURRENT_IMAGE" = "$DEFAULT_IMAGE" ] || [ -z "$CURRENT_PORT" ]; then
+            CURRENT_PORT="80"
+          fi
+          echo "image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "target-port=$CURRENT_PORT" >> "$GITHUB_OUTPUT"
+
       - name: Terraform Plan
         id: plan
         env:
@@ -125,7 +150,17 @@ jobs:
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
         run: |
           set -euo pipefail
-          terraform -chdir=infra/terraform/env/${{ matrix.environment }} plan -no-color -out=tfplan | tee plan-output.txt
+          PLAN_ARGS=()
+          if [ "${{ matrix.environment }}" = "prod" ]; then
+            PLAN_ARGS+=(
+              -var "container_image_api=${{ steps.prod-api.outputs.image }}"
+              -var "api_target_port=${{ steps.prod-api.outputs.target-port }}"
+            )
+          fi
+          terraform -chdir=infra/terraform/env/${{ matrix.environment }} plan \
+            -no-color \
+            -out=tfplan \
+            "${PLAN_ARGS[@]}" | tee plan-output.txt
           {
             echo "plan<<EOF"
             cat plan-output.txt
