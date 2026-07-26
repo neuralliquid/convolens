@@ -17,6 +17,7 @@ describe("external surface containment", () => {
       "components/layouts/footer/index.tsx",
       "app/layout.tsx",
       "app/login/page.tsx",
+      "app/extension-welcome/page.tsx",
       "app/dashboard/page.tsx",
       "app/dashboard/import/page.tsx",
     ]
@@ -44,6 +45,20 @@ describe("external surface containment", () => {
   it("does not ship the developer theme-test route", () => {
     expect(fs.existsSync(path.join(appRoot, "app/test-theme/page.tsx"))).toBe(
       false,
+    );
+  });
+
+  it("ships the welcome route opened on extension installation", () => {
+    const extensionBackground = readRepo(
+      "apps/chrome-extension/src/background.ts",
+    );
+
+    expect(extensionBackground).toMatch(/\/extension-welcome/);
+    expect(
+      fs.existsSync(path.join(appRoot, "app/extension-welcome/page.tsx")),
+    ).toBe(true);
+    expect(read("app/extension-welcome/page.tsx")).toMatch(
+      /ConvoLens is installed/i,
     );
   });
 
