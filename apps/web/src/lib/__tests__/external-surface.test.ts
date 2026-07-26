@@ -77,7 +77,7 @@ describe("external surface containment", () => {
       "components/layouts/navigation/navigation.module.css",
     );
 
-    expect(globalStyles).toMatch(/--font-sans:\s*"Segoe UI", Roboto/);
+    expect(globalStyles).toMatch(/--font-sans:\s*Arial, Helvetica/);
     expect(globalStyles).toMatch(/body\s*{[^}]*font-family:\s*var\(--font-sans\)/s);
     expect(globalStyles).toMatch(/button,[\s\S]*textarea\s*{\s*font:\s*inherit/);
     expect(navigationStyles).toMatch(/\.navLink\s*{[^}]*white-space:\s*nowrap/s);
