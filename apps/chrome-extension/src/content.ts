@@ -24,6 +24,11 @@ import {
   type SetAuthTokenMessage,
   type CheckStatusData,
 } from "./config";
+import {
+  findConversationRoot,
+  findMessageContainers,
+  findMessageText,
+} from "./dom-selectors";
 
 // =============================================================================
 // Types
@@ -371,7 +376,8 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
   const isGroup = detectGroupChat();
 
   // Get message container
-  const messageList = querySelector(
+  const messageList = findConversationRoot(
+    document,
     SELECTORS.primary.messageList,
     SELECTORS.fallback.messageList,
   );
@@ -383,8 +389,10 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
   // await scrollToLoadMessages(messageList);
 
   // Extract messages
-  const messageContainers = messageList.querySelectorAll(
-    `${SELECTORS.primary.messageContainer}, ${SELECTORS.fallback.messageContainer}`,
+  const messageContainers = findMessageContainers(
+    messageList,
+    SELECTORS.primary.messageContainer,
+    SELECTORS.fallback.messageContainer,
   );
 
   const messages: ExtractedMessage[] = [];
@@ -436,9 +444,11 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
  */
 function extractMessageData(container: HTMLElement): ExtractedMessage | null {
   // Get message text
-  const textEl =
-    container.querySelector(SELECTORS.primary.messageText) ||
-    container.querySelector(SELECTORS.fallback.messageText);
+  const textEl = findMessageText(
+    container,
+    SELECTORS.primary.messageText,
+    SELECTORS.fallback.messageText,
+  );
 
   const text = textEl?.textContent?.trim() || "";
 
