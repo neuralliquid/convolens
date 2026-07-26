@@ -47,7 +47,8 @@ export const SELECTORS = {
   },
   // Fallback selectors (class-based - less stable)
   fallback: {
-    chatList: '.copyable-area [role="listitem"]',
+    chatList:
+      '#pane-side, [aria-label="Chat list"], .copyable-area [role="listitem"]',
     messageList: ".message-list",
     messageContainer: ".message-in, .message-out",
     messageText: ".selectable-text.copyable-text[dir]",

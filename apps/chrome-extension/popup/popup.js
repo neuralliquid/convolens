@@ -88,7 +88,7 @@ async function checkWhatsAppStatus() {
       statusText.textContent = "Open WhatsApp Web to start";
     }
   } catch (error) {
-    statusText.textContent = "Open WhatsApp Web to start";
+    statusText.textContent = "Extension is reconnecting — refresh WhatsApp Web";
   }
 }
 
@@ -179,9 +179,14 @@ extractBtn.addEventListener("click", async () => {
       );
     }
   } catch (error) {
+    const receiverUnavailable = error?.message?.includes(
+      "Receiving end does not exist",
+    );
     setActionStatus(
-      error?.message ||
-        "The extension could not read this chat. Please try again.",
+      receiverUnavailable
+        ? "Refresh WhatsApp Web once, then reopen the chat."
+        : error?.message ||
+            "The extension could not read this chat. Please try again.",
       "error",
     );
   } finally {
