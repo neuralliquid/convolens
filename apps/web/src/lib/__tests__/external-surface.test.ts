@@ -71,6 +71,21 @@ describe("external surface containment", () => {
     );
   });
 
+  it("uses explicit production typography and non-wrapping desktop navigation", () => {
+    const globalStyles = read("app/globals.css");
+    const navigationStyles = read(
+      "components/layouts/navigation/navigation.module.css",
+    );
+
+    expect(globalStyles).toMatch(/--font-sans:\s*"Segoe UI", Roboto/);
+    expect(globalStyles).toMatch(/body\s*{[^}]*font-family:\s*var\(--font-sans\)/s);
+    expect(globalStyles).toMatch(/button,[\s\S]*textarea\s*{\s*font:\s*inherit/);
+    expect(navigationStyles).toMatch(/\.navLink\s*{[^}]*white-space:\s*nowrap/s);
+    expect(navigationStyles).toMatch(
+      /\.mobileMenuButton\s*{\s*display:\s*none\s*!important/,
+    );
+  });
+
   it("keeps preview navigation limited to implemented workflows", () => {
     const navigation = [
       "components/layouts/navigation/hooks/useNavigation.ts",
