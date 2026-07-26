@@ -12,18 +12,23 @@ export function Footer() {
       </div>
 
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-5">
           {/* Logo and description */}
-          <div className="col-span-1 md:col-span-2">
+          <div className="col-span-1 md:col-span-3">
             <h2 className="text-2xl font-bold text-green-600 dark:text-green-400 text-gradient">
               ConvoLens
             </h2>
             <p className="mt-4 text-gray-600 dark:text-gray-400 max-w-md">
-              An early conversation-intake workspace. WhatsApp is the first live
-              connector; more platforms are planned.
+              A consent-first path from support conversations to reviewed work,
+              coordinated resolution, and governed responses.
+            </p>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-500">
+              Intake is live. AI-assisted ticket creation, Codeflow/Cognitive
+              Mesh resolution, and OmniPost delivery describe the planned
+              NeuralLiquid operating loop.
             </p>
             <p className="mt-5 inline-flex rounded-full border border-green-200 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-green-700 dark:border-green-800 dark:text-green-300">
-              Alpha
+              Technical alpha
             </p>
           </div>
 
@@ -83,7 +88,7 @@ export function Footer() {
             &copy; {new Date().getFullYear()} ConvoLens. All rights reserved.
           </p>
           <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 md:mt-0">
-            WhatsApp connector available now · More sources planned
+            Support signal → reviewed work → resolution → response
           </p>
         </div>
       </div>

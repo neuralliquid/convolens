@@ -1,17 +1,22 @@
-import React, { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { FiUpload, FiX, FiCheck } from 'react-icons/fi';
-import styles from './file-upload.module.css';
+import React, { useCallback, useState } from "react";
+import { useDropzone } from "react-dropzone";
+import { FiUpload, FiX, FiCheck } from "react-icons/fi";
+import styles from "./file-upload.module.css";
+
+interface FileUploadResult {
+  success: boolean;
+  error?: string;
+}
 
 interface FileUploadProps {
-  onFileUpload: (file: File) => Promise<void>;
+  onFileUpload: (file: File) => Promise<FileUploadResult>;
   acceptedFormats?: string[];
   maxSizeMB?: number;
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({
   onFileUpload,
-  acceptedFormats = ['.txt'],
+  acceptedFormats = [".txt"],
   maxSizeMB = 10,
 }) => {
   const [isUploading, setIsUploading] = useState(false);
@@ -23,7 +28,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
       if (acceptedFiles.length === 0) return;
 
       const file = acceptedFiles[0];
-      
+
       // Validate file size
       if (file.size > maxSizeMB * 1024 * 1024) {
         setUploadError(`File size exceeds ${maxSizeMB}MB`);
@@ -33,36 +38,42 @@ const FileUpload: React.FC<FileUploadProps> = ({
       try {
         setIsUploading(true);
         setUploadError(null);
-        await onFileUpload(file);
+        const result = await onFileUpload(file);
+        if (!result.success) {
+          setUploadError(
+            result.error || "Failed to upload file. Please try again.",
+          );
+          return;
+        }
         setUploadSuccess(true);
         // Reset success state after 3 seconds
         setTimeout(() => setUploadSuccess(false), 3000);
       } catch (error) {
-        console.error('Upload error:', error);
-        setUploadError('Failed to upload file. Please try again.');
+        console.error("Upload error:", error);
+        setUploadError("Failed to upload file. Please try again.");
       } finally {
         setIsUploading(false);
       }
     },
-    [maxSizeMB, onFileUpload]
+    [maxSizeMB, onFileUpload],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/plain': acceptedFormats,
+      "text/plain": acceptedFormats,
     },
     maxFiles: 1,
     disabled: isUploading,
   });
 
   const formatBytes = (bytes: number, decimals = 2) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
   };
 
   return (
@@ -70,9 +81,9 @@ const FileUpload: React.FC<FileUploadProps> = ({
       <div
         {...getRootProps()}
         className={`${styles.dropzone} ${
-          isDragActive ? styles.active : ''
-        } ${uploadSuccess ? styles.success : ''} ${
-          uploadError ? styles.error : ''
+          isDragActive ? styles.active : ""
+        } ${uploadSuccess ? styles.success : ""} ${
+          uploadError ? styles.error : ""
         }`}
       >
         <input {...getInputProps()} />
@@ -91,11 +102,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
             <FiUpload className={styles.icon} />
             <p className={styles.dropzoneText}>
               {isDragActive
-                ? 'Drop the file here...'
-                : 'Drag & drop a WhatsApp chat export file here, or click to select'}
+                ? "Drop the file here..."
+                : "Drag & drop a WhatsApp chat export file here, or click to select"}
             </p>
             <p className={styles.smallText}>
-              Supported formats: {acceptedFormats.join(', ')} (max {maxSizeMB}MB)
+              Supported formats: {acceptedFormats.join(", ")} (max {maxSizeMB}
+              MB)
             </p>
           </div>
         )}
