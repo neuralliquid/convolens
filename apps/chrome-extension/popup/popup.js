@@ -73,7 +73,12 @@ async function checkWhatsAppStatus() {
         action: "CHECK_STATUS",
       });
 
-      if (response.isWhatsAppWeb && response.isLoggedIn) {
+      // The TypeScript content script wraps status payloads in the shared
+      // ExtensionResponse shape. Keep the legacy fallback for older builds
+      // that returned these fields at the top level.
+      const connectionStatus = response.data || response;
+
+      if (connectionStatus.isWhatsAppWeb && connectionStatus.isLoggedIn) {
         statusDot.classList.add("connected");
         statusText.textContent = "Connected to WhatsApp Web";
       } else {
