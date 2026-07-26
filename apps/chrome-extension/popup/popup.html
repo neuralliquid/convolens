@@ -248,10 +248,26 @@
 
       .footer {
         padding: 12px 20px;
-        text-align: center;
         font-size: 11px;
         color: #999;
         border-top: 1px solid #f0f0f0;
+      }
+
+      .footer-primary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+
+      .extension-version {
+        color: #777;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .footer-connector {
+        margin-top: 2px;
+        text-align: center;
       }
 
       .footer a {
@@ -330,8 +346,20 @@
     </div>
 
     <div class="footer">
-      <a href="https://convolens.neuralliquid.ai" target="_blank">ConvoLens</a>
-      Preview · WhatsApp is the first connector
+      <div class="footer-primary">
+        <span>
+          <a href="https://convolens.neuralliquid.ai" target="_blank"
+            >ConvoLens</a
+          >
+          Preview
+        </span>
+        <span
+          class="extension-version"
+          id="extensionVersion"
+          aria-label="Extension version"
+        ></span>
+      </div>
+      <div class="footer-connector">WhatsApp is the first connector</div>
     </div>
 
     <script src="popup.js"></script>
