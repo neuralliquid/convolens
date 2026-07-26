@@ -44,6 +44,7 @@ export const useNavigation = (isAuthenticated: boolean = false) => {
   }, []);
 
   const toggleMobileMenu = () => setMobileMenuOpen((open) => !open);
+  const closeMobileMenu = () => setMobileMenuOpen(false);
   const toggleUserDropdown = () => setUserDropdownOpen((open) => !open);
 
   const handleUserMenuItemClick = (
@@ -77,6 +78,7 @@ export const useNavigation = (isAuthenticated: boolean = false) => {
     mobileMenuOpen,
     userDropdownOpen,
     toggleMobileMenu,
+    closeMobileMenu,
     toggleUserDropdown,
     handleUserMenuItemClick,
     userDropdownRef,

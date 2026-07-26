@@ -78,6 +78,7 @@ export function Navigation() {
     mobileMenuOpen,
     userDropdownOpen,
     toggleMobileMenu,
+    closeMobileMenu,
     toggleUserDropdown,
     handleUserMenuItemClick,
     userDropdownRef,
@@ -144,7 +145,7 @@ export function Navigation() {
                   <NavLink
                     item={item}
                     isActive={pathname === item.href}
-                    onClick={toggleMobileMenu}
+                    onClick={closeMobileMenu}
                   />
                 </li>
               ))}
@@ -210,7 +211,7 @@ export function Navigation() {
                 <Link
                   href="/login"
                   className={cn(styles.button, styles.signupButton)}
-                  onClick={toggleMobileMenu}
+                  onClick={closeMobileMenu}
                 >
                   Sign in
                 </Link>
@@ -232,7 +233,7 @@ export function Navigation() {
                     <MobileNavLink
                       item={item}
                       isActive={pathname === item.href}
-                      onClick={toggleMobileMenu}
+                      onClick={closeMobileMenu}
                     />
                   </li>
                 ))}
@@ -244,7 +245,7 @@ export function Navigation() {
                 <Link
                   href="/login"
                   className={cn(styles.button, styles.signupButton)}
-                  onClick={toggleMobileMenu}
+                  onClick={closeMobileMenu}
                 >
                   Sign in
                 </Link>
