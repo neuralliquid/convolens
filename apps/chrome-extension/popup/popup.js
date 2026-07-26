@@ -27,6 +27,46 @@ function setActionStatus(message = "", type = "info") {
     : "action-status";
 }
 
+function isWhatsAppTab(tab) {
+  return tab?.url?.startsWith("https://web.whatsapp.com/");
+}
+
+async function getWhatsAppTab() {
+  const [activeTab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  });
+
+  if (isWhatsAppTab(activeTab)) return activeTab;
+
+  const whatsappTabs = await chrome.tabs.query({
+    url: "https://web.whatsapp.com/*",
+  });
+  return whatsappTabs.find((tab) => !tab.discarded) || whatsappTabs[0];
+}
+
+async function sendToWhatsApp(tabId, message) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    if (!error?.message?.includes("Receiving end does not exist")) throw error;
+
+    // Declarative content scripts are not reattached to an already-open tab
+    // when an unpacked extension is reloaded. Inject the verified bundle once
+    // and retry so the operator does not need to chase Chrome lifecycle state.
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: ["dist/content.css"],
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["dist/content.js"],
+    });
+
+    return chrome.tabs.sendMessage(tabId, message);
+  }
+}
+
 // Initialize popup
 async function init() {
   // Check auth status
@@ -66,10 +106,10 @@ function showLoggedOut() {
 // Check WhatsApp Web status
 async function checkWhatsAppStatus() {
   try {
-    const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+    const tab = await getWhatsAppTab();
 
-    if (tabs.length > 0) {
-      const response = await chrome.tabs.sendMessage(tabs[0].id, {
+    if (tab?.id) {
+      const response = await sendToWhatsApp(tab.id, {
         action: "CHECK_STATUS",
       });
 
@@ -134,9 +174,9 @@ extractBtn.addEventListener("click", async () => {
   setActionStatus("");
 
   try {
-    const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+    const tab = await getWhatsAppTab();
 
-    if (tabs.length === 0) {
+    if (!tab?.id) {
       setActionStatus("Open WhatsApp Web and select a chat first.", "error");
       return;
     }
@@ -144,7 +184,7 @@ extractBtn.addEventListener("click", async () => {
     extractBtn.textContent = "Reading chat…";
     extractBtn.disabled = true;
 
-    const response = await chrome.tabs.sendMessage(tabs[0].id, {
+    const response = await sendToWhatsApp(tab.id, {
       action: "GET_CURRENT_CHAT",
     });
 

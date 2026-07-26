@@ -1,6 +1,6 @@
 {
   "name": "@convolens/chrome-extension",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "description": "ConvoLens Chrome Extension for WhatsApp Web",
@@ -11,7 +11,7 @@
     "copy-assets": "node -e \"const fs=require('fs');const p=require('path');try{fs.mkdirSync('dist',{recursive:true});fs.readdirSync('src').filter(f=>f.endsWith('.css')).forEach(f=>fs.copyFileSync(p.join('src',f),p.join('dist',f)))}catch(e){}\"",
     "package": "npm run build:prod && node scripts/package-extension.mjs",
     "clean": "rm -rf dist",
-    "test": "tsx --test tests/dom-selectors.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
