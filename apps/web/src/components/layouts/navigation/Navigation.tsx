@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@convolens/contexts";
 import { cn } from "@/lib/utils";
-import { ChevronDown, LogOut, Menu, Settings, User, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, User, X } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -76,32 +76,17 @@ export function Navigation() {
   const {
     isScrolled,
     mobileMenuOpen,
-    moreDropdownOpen,
     userDropdownOpen,
     toggleMobileMenu,
-    toggleMoreDropdown,
+    closeMobileMenu,
     toggleUserDropdown,
     handleUserMenuItemClick,
-    moreDropdownRef,
     userDropdownRef,
     mobileMenuRef,
     filteredNavItems,
-    filteredMoreItems,
   } = useNavigation(isAuthenticated);
 
   const userMenuItems = [
-    {
-      href: "/profile",
-      label: "Your Profile",
-      icon: User,
-      onClick: () => router.push("/profile"),
-    },
-    {
-      href: "/settings",
-      label: "Settings",
-      icon: Settings,
-      onClick: () => router.push("/settings"),
-    },
     {
       href: "#",
       label: "Sign out",
@@ -160,49 +145,10 @@ export function Navigation() {
                   <NavLink
                     item={item}
                     isActive={pathname === item.href}
-                    onClick={toggleMobileMenu}
+                    onClick={closeMobileMenu}
                   />
                 </li>
               ))}
-
-              {filteredMoreItems.length > 0 && (
-                <li className={styles.dropdownContainer}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className={cn(styles.dropdownButton, {
-                          [styles.dropdownOpen]: moreDropdownOpen,
-                        })}
-                        onClick={toggleMoreDropdown}
-                        aria-expanded={moreDropdownOpen}
-                        aria-haspopup="true"
-                      >
-                        More
-                        <ChevronDown
-                          className={cn(styles.dropdownIcon, {
-                            [styles.dropdownIconOpen]: moreDropdownOpen,
-                          })}
-                          aria-hidden="true"
-                        />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      {filteredMoreItems.map((item) => (
-                        <DropdownMenuItem
-                          key={item.href}
-                          onClick={() => {
-                            toggleMoreDropdown();
-                            router.push(item.href);
-                          }}
-                        >
-                          <item.icon className="mr-2 h-4 w-4" />
-                          <span>{item.label}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </li>
-              )}
             </ul>
           </div>
 
@@ -246,7 +192,7 @@ export function Navigation() {
                       <DropdownMenuItem
                         key={item.href}
                         onClick={(e) => {
-                          handleUserMenuItemClick(e, item.href, () => {
+                          handleUserMenuItemClick(e, () => {
                             if (item.onClick) {
                               item.onClick(e);
                             }
@@ -265,7 +211,7 @@ export function Navigation() {
                 <Link
                   href="/login"
                   className={cn(styles.button, styles.signupButton)}
-                  onClick={toggleMobileMenu}
+                  onClick={closeMobileMenu}
                 >
                   Sign in
                 </Link>
@@ -282,12 +228,12 @@ export function Navigation() {
           <div className={styles.mobileMenuContent}>
             <nav>
               <ul className={styles.mobileNavList}>
-                {[...filteredNavItems, ...filteredMoreItems].map((item) => (
+                {filteredNavItems.map((item) => (
                   <li key={item.href}>
                     <MobileNavLink
                       item={item}
                       isActive={pathname === item.href}
-                      onClick={toggleMobileMenu}
+                      onClick={closeMobileMenu}
                     />
                   </li>
                 ))}
@@ -299,7 +245,7 @@ export function Navigation() {
                 <Link
                   href="/login"
                   className={cn(styles.button, styles.signupButton)}
-                  onClick={toggleMobileMenu}
+                  onClick={closeMobileMenu}
                 >
                   Sign in
                 </Link>

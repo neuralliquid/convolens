@@ -59,7 +59,7 @@ function LoginPageContent() {
 
   if (mystiraConfigured === false) {
     authErrorMessage =
-      "Sign in is temporarily unavailable. The alpha team has been notified.";
+      "Sign in is temporarily unavailable. The preview team has been notified.";
   } else if (
     authError === "mystira" ||
     authError === "OAuthSignin" ||
@@ -95,11 +95,10 @@ function LoginPageContent() {
               </div>
             </div>
             <CardTitle className="text-2xl font-bold tracking-tight">
-              Sign in to ConvoLens Alpha
+              Sign in to ConvoLens Private Preview
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              One Mystira Identity sign-in connects the web workspace and
-              browser extension.
+              Use Mystira Identity to access your ConvoLens workspace.
             </p>
           </CardHeader>
 
@@ -122,10 +121,12 @@ function LoginPageContent() {
                 : "Sign in with Mystira Identity"}
             </Button>
             <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">New to the alpha?</p>
+              <p className="font-medium text-foreground">
+                New to the private preview?
+              </p>
               <p className="mt-1">
                 Use your Mystira account. After sign-in, we will take you
-                directly to the first conversation-intake step.
+                directly to the conversation import.
               </p>
             </div>
           </CardContent>
