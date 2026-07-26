@@ -53,6 +53,14 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
         continue;
       }
 
+      // A timestamp followed by an empty sender ("... ] : message") also
+      // matches the broader system-message format. Keep it malformed instead
+      // of persisting it as a message from System.
+      if (systemMatch?.[4].trimStart().startsWith(':')) {
+        logger.warn(`Skipping malformed line with empty sender: ${line}`);
+        continue;
+      }
+
       try {
         const dateStr = (messageMatch || systemMatch)![1];
         const timeStr = (messageMatch || systemMatch)![2];
