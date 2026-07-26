@@ -19,6 +19,9 @@ const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
 const userAvatar = document.getElementById("userAvatar");
 const actionStatus = document.getElementById("actionStatus");
+const extensionVersion = document.getElementById("extensionVersion");
+
+extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
 
 function setActionStatus(message = "", type = "info") {
   actionStatus.textContent = message;

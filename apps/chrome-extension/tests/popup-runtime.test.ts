@@ -6,9 +6,26 @@ const popupSource = readFileSync(
   new URL("../popup/popup.js", import.meta.url),
   "utf8",
 );
+const popupHtml = readFileSync(
+  new URL("../popup/popup.html", import.meta.url),
+  "utf8",
+);
 const manifest = JSON.parse(
   readFileSync(new URL("../manifest.json", import.meta.url), "utf8"),
 );
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
+
+test("renders the runtime manifest version and keeps release versions aligned", () => {
+  assert.match(popupHtml, /id="extensionVersion"/);
+  assert.match(
+    popupSource,
+    /extensionVersion\.textContent = `v\$\{chrome\.runtime\.getManifest\(\)\.version\}`/,
+  );
+  assert.equal(manifest.version, packageJson.version);
+  assert.equal(manifest.version, "1.0.5");
+});
 
 test("targets the active WhatsApp tab before searching background tabs", () => {
   const activeQuery = popupSource.indexOf("active: true");
