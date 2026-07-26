@@ -20,8 +20,8 @@ export function Footer() {
               Preserve the WhatsApp support conversation you need to review.
             </p>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-500">
-              The private preview currently supports authenticated WhatsApp text
-              imports without media.
+              Import by WhatsApp text export or browser extension. Additional
+              import paths are planned as the private preview expands.
             </p>
             <p className="mt-5 inline-flex rounded-full border border-green-200 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-green-700 dark:border-green-800 dark:text-green-300">
               Private preview

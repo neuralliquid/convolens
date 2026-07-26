@@ -7,7 +7,7 @@ import "./enhanced-styles.css";
 
 const availableNow = [
   "Sign in with Mystira Identity",
-  "Upload one WhatsApp text export",
+  "Choose a text export or browser extension",
   "Review the saved messages and context",
 ];
 
@@ -20,9 +20,9 @@ const importSteps = [
   },
   {
     icon: FileText,
-    title: "Upload the text file",
+    title: "Choose an import path",
     description:
-      "Import the conversation without media. ConvoLens preserves its participants, messages, and timestamps.",
+      "Upload a WhatsApp text export or send the selected chat with the browser extension.",
   },
   {
     icon: ShieldCheck,
@@ -66,8 +66,9 @@ export default function LandingPage() {
               Keep important support conversations in one place.
             </h1>
             <p className="mt-6 max-w-2xl text-xl leading-8 text-gray-600 dark:text-gray-300">
-              Import a WhatsApp chat you choose and preserve its messages,
-              participants, and timestamps in a focused workspace.
+              Import a WhatsApp chat by text export or browser extension and
+              preserve its messages, participants, and timestamps in a focused
+              workspace.
             </p>
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <Link
@@ -114,8 +115,9 @@ export default function LandingPage() {
               ))}
             </ol>
             <p className="mt-6 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              The preview currently supports WhatsApp text exports without
-              media. Use only conversations you are authorized to upload.
+              Start with a WhatsApp text export or the private-preview browser
+              extension. Additional import paths are planned as the preview
+              expands.
             </p>
           </div>
         </div>
