@@ -23,11 +23,11 @@ export interface ChatExportData {
 // Regular expression to match WhatsApp message format:
 // [DD/MM/YYYY, HH:MM:SS] Sender: Message
 const MESSAGE_REGEX =
-  /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(?:AM|PM)?\]\s(.+?):\s(.+)$/i;
+  /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(AM|PM)?\]\s(.+?):\s(.+)$/i;
 
 // Alternative format for system messages
 const SYSTEM_MESSAGE_REGEX =
-  /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(?:AM|PM)?\]\s(.+)$/i;
+  /^\[(\d{1,2}\/\d{1,2}\/\d{2,4}),\s(\d{1,2}:\d{2}(?::\d{2})?)\s?(AM|PM)?\]\s(.+)$/i;
 
 // Media indicator in WhatsApp exports
 const MEDIA_INDICATOR = '<Media omitted>';
@@ -39,30 +39,27 @@ const MEDIA_INDICATOR = '<Media omitted>';
  */
 export async function parseWhatsAppExport(fileContent: string): Promise<ChatExportData> {
   try {
-    const lines = fileContent.split('\n').filter((line) => line.trim() !== '');
+    const lines = fileContent.split(/\r?\n/).filter((line) => line.trim() !== '');
     const participants = new Set<string>();
     const messages: ChatMessage[] = [];
 
     for (const line of lines) {
       if (!line.trim()) continue;
 
-      let match = MESSAGE_REGEX.exec(line);
-      let isSystemMessage = false;
-
-      if (!match) {
-        // Try matching system message format
-        const systemMatch = SYSTEM_MESSAGE_REGEX.exec(line);
-        if (systemMatch) {
-          isSystemMessage = true;
-          match = systemMatch;
-        } else {
-          logger.warn(`Skipping malformed line: ${line}`);
-          continue;
-        }
+      const messageMatch = MESSAGE_REGEX.exec(line);
+      const systemMatch = messageMatch ? null : SYSTEM_MESSAGE_REGEX.exec(line);
+      if (!messageMatch && !systemMatch) {
+        logger.warn(`Skipping malformed line: ${line}`);
+        continue;
       }
 
       try {
-        const [_, dateStr, timeStr, sender, content] = match;
+        const dateStr = (messageMatch || systemMatch)![1];
+        const timeStr = (messageMatch || systemMatch)![2];
+        const meridiem = (messageMatch || systemMatch)![3]?.toLowerCase();
+        const sender = messageMatch?.[4] || 'System';
+        const content = messageMatch?.[5] || systemMatch![4];
+        const isSystemMessage = Boolean(systemMatch);
 
         // Parse date and time
         const [day, month, year] = dateStr.split('/').map(Number);
@@ -73,9 +70,8 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
 
         // Adjust for AM/PM if present (case-insensitive)
         let hours24 = parseInt(hours, 10);
-        const isPM = timeStr.toLowerCase().includes('pm');
-        if (isPM && hours24 < 12) hours24 += 12;
-        if (!isPM && hours24 === 12) hours24 = 0;
+        if (meridiem === 'pm' && hours24 < 12) hours24 += 12;
+        if (meridiem === 'am' && hours24 === 12) hours24 = 0;
 
         const timestamp = new Date(
           yearFull,

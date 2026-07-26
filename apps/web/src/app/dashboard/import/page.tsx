@@ -27,7 +27,7 @@ export default function ImportChatPage() {
         title: "Conversation received",
         description: result?.duplicate
           ? "This conversation was already in your workspace."
-          : "Your WhatsApp export is now stored in your alpha workspace.",
+          : "Your WhatsApp export is now stored in your workspace.",
         variant: "default",
       });
       router.push(result?.data?.dashboardUrl || "/dashboard");
@@ -44,8 +44,8 @@ export default function ImportChatPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Import Chat</h1>
         <p className="text-muted-foreground mb-8">
-          Choose how to bring your first WhatsApp conversation into the
-          ConvoLens alpha.
+          Choose a WhatsApp text export or the browser extension. Additional
+          import options are planned as the preview expands.
         </p>
 
         <Tabs
@@ -107,8 +107,7 @@ export default function ImportChatPage() {
               <CardHeader>
                 <CardTitle>Connect WhatsApp Web</CardTitle>
                 <CardDescription>
-                  Use the ConvoLens Alpha extension to send only the chat you
-                  select.
+                  Use the ConvoLens extension to send only the chat you select.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -116,7 +115,7 @@ export default function ImportChatPage() {
                   <div className="rounded-lg border p-4 md:col-span-2">
                     <div className="mb-3 flex items-center gap-2 font-medium">
                       <Chrome className="h-5 w-5 text-primary" />
-                      Use the alpha extension
+                      Use the browser extension
                     </div>
                     <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
                       <li>Open WhatsApp Web and select a conversation.</li>
@@ -132,8 +131,8 @@ export default function ImportChatPage() {
                     <div className="mt-4 flex gap-3 rounded-md bg-muted p-3 text-sm text-muted-foreground">
                       <FileText className="mt-0.5 h-4 w-4 shrink-0" />
                       <p>
-                        Extension distribution is currently handled directly for
-                        invited alpha users.
+                        The browser extension is available to private-preview
+                        participants.
                       </p>
                     </div>
                   </div>

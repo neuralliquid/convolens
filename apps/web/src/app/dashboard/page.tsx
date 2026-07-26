@@ -22,13 +22,13 @@ const onboardingSteps = [
     icon: MessageSquare,
     title: "Choose one conversation",
     description:
-      "Start with a WhatsApp chat that you have permission to bring into the alpha.",
+      "Start with a WhatsApp chat that you are authorized to upload.",
   },
   {
     icon: Chrome,
     title: "Pick an intake method",
     description:
-      "Use the browser extension on WhatsApp Web or upload a WhatsApp .txt export.",
+      "Upload a WhatsApp .txt export or use the browser extension. Additional import paths are planned.",
   },
   {
     icon: Sparkles,
@@ -114,10 +114,8 @@ export default function DashboardPage() {
   return (
     <PageWrapper>
       <PageHeader
-        title={
-          firstName ? `Welcome, ${firstName}` : "Welcome to ConvoLens Alpha"
-        }
-        description="Your first step is to bring in one conversation. WhatsApp is the live connector during this alpha."
+        title={firstName ? `Welcome, ${firstName}` : "Welcome to ConvoLens"}
+        description="Import a WhatsApp conversation to review it in your workspace."
         actions={
           <Button
             variant="primary"
@@ -138,18 +136,17 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-semibold uppercase tracking-wider text-green-800 dark:text-green-300">
                 {conversations.length > 0
-                  ? "Alpha workspace"
-                  : "First-time setup"}
+                  ? "Conversation workspace"
+                  : "Getting started"}
               </p>
               <h2 className="mt-1 text-xl font-bold text-foreground">
                 {conversations.length > 0
                   ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"} received`
-                  : "Send your first conversation in three steps"}
+                  : "Import your first conversation"}
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                This is an alpha workspace. We will show confirmed intake
-                results and avoid presenting sample activity as if it were
-                yours.
+                Imported conversations appear here after ConvoLens confirms
+                receipt.
               </p>
             </div>
           </div>
@@ -182,7 +179,7 @@ export default function DashboardPage() {
             icon={<MessageSquare className="h-6 w-6" />}
           >
             <p className="text-muted-foreground">
-              Checking your durable alpha workspace…
+              Loading your conversation workspace…
             </p>
           </StyledCard>
         ) : conversations.length > 0 ? (
@@ -222,9 +219,8 @@ export default function DashboardPage() {
               icon={<FileText className="h-6 w-6" />}
             >
               <p className="text-muted-foreground">
-                Your real conversation activity will appear here after a
-                successful intake. ConvoLens does not seed this dashboard with
-                demo records.
+                Imported conversations will appear here after ConvoLens confirms
+                receipt.
               </p>
             </StyledCard>
             <StyledCard

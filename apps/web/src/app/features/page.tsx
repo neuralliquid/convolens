@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const features = [
   {
-    title: "WhatsApp text import",
+    title: "Two import paths",
     description:
-      "Upload a WhatsApp .txt export without media through the authenticated workspace.",
+      "Upload a WhatsApp .txt export or send a selected chat with the private-preview browser extension.",
     icon: FileText,
   },
   {
@@ -44,8 +44,8 @@ export default function FeaturesPage() {
               Preserve a WhatsApp support conversation and its context.
             </h1>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              ConvoLens currently provides a focused, authenticated path for
-              importing WhatsApp text exports and reviewing the saved record.
+              ConvoLens provides two authenticated WhatsApp import paths today,
+              with additional sources planned as validated workflows are added.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button asChild variant="primary">

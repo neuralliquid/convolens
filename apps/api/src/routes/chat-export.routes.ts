@@ -150,6 +150,11 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     }
 
     const chatData = await parseWhatsAppExport(fileContent);
+    if (chatData.messages.length === 0) {
+      return res.status(400).json({
+        error: 'No WhatsApp messages could be read from this export.',
+      });
+    }
 
     const saved = await conversationIntakeService.save({
       userId,
