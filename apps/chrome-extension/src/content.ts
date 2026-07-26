@@ -99,6 +99,13 @@ async function init(): Promise<void> {
     return;
   }
 
+  // Register the receiver before waiting on WhatsApp's frequently changing
+  // DOM. The popup must be able to query status immediately after an extension
+  // reload, even while the page UI is still settling.
+  chrome.runtime.onMessage.addListener(handleMessage);
+  isInitialized = true;
+  window.addEventListener("beforeunload", cleanup);
+
   // Wait for WhatsApp to fully load
   await waitForWhatsAppReady();
 
@@ -113,17 +120,8 @@ async function init(): Promise<void> {
   // Inject UI elements
   injectUI();
 
-  // Set up message listener (only once)
-  chrome.runtime.onMessage.addListener(handleMessage);
-
   // Observe chat navigation
   observeChatChanges();
-
-  // Mark as initialized
-  isInitialized = true;
-
-  // Set up cleanup on page unload
-  window.addEventListener("beforeunload", cleanup);
 
   console.log("[ConvoLens] Content script initialized successfully");
 }
@@ -136,6 +134,7 @@ function cleanup(): void {
     chatObserver.disconnect();
     chatObserver = null;
   }
+  chrome.runtime.onMessage.removeListener(handleMessage);
   isInitialized = false;
   console.log("[ConvoLens] Cleanup completed");
 }
