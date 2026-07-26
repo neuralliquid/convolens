@@ -1,13 +1,5 @@
 import Link from "next/link";
-import {
-  Chrome,
-  FileText,
-  ListChecks,
-  LogIn,
-  MessageSquareText,
-  Network,
-  Send,
-} from "lucide-react";
+import { FileText, History, LogIn, MessageSquareText } from "lucide-react";
 import PageWrapper from "../page-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,86 +8,58 @@ const features = [
   {
     title: "WhatsApp text import",
     description:
-      "Upload a WhatsApp .txt export without media through the authenticated web workspace.",
+      "Upload a WhatsApp .txt export without media through the authenticated workspace.",
     icon: FileText,
-    status: "Live in alpha",
-    href: "/dashboard/import",
   },
   {
-    title: "WhatsApp Web connector",
+    title: "Mystira sign-in",
     description:
-      "Choose an open WhatsApp Web chat and send it through the ConvoLens browser extension.",
-    icon: Chrome,
-    status: "Live for invited testers",
-    href: "/dashboard/import",
-  },
-  {
-    title: "Shared sign-in",
-    description:
-      "Use one Mystira Identity session across the ConvoLens web workspace and extension.",
+      "Use your Mystira Identity account to access your ConvoLens private preview workspace.",
     icon: LogIn,
-    status: "Live in alpha",
-    href: "/login",
   },
   {
-    title: "Structured conversation intake",
+    title: "Structured conversation record",
     description:
-      "Validate message text, senders, timestamps, and conversation context at the intake boundary.",
+      "Keep messages connected to their participants, timestamps, and source context.",
     icon: MessageSquareText,
-    status: "Live in alpha",
-    href: "/dashboard",
   },
   {
-    title: "AI-assisted ticket drafting",
+    title: "Conversation history",
     description:
-      "Extract requests, evidence, ownership, and commitments into reviewable work without publishing automatically.",
-    icon: ListChecks,
-    status: "In development",
-  },
-  {
-    title: "Codeflow and Cognitive Mesh resolution",
-    description:
-      "Carry approved work into the execution stack while retaining links to the source conversation and human decisions.",
-    icon: Network,
-    status: "Planned",
-  },
-  {
-    title: "OmniPost response loop",
-    description:
-      "Turn resolved work into governed customer and stakeholder responses through the OmniPost stack.",
-    icon: Send,
-    status: "Planned",
+      "Open received conversations from the dashboard and review their stored messages.",
+    icon: History,
   },
 ];
 
 export default function FeaturesPage() {
   return (
     <PageWrapper>
-      <main className="container py-12">
-        <section className="mx-auto max-w-5xl">
+      <section className="container py-12">
+        <div className="mx-auto max-w-5xl">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-              Alpha scope
+              Private preview
             </p>
             <h1 className="mt-3 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              From support signal to accountable resolution.
+              Preserve a WhatsApp support conversation and its context.
             </h1>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              WhatsApp intake and durable context are live now. AI-assisted
-              ticket creation, Codeflow/Cognitive Mesh resolution, and OmniPost
-              response delivery define the next layers of the operating loop.
+              ConvoLens currently provides a focused, authenticated path for
+              importing WhatsApp text exports and reviewing the saved record.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button asChild variant="primary">
-                <Link href="/login?redirectTo=/dashboard">Join the alpha</Link>
+                <Link href="/login?redirectTo=/dashboard/import">
+                  Sign in to import
+                </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/dashboard/import">Choose an intake method</Link>
+                <Link href="/">Back to home</Link>
               </Button>
             </div>
           </div>
 
-          <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-12 grid gap-5 md:grid-cols-2">
             {features.map((feature) => {
               const Icon = feature.icon;
               return (
@@ -106,34 +70,22 @@ export default function FeaturesPage() {
                         <Icon className="h-5 w-5" />
                       </div>
                       <span className="rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground">
-                        {feature.status}
+                        Private preview
                       </span>
                     </div>
                     <CardTitle className="text-xl">{feature.title}</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent>
                     <p className="text-sm leading-6 text-muted-foreground">
                       {feature.description}
                     </p>
-                    {feature.href ? (
-                      <Link
-                        className="text-sm font-medium text-primary hover:underline"
-                        href={feature.href}
-                      >
-                        Open
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">
-                        Not available yet
-                      </span>
-                    )}
                   </CardContent>
                 </Card>
               );
             })}
           </div>
-        </section>
-      </main>
+        </div>
+      </section>
     </PageWrapper>
   );
 }

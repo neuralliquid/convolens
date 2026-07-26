@@ -2,25 +2,30 @@ import { Header, Footer } from "@/components/layouts";
 import { AuthProvider, AppProvider } from "@convolens/contexts";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
+import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata = {
-  title: "ConvoLens Alpha - From Support Signal to Resolution",
+export const metadata: Metadata = {
+  title: "ConvoLens Private Preview | Preserve Support Conversations",
   description:
-    "Turn selected support conversations into durable context and, over time, reviewed tickets, coordinated resolution, and governed responses.",
+    "Import a WhatsApp support conversation and preserve its messages, participants, and timestamps in a focused workspace.",
   icons: {
     icon: "/favicon.svg",
   },
+  robots: {
+    index: false,
+    follow: false,
+  },
   openGraph: {
-    title: "ConvoLens Alpha - From Support Signal to Resolution",
+    title: "ConvoLens Private Preview",
     description:
-      "Consent-first support intake building toward AI-assisted work, coordinated resolution, and governed responses.",
+      "Import a WhatsApp support conversation and preserve its source context.",
     siteName: "ConvoLens",
   },
   twitter: {
-    title: "ConvoLens Alpha - From Support Signal to Resolution",
+    title: "ConvoLens Private Preview",
     description:
-      "Consent-first support intake building toward AI-assisted work, coordinated resolution, and governed responses.",
+      "Import a WhatsApp support conversation and preserve its source context.",
     card: "summary_large_image",
   },
 };

@@ -1,61 +1,29 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  Home,
-  BarChart2,
-  Users,
-  Settings,
-  Bell,
-  Palette,
-  Sparkles,
-  Upload,
-} from "lucide-react";
+import { BarChart2, Home, Sparkles, Upload } from "lucide-react";
 
 export const useNavigation = (isAuthenticated: boolean = false) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
   const mobileMenuRef = useRef(null);
-  const searchBarRef = useRef(null);
-  const moreDropdownRef = useRef(null);
   const userDropdownRef = useRef(null);
 
-  // Handle scroll events
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 10);
-    };
-
+    const handleScroll = () => setIsScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        moreDropdownRef.current &&
-        !(moreDropdownRef.current as any).contains(event.target)
-      ) {
-        setMoreDropdownOpen(false);
-      }
-
-      if (
         userDropdownRef.current &&
-        !(userDropdownRef.current as any).contains(event.target)
+        !(userDropdownRef.current as HTMLElement).contains(event.target as Node)
       ) {
         setUserDropdownOpen(false);
-      }
-
-      if (
-        searchBarRef.current &&
-        !(searchBarRef.current as any).contains(event.target)
-      ) {
-        setSearchOpen(false);
       }
     };
 
@@ -63,40 +31,33 @@ export const useNavigation = (isAuthenticated: boolean = false) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close mobile menu on ESC key
   useEffect(() => {
-    const handleEscKey = (event: KeyboardEvent) => {
+    const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMobileMenuOpen(false);
-        setSearchOpen(false);
+        setUserDropdownOpen(false);
       }
     };
 
-    document.addEventListener("keydown", handleEscKey);
-    return () => document.removeEventListener("keydown", handleEscKey);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, []);
 
-  // Toggle functions
-  const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
-  const toggleSearch = () => setSearchOpen(!searchOpen);
-  const toggleMoreDropdown = () => setMoreDropdownOpen(!moreDropdownOpen);
-  const toggleUserDropdown = () => setUserDropdownOpen(!userDropdownOpen);
+  const toggleMobileMenu = () => setMobileMenuOpen((open) => !open);
+  const toggleUserDropdown = () => setUserDropdownOpen((open) => !open);
 
-  // Handle user menu item click
   const handleUserMenuItemClick = (
-    e: React.MouseEvent,
-    href: string,
+    event: React.MouseEvent,
     callback?: () => void,
   ) => {
-    e.preventDefault();
+    event.preventDefault();
     setUserDropdownOpen(false);
-    if (callback) callback();
+    callback?.();
   };
 
-  // Navigation items
   const navItems = [
     { href: "/", label: "Home", icon: Home },
-    { href: "/features", label: "Alpha features", icon: Sparkles },
+    { href: "/features", label: "How it works", icon: Sparkles },
     {
       href: "/dashboard",
       label: "Dashboard",
@@ -109,55 +70,19 @@ export const useNavigation = (isAuthenticated: boolean = false) => {
       icon: Upload,
       requiresAuth: true,
     },
-    { href: "/groups", label: "Groups", icon: Users, requiresAuth: true },
   ];
-
-  const moreItems = [
-    {
-      href: "/notifications",
-      label: "Notifications",
-      icon: Bell,
-      requiresAuth: true,
-    },
-    {
-      href: "/customize",
-      label: "Customize",
-      icon: Palette,
-      requiresAuth: true,
-    },
-    {
-      href: "/settings",
-      label: "Settings",
-      icon: Settings,
-      requiresAuth: true,
-    },
-  ];
-
-  // Filter items based on auth status
-  const filteredNavItems = navItems.filter(
-    (item) => !item.requiresAuth || (item.requiresAuth && isAuthenticated),
-  );
-
-  const filteredMoreItems = moreItems.filter(
-    (item) => !item.requiresAuth || (item.requiresAuth && isAuthenticated),
-  );
 
   return {
     isScrolled,
     mobileMenuOpen,
-    searchOpen,
-    moreDropdownOpen,
     userDropdownOpen,
     toggleMobileMenu,
-    toggleSearch,
-    toggleMoreDropdown,
     toggleUserDropdown,
     handleUserMenuItemClick,
-    moreDropdownRef,
     userDropdownRef,
     mobileMenuRef,
-    searchBarRef,
-    filteredNavItems,
-    filteredMoreItems,
+    filteredNavItems: navItems.filter(
+      (item) => !item.requiresAuth || isAuthenticated,
+    ),
   };
 };
