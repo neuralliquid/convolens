@@ -30,7 +30,7 @@ const steps = [
 export default function ExtensionWelcomePage() {
   return (
     <PageWrapper>
-      <main className="container py-12 sm:py-16">
+      <main className="py-4 sm:py-8">
         <div className="mx-auto max-w-5xl">
           <section className="max-w-3xl">
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">

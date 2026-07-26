@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 export default function NotFound() {
   return (
     <PageWrapper>
-      <main className="container flex min-h-[70vh] items-center py-16">
+      <main className="flex min-h-[70vh] items-center py-8 sm:py-16">
         <section className="mx-auto max-w-2xl text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Compass className="h-8 w-8" />

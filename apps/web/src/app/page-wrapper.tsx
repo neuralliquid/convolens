@@ -15,7 +15,7 @@ export default function PageWrapper({ children }: PageWrapperProps) {
         <div className="vector-shape vector-triangle"></div>
         <div className="vector-shape vector-hexagon"></div>
       </div>
-      <div className="section-container">
+      <div className="relative z-[1] mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </div>
     </div>
