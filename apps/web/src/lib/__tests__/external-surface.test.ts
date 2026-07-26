@@ -62,6 +62,15 @@ describe("external surface containment", () => {
     );
   });
 
+  it("reads the wrapped WhatsApp connection status returned by the extension", () => {
+    const popupRuntime = readRepo("apps/chrome-extension/popup/popup.js");
+
+    expect(popupRuntime).toMatch(/const connectionStatus = response\.data \|\| response/);
+    expect(popupRuntime).toMatch(
+      /connectionStatus\.isWhatsAppWeb && connectionStatus\.isLoggedIn/,
+    );
+  });
+
   it("keeps preview navigation limited to implemented workflows", () => {
     const navigation = [
       "components/layouts/navigation/hooks/useNavigation.ts",
