@@ -46,6 +46,7 @@ describe('ChatExportService', () => {
 This is not a valid line
 [Invalid Date Format] John Doe: This line will be skipped
 [08/01/2023, 10:30:00] : Message with missing sender
+[08/01/2023, 10:31:00]    : Message with a whitespace-only sender
       `;
 
       const result = await parseWhatsAppExport(chatContent);
