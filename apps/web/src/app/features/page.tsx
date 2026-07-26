@@ -1,11 +1,12 @@
 import Link from "next/link";
 import {
-  Bot,
   Chrome,
   FileText,
-  Layers3,
+  ListChecks,
   LogIn,
   MessageSquareText,
+  Network,
+  Send,
 } from "lucide-react";
 import PageWrapper from "../page-wrapper";
 import { Button } from "@/components/ui/button";
@@ -45,17 +46,24 @@ const features = [
     href: "/dashboard",
   },
   {
-    title: "Generated summaries and insight",
+    title: "AI-assisted ticket drafting",
     description:
-      "Turn received conversation context into useful summaries and follow-up views.",
-    icon: Bot,
+      "Extract requests, evidence, ownership, and commitments into reviewable work without publishing automatically.",
+    icon: ListChecks,
     status: "In development",
   },
   {
-    title: "Additional platforms",
+    title: "Codeflow and Cognitive Mesh resolution",
     description:
-      "Bring more conversation sources into the same intake workspace after the WhatsApp alpha.",
-    icon: Layers3,
+      "Carry approved work into the execution stack while retaining links to the source conversation and human decisions.",
+    icon: Network,
+    status: "Planned",
+  },
+  {
+    title: "OmniPost response loop",
+    description:
+      "Turn resolved work into governed customer and stakeholder responses through the OmniPost stack.",
+    icon: Send,
     status: "Planned",
   },
 ];
@@ -70,11 +78,12 @@ export default function FeaturesPage() {
               Alpha scope
             </p>
             <h1 className="mt-3 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              What ConvoLens does today—and what comes next.
+              From support signal to accountable resolution.
             </h1>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
-              WhatsApp conversation intake is live now. Summary experiences and
-              additional platforms are being built as the alpha develops.
+              WhatsApp intake and durable context are live now. AI-assisted
+              ticket creation, Codeflow/Cognitive Mesh resolution, and OmniPost
+              response delivery define the next layers of the operating loop.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button asChild variant="primary">

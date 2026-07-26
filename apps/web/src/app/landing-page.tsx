@@ -3,9 +3,10 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  FileText,
-  Layers3,
+  ListChecks,
   MessageSquare,
+  Network,
+  Send,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -13,29 +14,39 @@ import styles from "./landing-page.module.css";
 import "./enhanced-styles.css";
 
 const availableNow = [
-  "WhatsApp Web capture",
-  "WhatsApp .txt import",
-  "Mystira Identity sign-in",
+  "Sign in with Mystira Identity",
+  "Choose one WhatsApp conversation",
+  "Store its messages and provenance",
 ];
 
-const capabilities = [
+const operatingLoop = [
   {
     icon: MessageSquare,
-    title: "Capture a conversation",
+    eyebrow: "Live now",
+    title: "Capture the support signal",
     description:
-      "Choose the WhatsApp chat you want to send. ConvoLens does not scan your entire account.",
+      "Bring in the customer conversation you choose without opening the rest of the account.",
   },
   {
-    icon: FileText,
-    title: "Keep useful context",
+    icon: ListChecks,
+    eyebrow: "Next layer",
+    title: "Draft accountable work",
     description:
-      "Bring message text, senders, and timestamps into one structured intake flow.",
+      "AI-assisted extraction turns requests, evidence, and commitments into tickets for human review.",
   },
   {
-    icon: Layers3,
-    title: "Grow beyond one platform",
+    icon: Network,
+    eyebrow: "Planned stack",
+    title: "Coordinate resolution",
     description:
-      "WhatsApp is the first live connector. Additional conversation sources are planned as the alpha develops.",
+      "Approved work can move through Codeflow and Cognitive Mesh while keeping the source conversation attached.",
+  },
+  {
+    icon: Send,
+    eyebrow: "Planned stack",
+    title: "Close the response loop",
+    description:
+      "Resolution context can flow into OmniPost for governed customer and stakeholder responses.",
   },
 ];
 
@@ -67,28 +78,28 @@ export default function LandingPage() {
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-green-200 bg-white/80 px-4 py-2 text-sm font-semibold text-green-800 shadow-sm backdrop-blur dark:border-green-800 dark:bg-gray-900/75 dark:text-green-300">
               <Sparkles className="h-4 w-4" />
-              ConvoLens Alpha is open
+              Consent-first support intake
             </div>
             <h1 className="max-w-4xl text-4xl font-bold leading-tight text-gray-900 dark:text-white sm:text-5xl md:text-6xl">
-              Bring important conversations into focus.
+              Turn support conversations into work that gets resolved.
             </h1>
             <p className="mt-6 max-w-2xl text-xl leading-8 text-gray-600 dark:text-gray-300">
-              ConvoLens is an early conversation-intake workspace. WhatsApp is
-              the first live connector, with a multi-platform future being
-              shaped through the alpha.
+              ConvoLens preserves the customer signal at intake, then builds
+              toward AI-assisted ticket creation, coordinated resolution, and an
+              accountable response loop across the NeuralLiquid stack.
             </p>
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <Link
                 href="/login?redirectTo=/dashboard"
                 className="btn-glow rounded-lg bg-green-700 px-8 py-3 text-center font-semibold text-white shadow-md transition hover:bg-green-800 hover:shadow-lg"
               >
-                Join the alpha
+                Start an intake
               </Link>
               <Link
                 href="/features"
                 className="glassmorphism flex items-center justify-center rounded-lg px-8 py-3 text-center font-semibold text-gray-900 shadow-md transition hover:shadow-lg dark:text-white"
               >
-                See what works today
+                Explore the operating loop
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </div>
@@ -101,7 +112,7 @@ export default function LandingPage() {
                   Available now
                 </p>
                 <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-                  Start with one WhatsApp chat
+                  From conversation to accountable work
                 </h2>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">
@@ -122,8 +133,9 @@ export default function LandingPage() {
               ))}
             </ol>
             <p className="mt-6 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Alpha access means the workflow and product will keep evolving. We
-              will be explicit about what is live and what is still planned.
+              Conversation capture and durable storage are live. Ticket
+              drafting, resolution orchestration, and response delivery are the
+              product direction—not claims of current automation.
             </p>
           </div>
         </div>
@@ -133,34 +145,39 @@ export default function LandingPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-sm font-bold uppercase tracking-[0.2em] text-green-700 dark:text-green-300">
-              Alpha workflow
+              The operating loop
             </p>
             <h2 className="mt-3 text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
-              A clearer way to bring conversations in
+              Intake is the start, not the destination
             </h2>
             <p className="mt-4 text-lg leading-8 text-gray-600 dark:text-gray-400">
-              Start with the channels available today while we build toward a
-              shared intake layer for more of the places conversations happen.
+              Preserve the original support context, convert it into reviewed
+              work, carry it through resolution, and return a governed response.
             </p>
           </div>
 
-          <div className="mt-14 grid gap-8 md:grid-cols-3">
-            {capabilities.map(({ icon: Icon, title, description }) => (
-              <article
-                key={title}
-                className="rounded-2xl border border-gray-200 bg-white p-7 shadow-sm dark:border-gray-700 dark:bg-gray-800"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
-                  <Icon className="h-6 w-6 text-green-700 dark:text-green-300" />
-                </div>
-                <h3 className="mt-5 text-xl font-semibold text-gray-900 dark:text-white">
-                  {title}
-                </h3>
-                <p className="mt-3 leading-7 text-gray-600 dark:text-gray-400">
-                  {description}
-                </p>
-              </article>
-            ))}
+          <div className="mt-14 grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+            {operatingLoop.map(
+              ({ icon: Icon, eyebrow, title, description }) => (
+                <article
+                  key={title}
+                  className="rounded-2xl border border-gray-200 bg-white p-7 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
+                    <Icon className="h-6 w-6 text-green-700 dark:text-green-300" />
+                  </div>
+                  <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-green-700 dark:text-green-300">
+                    {eyebrow}
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-gray-900 dark:text-white">
+                    {title}
+                  </h3>
+                  <p className="mt-3 leading-7 text-gray-600 dark:text-gray-400">
+                    {description}
+                  </p>
+                </article>
+              ),
+            )}
           </div>
         </div>
       </section>
@@ -170,23 +187,24 @@ export default function LandingPage() {
           <div className="rounded-2xl border border-green-100 bg-green-50 p-8 dark:border-green-900 dark:bg-green-950/30">
             <ShieldCheck className="h-8 w-8 text-green-700 dark:text-green-300" />
             <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-white">
-              You choose what enters ConvoLens
+              Consent and provenance stay attached
             </h2>
             <p className="mt-3 leading-7 text-gray-700 dark:text-gray-300">
-              The extension reads the selected WhatsApp Web chat when you
-              activate it, then sends that conversation to the ConvoLens service
-              for processing. It does not silently ingest every chat.
+              You choose the conversation. ConvoLens preserves senders,
+              timestamps, and source context so later tickets and decisions can
+              be traced back to the customer signal.
             </p>
           </div>
           <div className="rounded-2xl border border-amber-100 bg-amber-50 p-8 dark:border-amber-900 dark:bg-amber-950/25">
             <Sparkles className="h-8 w-8 text-amber-700 dark:text-amber-300" />
             <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-white">
-              Alpha, without invented social proof
+              The moat compounds through outcomes
             </h2>
             <p className="mt-3 leading-7 text-gray-700 dark:text-gray-300">
-              We are launching now, so there are no customer reviews or usage
-              claims to show yet. Early users will help shape the workflow as it
-              becomes multi-platform.
+              The defensible asset is not a message count or a generic summary.
+              It is the growing link between support evidence, reviewed work,
+              resolution decisions, corrections, and the response that closed
+              the loop.
             </p>
           </div>
         </div>
@@ -197,17 +215,17 @@ export default function LandingPage() {
       >
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white sm:text-4xl">
-            Start with the conversation in front of you.
+            Start with the support conversation in front of you.
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-xl text-green-100">
-            Sign in, choose an intake method, and send your first WhatsApp
-            conversation into the ConvoLens alpha.
+            Preserve the source now. Build the reviewed ticket, resolution, and
+            response trail from there.
           </p>
           <Link
             href="/login?redirectTo=/dashboard"
             className="mt-9 inline-block rounded-lg bg-white px-8 py-3 font-semibold text-green-800 shadow-md transition hover:bg-gray-100"
           >
-            Sign in to the alpha
+            Start an intake
           </Link>
         </div>
       </section>
