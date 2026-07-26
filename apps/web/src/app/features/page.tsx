@@ -34,7 +34,7 @@ const features = [
 export default function FeaturesPage() {
   return (
     <PageWrapper>
-      <section className="container py-12">
+      <section className="py-4 sm:py-8">
         <div className="mx-auto max-w-5xl">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">

@@ -10,6 +10,25 @@ const readRepo = (relativePath: string) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 describe("external surface containment", () => {
+  it("keeps public, authenticated import, and navigation content on one responsive grid", () => {
+    expect(read("app/page-wrapper.tsx")).toContain(
+      "mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8",
+    );
+    expect(read("app/dashboard/import/page.tsx")).toContain(
+      "mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8",
+    );
+
+    const navigationStyles = read(
+      "components/layouts/navigation/navigation.module.css",
+    );
+    expect(navigationStyles).toContain("max-width: 80rem");
+    expect(navigationStyles).toContain("padding: 0 1rem");
+    expect(navigationStyles).toMatch(
+      /@media \(min-width: 640px\) \{\s+\.container \{\s+padding: 0 1\.5rem/,
+    );
+    expect(navigationStyles).toContain("padding: 0 2rem");
+  });
+
   it("keeps internal strategy and unshipped platform names out of public copy", () => {
     const externalCopy = [
       "app/landing-page.tsx",

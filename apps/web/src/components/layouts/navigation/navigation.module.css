@@ -38,10 +38,10 @@
   align-items: center;
   justify-content: space-between;
   height: 100%;
-  max-width: 100%;
+  max-width: 80rem;
   width: 100%;
   margin: 0 auto;
-  padding: 0 1.5rem;
+  padding: 0 1rem;
 }
 
 /* Logo */
@@ -490,6 +490,12 @@
 }
 
 /* Responsive */
+@media (min-width: 640px) {
+  .container {
+    padding: 0 1.5rem;
+  }
+}
+
 @media (min-width: 768px) {
   .mobileMenuButton {
     display: none !important;
@@ -510,10 +516,6 @@
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
-  .container {
-    padding: 0 0.75rem;
-  }
-
   .logo {
     margin-right: 0.75rem;
   }
@@ -529,6 +531,12 @@
 
   .userName {
     max-width: 6rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 2rem;
   }
 }
 
