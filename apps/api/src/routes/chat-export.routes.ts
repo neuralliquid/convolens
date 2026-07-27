@@ -37,6 +37,18 @@ interface ExtractedMessage {
   isMedia: boolean;
   mediaType?: 'image' | 'video' | 'audio' | 'document' | 'sticker';
   replyTo?: string;
+  senderRef?: string;
+}
+
+interface ExtractedParticipant {
+  ref: string;
+  rawDisplayName?: string;
+  rawUsername?: string;
+  normalizedPhone?: string;
+  platformUserId?: string;
+  isSelf: boolean;
+  extractionMethod: string;
+  confidence: string;
 }
 
 interface ExtensionChatData {
@@ -48,9 +60,11 @@ interface ExtensionChatData {
   source: 'chrome-extension';
   version: string;
   isGroup: boolean;
+  payloadVersion?: 2;
+  participants?: ExtractedParticipant[];
 }
 
-function isValidExtensionChatData(data: unknown): data is ExtensionChatData {
+export function isValidExtensionChatData(data: unknown): data is ExtensionChatData {
   if (!data || typeof data !== 'object') return false;
 
   const obj = data as Record<string, unknown>;
@@ -78,7 +92,43 @@ function isValidExtensionChatData(data: unknown): data is ExtensionChatData {
     if (!isValidMessage(msg)) return false;
   }
 
+  if (obj.payloadVersion !== undefined && obj.payloadVersion !== 2) return false;
+  if (obj.payloadVersion === 2 && !Array.isArray(obj.participants)) return false;
+  if (obj.participants !== undefined) {
+    if (!Array.isArray(obj.participants)) return false;
+    const refs = new Set<string>();
+    for (const participant of obj.participants) {
+      if (!isValidParticipant(participant) || refs.has(participant.ref)) return false;
+      refs.add(participant.ref);
+    }
+    if (obj.messages.some((message) => message.senderRef && !refs.has(message.senderRef))) return false;
+  }
+
   return true;
+}
+
+function isValidParticipant(value: unknown): value is ExtractedParticipant {
+  if (!value || typeof value !== 'object') return false;
+  const participant = value as Record<string, unknown>;
+  if (typeof participant.ref !== 'string' || participant.ref.length === 0 || typeof participant.isSelf !== 'boolean') return false;
+  if (typeof participant.extractionMethod !== 'string' || typeof participant.confidence !== 'string') return false;
+  return ['rawDisplayName', 'rawUsername', 'normalizedPhone', 'platformUserId'].every((field) => participant[field] === undefined || typeof participant[field] === 'string');
+}
+
+/**
+ * Preserve the v1 participant list during the v2 rollout. An observation may
+ * intentionally lack a raw label (for example, a numbered fallback), so use
+ * the corresponding synthesized message sender in that case.
+ */
+export function getLegacyParticipantLabels(chatData: ExtensionChatData): string[] {
+  if (!chatData.participants) {
+    return [...new Set(chatData.messages.map((message) => message.sender))];
+  }
+
+  return [...new Set(chatData.participants
+    .map((participant) => participant.rawDisplayName ||
+      chatData.messages.find((message) => message.senderRef === participant.ref)?.sender)
+    .filter((name): name is string => Boolean(name)))];
 }
 
 function isValidMessage(msg: unknown): msg is ExtractedMessage {
@@ -104,6 +154,7 @@ function isValidMessage(msg: unknown): msg is ExtractedMessage {
   }
 
   if (obj.replyTo !== undefined && typeof obj.replyTo !== 'string') return false;
+  if (obj.senderRef !== undefined && typeof obj.senderRef !== 'string') return false;
 
   return true;
 }
@@ -250,7 +301,9 @@ router.post('/extension', authenticateToken, async (req, res) => {
       sourceConversationId: chatData.chatId,
       displayName: sanitizedChatName,
       isGroup: chatData.isGroup,
-      participants: [...new Set(chatData.messages.map((message) => message.sender))],
+      // v2 observations remain raw connector evidence for PR 2. This keeps the
+      // v1 persistence and deduplication contract unchanged during rollout.
+      participants: getLegacyParticipantLabels(chatData),
       sourceExtractedAt: new Date(chatData.extractedAt),
       provenance: {
         connectorVersion: chatData.version,

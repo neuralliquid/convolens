@@ -1,0 +1,23 @@
+<!-- Direct chat: inbound author comes from the conversation header. -->
+<section data-testid="conversation-panel-messages">
+  <div class="message-in" data-testid="msg-container">
+    <div data-testid="msg-text">Hello</div>
+    <span data-testid="msg-meta">10:01 AM</span>
+  </div>
+</section>
+<header>
+  <span data-testid="conversation-info-header-chat-title">+27 82 123 4567</span>
+  <span data-testid="conversation-subtitle">online</span>
+</header>
+
+<!-- Group chat: metadata is authoritative even when the sender element is absent. -->
+<section data-testid="conversation-panel-messages">
+  <div class="message-in" data-testid="msg-container" data-pre-plain-text="[10:02, 2026-07-27] Sarah Mokoena: ">
+    <div data-testid="msg-text">Morning all</div>
+    <span data-testid="msg-meta">10:02 AM</span>
+  </div>
+  <div class="message-out" data-testid="msg-out">
+    <div data-testid="msg-text">Good morning</div>
+    <span data-testid="msg-meta">10:03 AM</span>
+  </div>
+</section>
