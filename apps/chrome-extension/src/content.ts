@@ -530,7 +530,8 @@ function extractMessageData(
     container.classList.contains("message-out") ||
     container.closest('[data-testid="msg-out"]') !== null ||
     messageRecord.classList.contains("message-out") ||
-    messageRecord.closest('[data-testid="msg-out"]') !== null;
+    messageRecord.closest('[data-testid="msg-out"]') !== null ||
+    messageRecord.querySelector('[data-testid="msg-out"]') !== null;
   const metadata = getMessageMetadata(messageRecord);
   const identity = extractSenderIdentity(
     messageRecord,
