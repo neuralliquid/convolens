@@ -43,6 +43,18 @@ interface ExtractedMessage {
   isMedia: boolean;
   mediaType?: "image" | "video" | "audio" | "document" | "sticker";
   replyTo?: string;
+  senderRef?: string;
+}
+
+interface ExtractedParticipant {
+  ref: string;
+  rawDisplayName?: string;
+  rawUsername?: string;
+  normalizedPhone?: string;
+  platformUserId?: string;
+  isSelf: boolean;
+  extractionMethod: "metadata" | "sender-element" | "conversation-header" | "outgoing" | "fallback";
+  confidence: "high" | "medium" | "low";
 }
 
 interface ExtractedChat {
@@ -54,6 +66,8 @@ interface ExtractedChat {
   source: "chrome-extension";
   version: string;
   isGroup: boolean;
+  payloadVersion: 2;
+  participants: ExtractedParticipant[];
 }
 
 interface ExtractionState {
@@ -395,6 +409,8 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
   );
 
   const messages: ExtractedMessage[] = [];
+  const participants: ExtractedParticipant[] = [];
+  const participantRefs = new Map<string, string>();
   const totalMessages = messageContainers.length;
 
   for (let i = 0; i < messageContainers.length; i++) {
@@ -411,7 +427,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
     }
 
     try {
-      const message = extractMessageData(messageContainers[i] as HTMLElement);
+      const message = extractMessageData(messageContainers[i] as HTMLElement, isGroup, chatName, participants, participantRefs);
       if (message) {
         messages.push(message);
       }
@@ -435,13 +451,21 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
     source: "chrome-extension",
     version: chrome.runtime.getManifest().version,
     isGroup,
+    payloadVersion: 2,
+    participants,
   };
 }
 
 /**
  * Extract data from a single message element
  */
-function extractMessageData(container: HTMLElement): ExtractedMessage | null {
+function extractMessageData(
+  container: HTMLElement,
+  isGroup: boolean,
+  chatName: string,
+  participants: ExtractedParticipant[],
+  participantRefs: Map<string, string>,
+): ExtractedMessage | null {
   // Get message text
   const textEl = findMessageText(
     container,
@@ -468,22 +492,77 @@ function extractMessageData(container: HTMLElement): ExtractedMessage | null {
   const senderEl =
     container.querySelector(SELECTORS.primary.senderName) ||
     container.querySelector(SELECTORS.fallback.senderName);
-  const sender = senderEl?.textContent?.trim() || "Unknown";
 
   // Determine direction
   const isOutgoing =
     container.classList.contains("message-out") ||
     container.closest('[data-testid="msg-out"]') !== null;
+  const identity = extractSenderIdentity(container, senderEl, isOutgoing, isGroup, chatName);
+  const senderRef = registerParticipant(identity, participants, participantRefs);
 
   return {
     id: generateMessageId(),
     text: isMedia && !text ? `[${mediaType || "Media"}]` : text,
-    sender: isOutgoing ? "You" : sender,
+    sender: identity.rawDisplayName || `Unidentified participant ${participants.length || 1}`,
     timestamp: parseTimestamp(timeText),
     isOutgoing,
     isMedia,
     mediaType,
+    senderRef,
   };
+}
+
+function extractSenderIdentity(
+  container: HTMLElement,
+  senderEl: Element | null,
+  isOutgoing: boolean,
+  isGroup: boolean,
+  chatName: string,
+): Omit<ExtractedParticipant, "ref"> {
+  if (isOutgoing) {
+    return { rawDisplayName: "You", isSelf: true, extractionMethod: "outgoing", confidence: "high" };
+  }
+  const metadata = container.getAttribute("data-pre-plain-text") ||
+    container.querySelector("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") || "";
+  const metadataSender = metadata.match(/\]\s*(.+?):\s*$/)?.[1]?.trim();
+  const explicitSender = senderEl?.textContent?.trim();
+  const headerSender = !isGroup
+    ? (querySelector(SELECTORS.primary.contactName, SELECTORS.fallback.contactName)?.textContent?.trim() ||
+      (chatName === "Unknown Chat" ? undefined : chatName))
+    : undefined;
+  const rawDisplayName = metadataSender || explicitSender || headerSender;
+  const rawUsername = rawDisplayName?.match(/^@[^\s]+$/)?.[0];
+  const phoneSource = rawDisplayName?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0];
+  const normalizedPhone = phoneSource ? phoneSource.replace(/[^0-9+]/g, "") : undefined;
+  // data-id identifies an individual message in WhatsApp Web, not its sender.
+  const platformUserId = container.getAttribute("data-contact-id") ||
+    container.closest("[data-contact-id]")?.getAttribute("data-contact-id") || undefined;
+  const extractionMethod = metadataSender ? "metadata" : explicitSender ? "sender-element" : headerSender ? "conversation-header" : "fallback";
+  return {
+    rawDisplayName,
+    rawUsername,
+    normalizedPhone,
+    platformUserId,
+    isSelf: false,
+    extractionMethod,
+    confidence: extractionMethod === "metadata" ? "high" : extractionMethod === "fallback" ? "low" : "medium",
+  };
+}
+
+function registerParticipant(
+  identity: Omit<ExtractedParticipant, "ref">,
+  participants: ExtractedParticipant[],
+  participantRefs: Map<string, string>,
+): string {
+  const stableKey = identity.isSelf
+    ? "self"
+    : identity.platformUserId || identity.normalizedPhone || identity.rawUsername || identity.rawDisplayName || `unidentified-${participants.length + 1}`;
+  const existing = participantRefs.get(stableKey);
+  if (existing) return existing;
+  const ref = `participant_${participants.length + 1}`;
+  participants.push({ ref, ...identity });
+  participantRefs.set(stableKey, ref);
+  return ref;
 }
 
 // =============================================================================
