@@ -44,6 +44,9 @@ Canonical plan:
 9. Review on PR #146 identified that upgrading a stored sender from phone-only to `Name · phone` changes the existing sender-inclusive content hash and can create a duplicate intake unless compatibility is designed explicitly.
 10. Re-review identified that semantic-message compatibility must also match a stable source-conversation identity; otherwise two distinct chats with identical messages can be collapsed incorrectly.
 11. Re-review identified that the current `pendingUploads` queue persists complete payloads in `chrome.storage.local`, contradicting a memory-only raw-content target unless queue migration/removal is a prerequisite.
+12. Follow-up review requires Phase 1 to disable update/alarm/online/login automatic retry triggers and ship legacy migration immediately, rather than leaving migration for the later operations PR.
+13. `Capture as I scroll` must remain disabled and marked `Soon` until its collector ships.
+14. Guided overlap merging must preserve same-sender, same-text, same-minute occurrences; generated IDs and global semantic-set deduplication are not acceptable.
 
 ## Immediate next implementation slice
 
@@ -73,9 +76,18 @@ Before claiming raw capture content is memory-only:
 
 1. Stop adding new full payloads to `chrome.storage.local`.
 2. Represent network/rate failures as retry-required, with in-memory retry while the tab remains alive.
-3. Add a one-time authenticated migration UI for existing `pendingUploads`: user-confirmed retry or deletion, followed by removal from local storage.
-4. Require recapture/review after tab loss rather than silently persisting a new raw queue.
-5. Keep any future durable offline queue behind a separate threat model, opt-in, encryption, retention, deletion, and operator-acceptance decision.
+3. Disable every automatic `retryPendingUploads()` trigger in the Phase 1 hotfix, including update, periodic alarm, online, and login/authentication paths.
+4. Add a one-time authenticated migration UI for existing `pendingUploads`: user-confirmed retry or deletion, followed by removal from local storage.
+5. Require recapture/review after tab loss rather than silently persisting a new raw queue.
+6. Keep any future durable offline queue behind a separate threat model, opt-in, encryption, retention, deletion, and operator-acceptance decision.
+
+Before enabling guided capture:
+
+1. Keep `Capture as I scroll` disabled and marked `Soon` in the preview-only release.
+2. Prefer stable WhatsApp message-scoped IDs for window overlap.
+3. When stable IDs are absent, merge ordered windows with occurrence-aware suffix/prefix alignment rather than a semantic `Set`.
+4. Preserve two legitimate same-sender, same-text, same-minute messages.
+5. Surface unresolved overlap ambiguity for review instead of silently dropping occurrences.
 
 Do not start automatic scrolling in the hotfix PR.
 
@@ -109,6 +121,9 @@ Redact tokens, cookies, message/contact data, and runtime/session values.
 - Do not silently collapse unscoped or ambiguous hash-compatibility candidates.
 - Do not claim memory-only raw capture while `pendingUploads` still contains full payloads.
 - Do not silently retry or delete legacy queued payloads during migration.
+- Do not leave an automatic legacy retry trigger active while migration requires user confirmation.
+- Do not enable a capture mode before its implementation phase ships.
+- Do not deduplicate virtualized windows with generated IDs or a global semantic-message set.
 - Do not imply that a media badge represents a retained attachment.
 - Do not show more than two secondary `Soon` capabilities.
 - Do not claim authentic acceptance until the authorized long-chat, persistence, deduplication, restart, isolation, and deletion sequence passes.
@@ -123,5 +138,5 @@ Redact tokens, cookies, message/contact data, and runtime/session values.
 ## Copy-paste continuation
 
 ```text
-Continue ConvoLens extension work from docs/EXTENSION-CAPTURE-EXPERIENCE-PLAN.md and docs/HANDOFF-2026-07-27-EXTENSION-CAPTURE-PLAN.md. Recheck live PR #146, current origin/main, checks, reviews, and worktree state. Preserve unrelated work. Begin with Phase 0 console and local-storage attribution; do not assume generic content.js/dashboard errors belong to ConvoLens, and inventory the complete-payload `pendingUploads` path. Then implement Phase 1 as a narrow PR: truthful loaded-message wording, popup extraction that does not mutate page progress, terminal progress reset, safe messaging-channel handling, no new raw local queue entries, a user-confirmed legacy queue migration, and focused 16-rendered-message regression coverage. Follow with the sender/media fidelity slice: collect visible name and phone independently, preserve participant references, establish stable source-conversation identity, and add scoped versioned exact/compatibility hashes so label enrichment cannot duplicate a scoped intake or collapse two distinct chats. Legacy intakes without stable conversation identity require explicit reconciliation. Detect video before image and render neutral media badges without downloading attachments. Do not implement automatic scrolling in the hotfix. Keep production acceptance operator-held until the full authorized sequence passes.
+Continue ConvoLens extension work from docs/EXTENSION-CAPTURE-EXPERIENCE-PLAN.md and docs/HANDOFF-2026-07-27-EXTENSION-CAPTURE-PLAN.md. Recheck live PR #146, current origin/main, checks, reviews, and worktree state. Preserve unrelated work. Begin with Phase 0 console and local-storage attribution; do not assume generic content.js/dashboard errors belong to ConvoLens, and inventory the complete-payload `pendingUploads` path. Then implement Phase 1 as a narrow PR: truthful loaded-message wording, popup extraction that does not mutate page progress, terminal progress reset, safe messaging-channel handling, no new raw local queue entries, disable update/alarm/online/login automatic legacy retries, ship a user-confirmed legacy queue migration, and add focused 16-rendered-message regression coverage. Follow with the sender/media fidelity slice: collect visible name and phone independently, preserve participant references, establish stable source-conversation identity, and add scoped versioned exact/compatibility hashes so label enrichment cannot duplicate a scoped intake or collapse two distinct chats. Legacy intakes without stable conversation identity require explicit reconciliation. Detect video before image and render neutral media badges without downloading attachments. Keep guided capture disabled/`Soon` until its phase ships; its collector must prefer stable message IDs and otherwise use occurrence-aware ordered-window alignment that preserves same-sender, same-text, same-minute messages. Do not implement automatic scrolling in the hotfix. Keep production acceptance operator-held until the full authorized sequence passes.
 ```

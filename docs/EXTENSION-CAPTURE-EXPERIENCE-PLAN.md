@@ -202,6 +202,8 @@ Deliverables:
 - Messaging senders catch and classify channel closure instead of producing unhandled promise rejections.
 - Stop adding new raw payloads to `pendingUploads`; network/rate failures become user-visible `retry-required` outcomes.
 - Add the one-time legacy-queue migration surface defined in section 4 before claiming the no-raw-local-persistence boundary.
+- Disable every legacy automatic-retry trigger in the same hotfix before exposing migration: update/install lifecycle retry, periodic alarm retry, browser-online retry, and login/authentication retry.
+- Permit legacy payload transmission only from the authenticated migration surface after the user selects **Retry now**; no background trigger may call `retryPendingUploads()` during or after migration.
 
 Exit gate:
 
@@ -314,7 +316,7 @@ Deliverables:
 - Detected participant-label, media, skipped, and unreadable counts.
 - Capture-mode choices:
   - `Loaded messages`;
-  - `Capture as I scroll`;
+  - `Capture as I scroll` marked `Soon` and disabled until Phase 6 ships;
   - `Load older messages for me` marked `Soon` until Phase 7.
 - Review step showing exactly what will be uploaded.
 - Explicit confirm and cancel actions.
@@ -325,6 +327,7 @@ Exit gate:
 - Switching modes discards the prior unconfirmed buffer.
 - Cancel sends nothing.
 - Scope and exclusions remain visible through confirmation.
+- Disabled future modes cannot start collection and clearly identify their delivery phase.
 
 ### Phase 6 — Guided `Capture as I scroll`
 
@@ -334,7 +337,14 @@ Deliverables:
 
 - User-initiated collection that observes the active conversation while the user scrolls upward.
 - Incremental extraction before WhatsApp removes old DOM windows.
-- Stable local fingerprints for overlap deduplication without changing the API's content-hash contract.
+- Occurrence-safe overlap identity without changing the API's content-hash contract:
+  - prefer a stable WhatsApp message-scoped `data-id` or equivalent raw source ID when present;
+  - never use generated connector IDs for overlap deduplication;
+  - never globally collapse messages by sender/text/minute or another semantic `Set` key;
+  - when stable IDs are absent, treat each rendered window as an ordered sequence and merge it through maximal suffix/prefix overlap alignment, preserving repeated-token multiplicity and occurrence order;
+  - include raw metadata, direction, sender evidence, media type, and neighboring sequence context in fallback alignment;
+  - use smaller scroll increments when repeated sequences make the overlap ambiguous;
+  - if ambiguity remains, retain the candidate occurrences and surface a review warning rather than silently dropping a legitimate message.
 - Running unique count and oldest captured date.
 - `Stop and review` and `Cancel` controls.
 - Abort on chat change, tab teardown, DOM failure, timeout, or safety limit.
@@ -345,6 +355,9 @@ Exit gate:
 - A 200-message virtualized fixture with 16 mounted nodes collects all 200 across guided windows.
 - Window overlap creates no duplicates.
 - Repeated text at different times remains distinct.
+- Two messages from the same sender with identical text in the same timestamp minute both remain present.
+- The same repeated-message window observed twice does not create extra copies.
+- An overlap that cannot be aligned unambiguously is flagged for review rather than silently deduplicated.
 - Incoming/outgoing direction, sender evidence, timestamps, and media markers survive collection.
 - Chat switching cannot mix two conversations.
 
@@ -453,14 +466,14 @@ Packaging, CI, health checks, synthetic fixtures, or a popup success message do 
 This document is the plan PR. Implementation should remain split into reviewable follow-ups:
 
 1. **PR A:** console attribution ledger, messaging audit, and reproduction fixtures.
-2. **PR B:** truthful loaded-count and progress hotfix.
+2. **PR B:** truthful loaded-count/progress hotfix, automatic legacy-retry shutdown, and user-confirmed `pendingUploads` migration.
 3. **PR C:** sender name/phone preservation, hash compatibility, and neutral media-type rendering.
 4. **PR D:** shared capture operation state.
 5. **PR E:** compact draggable launcher.
 6. **PR F:** preview and loaded-message mode.
 7. **PR G:** guided `Capture as I scroll`.
 8. **PR H:** automatic older-history loading.
-9. **PR I:** safe retry, legacy-queue migration, result links, local export, and toolbar badge.
+9. **PR I:** safe in-memory retry, result links, local export, and toolbar badge; legacy raw-queue migration already ships in PR B.
 10. **PR J:** carefully labelled future-action previews.
 11. **PR K:** release evidence, operator acceptance, and durable closeout.
 
