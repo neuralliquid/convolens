@@ -62,6 +62,18 @@ interface ExtensionChatData {
   isGroup: boolean;
   payloadVersion?: 2;
   participants?: ExtractedParticipant[];
+  diagnostics?: ExtractionDiagnostics;
+}
+
+interface ExtractionDiagnostics {
+  messageContainerCount: number;
+  extractedMessageCount: number;
+  metadataPathCounts: Record<'container' | 'ancestor' | 'descendant' | 'none', number>;
+  senderMethodCounts: Record<
+    'metadata' | 'sender-element' | 'conversation-header' | 'outgoing' | 'fallback',
+    number
+  >;
+  timestampMethodCounts: Record<'metadata' | 'visible-time' | 'fallback', number>;
 }
 
 export function isValidExtensionChatData(data: unknown): data is ExtensionChatData {
@@ -101,18 +113,65 @@ export function isValidExtensionChatData(data: unknown): data is ExtensionChatDa
       if (!isValidParticipant(participant) || refs.has(participant.ref)) return false;
       refs.add(participant.ref);
     }
-    if (obj.messages.some((message) => message.senderRef && !refs.has(message.senderRef))) return false;
+    if (obj.messages.some((message) => message.senderRef && !refs.has(message.senderRef)))
+      return false;
   }
+  if (obj.diagnostics !== undefined && !isValidExtractionDiagnostics(obj.diagnostics)) return false;
 
   return true;
+}
+
+function isValidExtractionDiagnostics(value: unknown): value is ExtractionDiagnostics {
+  if (!value || typeof value !== 'object') return false;
+  const diagnostics = value as Record<string, unknown>;
+  if (
+    !isNonNegativeInteger(diagnostics.messageContainerCount) ||
+    !isNonNegativeInteger(diagnostics.extractedMessageCount)
+  )
+    return false;
+  return (
+    isCountMap(diagnostics.metadataPathCounts, ['container', 'ancestor', 'descendant', 'none']) &&
+    isCountMap(diagnostics.senderMethodCounts, [
+      'metadata',
+      'sender-element',
+      'conversation-header',
+      'outgoing',
+      'fallback',
+    ]) &&
+    isCountMap(diagnostics.timestampMethodCounts, ['metadata', 'visible-time', 'fallback'])
+  );
+}
+
+function isCountMap(value: unknown, keys: string[]): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const counts = value as Record<string, unknown>;
+  return (
+    Object.keys(counts).every((key) => keys.includes(key)) &&
+    keys.every((key) => isNonNegativeInteger(counts[key]))
+  );
+}
+
+function isNonNegativeInteger(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function isValidParticipant(value: unknown): value is ExtractedParticipant {
   if (!value || typeof value !== 'object') return false;
   const participant = value as Record<string, unknown>;
-  if (typeof participant.ref !== 'string' || participant.ref.length === 0 || typeof participant.isSelf !== 'boolean') return false;
-  if (typeof participant.extractionMethod !== 'string' || typeof participant.confidence !== 'string') return false;
-  return ['rawDisplayName', 'rawUsername', 'normalizedPhone', 'platformUserId'].every((field) => participant[field] === undefined || typeof participant[field] === 'string');
+  if (
+    typeof participant.ref !== 'string' ||
+    participant.ref.length === 0 ||
+    typeof participant.isSelf !== 'boolean'
+  )
+    return false;
+  if (
+    typeof participant.extractionMethod !== 'string' ||
+    typeof participant.confidence !== 'string'
+  )
+    return false;
+  return ['rawDisplayName', 'rawUsername', 'normalizedPhone', 'platformUserId'].every(
+    (field) => participant[field] === undefined || typeof participant[field] === 'string'
+  );
 }
 
 /**
@@ -125,10 +184,17 @@ export function getLegacyParticipantLabels(chatData: ExtensionChatData): string[
     return [...new Set(chatData.messages.map((message) => message.sender))];
   }
 
-  return [...new Set(chatData.participants
-    .map((participant) => participant.rawDisplayName ||
-      chatData.messages.find((message) => message.senderRef === participant.ref)?.sender)
-    .filter((name): name is string => Boolean(name)))];
+  return [
+    ...new Set(
+      chatData.participants
+        .map(
+          (participant) =>
+            participant.rawDisplayName ||
+            chatData.messages.find((message) => message.senderRef === participant.ref)?.sender
+        )
+        .filter((name): name is string => Boolean(name))
+    ),
+  ];
 }
 
 function isValidMessage(msg: unknown): msg is ExtractedMessage {
@@ -287,12 +353,23 @@ router.post('/extension', authenticateToken, async (req, res) => {
       });
     }
 
-    // Limit the connector-provided label before logging and persistence.
+    // Limit the connector-provided label before persistence. It is never logged.
     const sanitizedChatName = sanitizeString(chatData.chatName, 200);
 
-    logger.info(
-      `Received extension chat data: ${sanitizedChatName} with ${chatData.messages.length} messages from user ${userId}`
-    );
+    logger.info('Received extension chat data', {
+      source: chatData.source,
+      connectorVersion: chatData.version,
+      payloadVersion: chatData.payloadVersion || 1,
+      messageCount: chatData.messages.length,
+      isGroup: chatData.isGroup,
+    });
+    if (chatData.diagnostics) {
+      logger.info('Extension intake diagnostics', {
+        source: chatData.source,
+        connectorVersion: chatData.version,
+        diagnostics: chatData.diagnostics,
+      });
+    }
 
     const saved = await conversationIntakeService.save({
       userId,
