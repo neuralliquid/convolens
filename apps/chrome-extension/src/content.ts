@@ -24,6 +24,7 @@ import {
   type SetAuthTokenMessage,
   type CheckStatusData,
 } from "./config";
+import { parseWhatsAppMessageMetadata } from "./whatsapp-metadata";
 import {
   findConversationRoot,
   findMessageContainers,
@@ -498,14 +499,15 @@ function extractMessageData(
   const isOutgoing =
     container.classList.contains("message-out") ||
     container.closest('[data-testid="msg-out"]') !== null;
-  const identity = extractSenderIdentity(container, senderEl, isOutgoing, isDirectChat, chatName);
+  const metadata = getMessageMetadata(container);
+  const identity = extractSenderIdentity(container, senderEl, isOutgoing, isDirectChat, chatName, metadata);
   const senderRef = registerParticipant(identity, participants, participantRefs);
 
   return {
     id: generateMessageId(),
     text: isMedia && !text ? `[${mediaType || "Media"}]` : text,
     sender: identity.rawDisplayName || `Unidentified participant ${participants.length || 1}`,
-    timestamp: parseTimestamp(timeText),
+    timestamp: parseTimestamp(timeText, metadata),
     isOutgoing,
     isMedia,
     mediaType,
@@ -519,13 +521,12 @@ function extractSenderIdentity(
   isOutgoing: boolean,
   isDirectChat: boolean,
   chatName: string,
+  metadata: string,
 ): Omit<ExtractedParticipant, "ref"> {
   if (isOutgoing) {
     return { rawDisplayName: "You", isSelf: true, extractionMethod: "outgoing", confidence: "high" };
   }
-  const metadata = container.getAttribute("data-pre-plain-text") ||
-    container.querySelector("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") || "";
-  const metadataSender = metadata.match(/\]\s*(.+?):\s*$/)?.[1]?.trim();
+  const metadataSender = parseWhatsAppMessageMetadata(metadata).sender;
   const explicitSender = senderEl?.textContent?.trim();
   // A failure to recognise a group is not proof this is a direct chat.
   const headerSender = isDirectChat
@@ -534,7 +535,11 @@ function extractSenderIdentity(
     : undefined;
   const rawDisplayName = metadataSender || explicitSender || headerSender;
   const rawUsername = rawDisplayName?.match(/^@[^\s]+$/)?.[0];
-  const phoneSource = rawDisplayName?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0];
+  // WhatsApp commonly renders the phone alongside the sender label. It is
+  // capture-scoped evidence, never a contact-book scrape.
+  const phoneSource = [rawDisplayName, senderEl?.parentElement?.textContent, container.textContent]
+    .map((value) => value?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0])
+    .find((value): value is string => Boolean(value));
   const normalizedPhone = phoneSource ? phoneSource.replace(/[^0-9+]/g, "") : undefined;
   // data-id identifies an individual message in WhatsApp Web, not its sender.
   const platformUserId = container.getAttribute("data-contact-id") ||
@@ -549,6 +554,12 @@ function extractSenderIdentity(
     extractionMethod,
     confidence: extractionMethod === "metadata" ? "high" : extractionMethod === "fallback" ? "low" : "medium",
   };
+}
+
+function getMessageMetadata(container: HTMLElement): string {
+  return container.getAttribute("data-pre-plain-text") ||
+    container.closest("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") ||
+    container.querySelector("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") || "";
 }
 
 function registerParticipant(
@@ -621,8 +632,11 @@ function getMediaType(
   return undefined;
 }
 
-function parseTimestamp(timeText: string): string {
+function parseTimestamp(timeText: string, metadata: string = ""): string {
   const now = new Date();
+
+  const metadataTimestamp = parseWhatsAppMessageMetadata(metadata).timestamp;
+  if (metadataTimestamp) return metadataTimestamp;
 
   if (!timeText) return now.toISOString();
 
