@@ -1,6 +1,6 @@
 {
   "name": "@convolens/chrome-extension",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "type": "module",
   "description": "ConvoLens Chrome Extension for WhatsApp Web",

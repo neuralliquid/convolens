@@ -54,8 +54,24 @@ interface ExtractedParticipant {
   normalizedPhone?: string;
   platformUserId?: string;
   isSelf: boolean;
-  extractionMethod: "metadata" | "sender-element" | "conversation-header" | "outgoing" | "fallback";
+  extractionMethod:
+    | "metadata"
+    | "sender-element"
+    | "conversation-header"
+    | "outgoing"
+    | "fallback";
   confidence: "high" | "medium" | "low";
+}
+
+type MetadataPath = "container" | "ancestor" | "descendant" | "none";
+type TimestampMethod = "metadata" | "visible-time" | "fallback";
+
+interface ExtractionDiagnostics {
+  messageContainerCount: number;
+  extractedMessageCount: number;
+  metadataPathCounts: Record<MetadataPath, number>;
+  senderMethodCounts: Record<ExtractedParticipant["extractionMethod"], number>;
+  timestampMethodCounts: Record<TimestampMethod, number>;
 }
 
 interface ExtractedChat {
@@ -69,6 +85,7 @@ interface ExtractedChat {
   isGroup: boolean;
   payloadVersion: 2;
   participants: ExtractedParticipant[];
+  diagnostics: ExtractionDiagnostics;
 }
 
 interface ExtractionState {
@@ -414,6 +431,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
   const participants: ExtractedParticipant[] = [];
   const participantRefs = new Map<string, string>();
   const totalMessages = messageContainers.length;
+  const diagnostics = createExtractionDiagnostics(totalMessages);
 
   for (let i = 0; i < messageContainers.length; i++) {
     // Update progress
@@ -429,7 +447,14 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
     }
 
     try {
-      const message = extractMessageData(messageContainers[i] as HTMLElement, isDirectChat, chatName, participants, participantRefs);
+      const message = extractMessageData(
+        messageContainers[i] as HTMLElement,
+        isDirectChat,
+        chatName,
+        participants,
+        participantRefs,
+        diagnostics,
+      );
       if (message) {
         messages.push(message);
       }
@@ -455,6 +480,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
     isGroup,
     payloadVersion: 2,
     participants,
+    diagnostics,
   };
 }
 
@@ -467,6 +493,7 @@ function extractMessageData(
   chatName: string,
   participants: ExtractedParticipant[],
   participantRefs: Map<string, string>,
+  diagnostics: ExtractionDiagnostics,
 ): ExtractedMessage | null {
   // Get message text
   const textEl = findMessageText(
@@ -500,14 +527,33 @@ function extractMessageData(
     container.classList.contains("message-out") ||
     container.closest('[data-testid="msg-out"]') !== null;
   const metadata = getMessageMetadata(container);
-  const identity = extractSenderIdentity(container, senderEl, isOutgoing, isDirectChat, chatName, metadata);
-  const senderRef = registerParticipant(identity, participants, participantRefs);
+  const identity = extractSenderIdentity(
+    container,
+    senderEl,
+    isOutgoing,
+    isDirectChat,
+    chatName,
+    metadata.value,
+  );
+  const senderRef = registerParticipant(
+    identity,
+    participants,
+    participantRefs,
+  );
+  const timestamp = parseTimestamp(timeText, metadata.value);
+
+  diagnostics.extractedMessageCount += 1;
+  diagnostics.metadataPathCounts[metadata.path] += 1;
+  diagnostics.senderMethodCounts[identity.extractionMethod] += 1;
+  diagnostics.timestampMethodCounts[timestamp.method] += 1;
 
   return {
     id: generateMessageId(),
     text: isMedia && !text ? `[${mediaType || "Media"}]` : text,
-    sender: identity.rawDisplayName || `Unidentified participant ${participants.length || 1}`,
-    timestamp: parseTimestamp(timeText, metadata),
+    sender:
+      identity.rawDisplayName ||
+      `Unidentified participant ${participants.length || 1}`,
+    timestamp: timestamp.value,
     isOutgoing,
     isMedia,
     mediaType,
@@ -524,25 +570,46 @@ function extractSenderIdentity(
   metadata: string,
 ): Omit<ExtractedParticipant, "ref"> {
   if (isOutgoing) {
-    return { rawDisplayName: "You", isSelf: true, extractionMethod: "outgoing", confidence: "high" };
+    return {
+      rawDisplayName: "You",
+      isSelf: true,
+      extractionMethod: "outgoing",
+      confidence: "high",
+    };
   }
-  const metadataSender = parseWhatsAppMessageMetadata(metadata, document.documentElement.lang || navigator.language).sender;
+  const metadataSender = parseWhatsAppMessageMetadata(
+    metadata,
+    document.documentElement.lang || navigator.language,
+  ).sender;
   const explicitSender = senderEl?.textContent?.trim();
   // A failure to recognise a group is not proof this is a direct chat.
   const headerSender = isDirectChat
-    ? (querySelector(SELECTORS.primary.contactName, SELECTORS.fallback.contactName)?.textContent?.trim() ||
-      (chatName === "Unknown Chat" ? undefined : chatName))
+    ? querySelector(
+        SELECTORS.primary.contactName,
+        SELECTORS.fallback.contactName,
+      )?.textContent?.trim() ||
+      (chatName === "Unknown Chat" ? undefined : chatName)
     : undefined;
   const rawDisplayName = metadataSender || explicitSender || headerSender;
   const rawUsername = rawDisplayName?.match(/^@[^\s]+$/)?.[0];
   // WhatsApp commonly renders the phone alongside the sender label. It is
   // capture-scoped evidence, never a contact-book scrape.
   const phoneSource = rawDisplayName?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0];
-  const normalizedPhone = phoneSource ? phoneSource.replace(/[^0-9+]/g, "") : undefined;
+  const normalizedPhone = phoneSource
+    ? phoneSource.replace(/[^0-9+]/g, "")
+    : undefined;
   // data-id identifies an individual message in WhatsApp Web, not its sender.
-  const platformUserId = container.getAttribute("data-contact-id") ||
-    container.closest("[data-contact-id]")?.getAttribute("data-contact-id") || undefined;
-  const extractionMethod = metadataSender ? "metadata" : explicitSender ? "sender-element" : headerSender ? "conversation-header" : "fallback";
+  const platformUserId =
+    container.getAttribute("data-contact-id") ||
+    container.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
+    undefined;
+  const extractionMethod = metadataSender
+    ? "metadata"
+    : explicitSender
+      ? "sender-element"
+      : headerSender
+        ? "conversation-header"
+        : "fallback";
   return {
     rawDisplayName,
     rawUsername,
@@ -550,14 +617,34 @@ function extractSenderIdentity(
     platformUserId,
     isSelf: false,
     extractionMethod,
-    confidence: extractionMethod === "metadata" ? "high" : extractionMethod === "fallback" ? "low" : "medium",
+    confidence:
+      extractionMethod === "metadata"
+        ? "high"
+        : extractionMethod === "fallback"
+          ? "low"
+          : "medium",
   };
 }
 
-function getMessageMetadata(container: HTMLElement): string {
-  return container.getAttribute("data-pre-plain-text") ||
-    container.closest("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") ||
-    container.querySelector("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") || "";
+function getMessageMetadata(container: HTMLElement): {
+  value: string;
+  path: MetadataPath;
+} {
+  const containerMetadata = container.getAttribute("data-pre-plain-text");
+  if (containerMetadata) return { value: containerMetadata, path: "container" };
+
+  const ancestorMetadata = container
+    .closest("[data-pre-plain-text]")
+    ?.getAttribute("data-pre-plain-text");
+  if (ancestorMetadata) return { value: ancestorMetadata, path: "ancestor" };
+
+  const descendantMetadata = container
+    .querySelector("[data-pre-plain-text]")
+    ?.getAttribute("data-pre-plain-text");
+  if (descendantMetadata)
+    return { value: descendantMetadata, path: "descendant" };
+
+  return { value: "", path: "none" };
 }
 
 function registerParticipant(
@@ -567,7 +654,11 @@ function registerParticipant(
 ): string {
   const stableKey = identity.isSelf
     ? "self"
-    : identity.platformUserId || identity.normalizedPhone || identity.rawUsername || identity.rawDisplayName || `unidentified-${participants.length + 1}`;
+    : identity.platformUserId ||
+      identity.normalizedPhone ||
+      identity.rawUsername ||
+      identity.rawDisplayName ||
+      `unidentified-${participants.length + 1}`;
   const existing = participantRefs.get(stableKey);
   if (existing) return existing;
   const ref = `participant_${participants.length + 1}`;
@@ -594,7 +685,11 @@ function detectGroupChat(): boolean {
 }
 
 function detectDirectChat(): boolean {
-  const subtitle = document.querySelector('[data-testid="conversation-subtitle"]')?.textContent?.trim().toLowerCase() || "";
+  const subtitle =
+    document
+      .querySelector('[data-testid="conversation-subtitle"]')
+      ?.textContent?.trim()
+      .toLowerCase() || "";
   // These are direct-chat-only states in WhatsApp Web. Do not infer a direct
   // chat merely because the group detector did not recognise localized UI.
   return /\bonline\b|\btyping\b|last seen|disappearing messages/.test(subtitle);
@@ -630,13 +725,20 @@ function getMediaType(
   return undefined;
 }
 
-function parseTimestamp(timeText: string, metadata: string = ""): string {
+function parseTimestamp(
+  timeText: string,
+  metadata: string = "",
+): { value: string; method: TimestampMethod } {
   const now = new Date();
 
-  const metadataTimestamp = parseWhatsAppMessageMetadata(metadata, document.documentElement.lang || navigator.language).timestamp;
-  if (metadataTimestamp) return metadataTimestamp;
+  const metadataTimestamp = parseWhatsAppMessageMetadata(
+    metadata,
+    document.documentElement.lang || navigator.language,
+  ).timestamp;
+  if (metadataTimestamp)
+    return { value: metadataTimestamp, method: "metadata" };
 
-  if (!timeText) return now.toISOString();
+  if (!timeText) return { value: now.toISOString(), method: "fallback" };
 
   // Handle "HH:MM AM/PM" format
   if (timeText.match(/^\d{1,2}:\d{2}\s*(AM|PM)?$/i)) {
@@ -650,22 +752,40 @@ function parseTimestamp(timeText: string, metadata: string = ""): string {
       if (period === "AM" && hours === 12) hours = 0;
 
       now.setHours(hours, minutes, 0, 0);
-      return now.toISOString();
+      return { value: now.toISOString(), method: "visible-time" };
     }
   }
 
   // Handle "Yesterday" format
   if (timeText.toLowerCase().includes("yesterday")) {
     now.setDate(now.getDate() - 1);
-    return now.toISOString();
+    return { value: now.toISOString(), method: "visible-time" };
   }
 
   // Try parsing as date
   try {
-    return new Date(timeText).toISOString();
+    return { value: new Date(timeText).toISOString(), method: "visible-time" };
   } catch {
-    return now.toISOString();
+    return { value: now.toISOString(), method: "fallback" };
   }
+}
+
+function createExtractionDiagnostics(
+  messageContainerCount: number,
+): ExtractionDiagnostics {
+  return {
+    messageContainerCount,
+    extractedMessageCount: 0,
+    metadataPathCounts: { container: 0, ancestor: 0, descendant: 0, none: 0 },
+    senderMethodCounts: {
+      metadata: 0,
+      "sender-element": 0,
+      "conversation-header": 0,
+      outgoing: 0,
+      fallback: 0,
+    },
+    timestampMethodCounts: { metadata: 0, "visible-time": 0, fallback: 0 },
+  };
 }
 
 function generateMessageId(): string {
