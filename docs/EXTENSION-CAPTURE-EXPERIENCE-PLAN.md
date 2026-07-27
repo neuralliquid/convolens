@@ -204,6 +204,14 @@ Deliverables:
 - Prefer a non-phone display name for the name field while retaining the phone separately.
 - Derive `Name · phone`, name-only, phone-only, or unidentified labels using section 4.1.
 - Preserve message-to-participant references through the API and durable conversation projection.
+- Preserve deduplication across sender-label upgrades with an explicit compatibility contract:
+  - keep the existing v1 content hash unchanged for already persisted intakes;
+  - add a versioned v2 exact hash for new captures that excludes mutable presentation labels and uses stable participant evidence only when available;
+  - add an owner-scoped compatibility fingerprint over the ordered semantic message stream (`content`, timestamp, direction, media flag/type), excluding generated source IDs and sender display labels;
+  - backfill or lazily derive that compatibility fingerprint for existing durable intakes before relying on it during rollout;
+  - look up the exact v2 hash first, then accept a compatibility match only when exactly one owner-scoped intake has the same ordered semantic stream;
+  - treat multiple compatibility candidates as ambiguous and do not silently collapse them;
+  - allow sender evidence to be enriched without rewriting the historical raw label or creating a second conversation.
 - Add fixtures for:
   - name and phone both present;
   - phone in metadata and name in the visible sender element;
@@ -211,6 +219,11 @@ Deliverables:
   - media-only group messages;
   - missing sender metadata;
   - direct-chat, outgoing, and system actors.
+- Add compatibility fixtures for:
+  - a pre-upgrade phone-only intake followed by an otherwise identical `Name · phone` capture;
+  - a pre-upgrade unidentified sender followed by a capture with newly available raw evidence;
+  - two distinct group captures whose messages look similar but whose exact stable evidence differs;
+  - multiple compatibility candidates, which must remain unresolved instead of being auto-deduplicated.
 - Detect video before image when both kinds of indicators occur in a thumbnail subtree.
 - Prefer semantic elements and accessible metadata (`video`, audio player, document/sticker markers) before generic image thumbnails.
 - Render a neutral media-type badge from persisted `isMedia` and `mediaType`.
@@ -224,7 +237,8 @@ Exit gate:
 - Media-only messages retain the correct sender whenever WhatsApp exposes one.
 - A video thumbnail with an image descendant is stored and displayed as `Video`, not `Image`.
 - Image and video messages display intentional labels rather than raw lowercase placeholders.
-- Existing content-hash deduplication remains deterministic.
+- Re-capturing a pre-upgrade phone-only conversation after the label becomes `Name · phone` returns the original intake as a duplicate rather than persisting a second conversation.
+- Existing v1 hashes remain valid, v2 hashes are deterministic, and ambiguous compatibility matches fail conservatively.
 - No raw participant or message evidence is added to logs.
 
 ### Phase 3 — Shared operation state
@@ -417,7 +431,7 @@ This document is the plan PR. Implementation should remain split into reviewable
 
 1. **PR A:** console attribution ledger, messaging audit, and reproduction fixtures.
 2. **PR B:** truthful loaded-count and progress hotfix.
-3. **PR C:** sender name/phone preservation and neutral media-type rendering.
+3. **PR C:** sender name/phone preservation, hash compatibility, and neutral media-type rendering.
 4. **PR D:** shared capture operation state.
 5. **PR E:** compact draggable launcher.
 6. **PR F:** preview and loaded-message mode.
@@ -436,6 +450,8 @@ Each implementation PR must preserve unrelated work, validate the exact changed 
 - Never capture other chats or the broader contact book as a side effect.
 - Never discard an available display name merely because a phone appears in higher-priority metadata.
 - Never infer a person link from a display name or phone fallback.
+- Never change a rendered sender label in a way that silently bypasses duplicate-ingest protection.
+- Never collapse ambiguous compatibility matches; require exact evidence or explicit reconciliation.
 - Never label a video as an image solely because its thumbnail contains an image element.
 - Never imply that a media marker means ConvoLens downloaded or retained the attachment.
 - Never log message text, raw sender/contact values, tokens, cookies, or session/runtime identifiers.

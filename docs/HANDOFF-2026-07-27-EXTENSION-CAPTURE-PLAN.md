@@ -41,6 +41,7 @@ Canonical plan:
 6. ConvoLens still requires its own messaging audit because its listeners use asynchronous response channels.
 7. The comparison screenshots show that sender sources are complementary: ConvoLens can retain a phone while dropping the visible name because the extractor chooses one sender source by precedence.
 8. Media-only messages need sender-preservation fixtures, and video detection must take precedence over generic image-thumbnail evidence.
+9. Review on PR #146 identified that upgrading a stored sender from phone-only to `Name · phone` changes the existing sender-inclusive content hash and can create a duplicate intake unless compatibility is designed explicitly.
 
 ## Immediate next implementation slice
 
@@ -59,9 +60,11 @@ Then implement the sender/media fidelity slice before the shared operation-state
 1. Collect metadata sender, visible sender, and phone evidence independently.
 2. Render `Name · phone`, name-only, phone-only, or `Unidentified participant N` deterministically.
 3. Preserve the message participant reference through persistence and read projection.
-4. Detect video before image when both indicators exist.
-5. Render neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges.
-6. Show captions separately and do not download attachments.
+4. Keep the v1 hash valid while introducing a versioned exact v2 hash and an owner-scoped semantic compatibility fingerprint that excludes mutable sender labels and generated source IDs.
+5. Prove a phone-only pre-upgrade intake and a later `Name · phone` recapture resolve to the original intake; ambiguous candidates must not auto-collapse.
+6. Detect video before image when both indicators exist.
+7. Render neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges.
+8. Show captions separately and do not download attachments.
 
 Do not start automatic scrolling in the hotfix PR.
 
@@ -90,6 +93,8 @@ Redact tokens, cookies, message/contact data, and runtime/session values.
 - Do not expose raw message or identity evidence in logs.
 - Do not discard a name because a phone was found in another sender source.
 - Do not silently link People Directory identities from captured labels.
+- Do not let sender-label enrichment create a second intake for the same ordered semantic message stream.
+- Do not silently collapse ambiguous hash-compatibility candidates.
 - Do not imply that a media badge represents a retained attachment.
 - Do not show more than two secondary `Soon` capabilities.
 - Do not claim authentic acceptance until the authorized long-chat, persistence, deduplication, restart, isolation, and deletion sequence passes.
@@ -104,5 +109,5 @@ Redact tokens, cookies, message/contact data, and runtime/session values.
 ## Copy-paste continuation
 
 ```text
-Continue ConvoLens extension work from docs/EXTENSION-CAPTURE-EXPERIENCE-PLAN.md and docs/HANDOFF-2026-07-27-EXTENSION-CAPTURE-PLAN.md. Recheck the live draft PR, current origin/main, checks, reviews, and worktree state. Preserve unrelated work. Begin with Phase 0 console attribution; do not assume generic content.js/dashboard errors belong to ConvoLens. Then implement Phase 1 as a narrow PR: truthful loaded-message wording, popup extraction that does not mutate page progress, terminal progress reset, safe messaging-channel handling, and focused 16-rendered-message regression coverage. Follow with the sender/media fidelity slice: collect visible name and phone independently, preserve participant references, detect video before image, and render neutral media badges without downloading attachments. Do not implement automatic scrolling in the hotfix. Keep production acceptance operator-held until the full authorized sequence passes.
+Continue ConvoLens extension work from docs/EXTENSION-CAPTURE-EXPERIENCE-PLAN.md and docs/HANDOFF-2026-07-27-EXTENSION-CAPTURE-PLAN.md. Recheck live PR #146, current origin/main, checks, reviews, and worktree state. Preserve unrelated work. Begin with Phase 0 console attribution; do not assume generic content.js/dashboard errors belong to ConvoLens. Then implement Phase 1 as a narrow PR: truthful loaded-message wording, popup extraction that does not mutate page progress, terminal progress reset, safe messaging-channel handling, and focused 16-rendered-message regression coverage. Follow with the sender/media fidelity slice: collect visible name and phone independently, preserve participant references, add versioned exact and compatibility hashes so label enrichment cannot duplicate a pre-upgrade intake, detect video before image, and render neutral media badges without downloading attachments. Compatibility matches must be owner-scoped and ambiguity must fail conservatively. Do not implement automatic scrolling in the hotfix. Keep production acceptance operator-held until the full authorized sequence passes.
 ```
