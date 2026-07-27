@@ -526,7 +526,7 @@ function extractSenderIdentity(
   if (isOutgoing) {
     return { rawDisplayName: "You", isSelf: true, extractionMethod: "outgoing", confidence: "high" };
   }
-  const metadataSender = parseWhatsAppMessageMetadata(metadata).sender;
+  const metadataSender = parseWhatsAppMessageMetadata(metadata, document.documentElement.lang || navigator.language).sender;
   const explicitSender = senderEl?.textContent?.trim();
   // A failure to recognise a group is not proof this is a direct chat.
   const headerSender = isDirectChat
@@ -537,9 +537,7 @@ function extractSenderIdentity(
   const rawUsername = rawDisplayName?.match(/^@[^\s]+$/)?.[0];
   // WhatsApp commonly renders the phone alongside the sender label. It is
   // capture-scoped evidence, never a contact-book scrape.
-  const phoneSource = [rawDisplayName, senderEl?.parentElement?.textContent, container.textContent]
-    .map((value) => value?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0])
-    .find((value): value is string => Boolean(value));
+  const phoneSource = rawDisplayName?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0];
   const normalizedPhone = phoneSource ? phoneSource.replace(/[^0-9+]/g, "") : undefined;
   // data-id identifies an individual message in WhatsApp Web, not its sender.
   const platformUserId = container.getAttribute("data-contact-id") ||
@@ -635,7 +633,7 @@ function getMediaType(
 function parseTimestamp(timeText: string, metadata: string = ""): string {
   const now = new Date();
 
-  const metadataTimestamp = parseWhatsAppMessageMetadata(metadata).timestamp;
+  const metadataTimestamp = parseWhatsAppMessageMetadata(metadata, document.documentElement.lang || navigator.language).timestamp;
   if (metadataTimestamp) return metadataTimestamp;
 
   if (!timeText) return now.toISOString();
