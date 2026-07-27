@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import webPackage from "../../../../package.json";
 
 export function Footer() {
   return (
@@ -70,9 +71,12 @@ export function Footer() {
         </div>
 
         <div className="mt-12 flex flex-col items-center justify-between border-t border-gray-200 pt-8 dark:border-gray-700 md:flex-row">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            &copy; {new Date().getFullYear()} ConvoLens. All rights reserved.
-          </p>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            <p>
+              &copy; {new Date().getFullYear()} ConvoLens. All rights reserved.
+            </p>
+            <p className="mt-1 text-xs">App v{webPackage.version}</p>
+          </div>
           <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 md:mt-0">
             Use only conversations you are authorized to upload.
           </p>

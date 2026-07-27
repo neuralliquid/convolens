@@ -16,6 +16,7 @@ import PageWrapper from "../page-wrapper";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { StyledCard } from "@/components/ui/styled-card";
+import { DeleteConversationButton } from "@/components/conversations/delete-conversation-button";
 
 const onboardingSteps = [
   {
@@ -194,6 +195,23 @@ export default function DashboardPage() {
                   <MessageSquare className="h-6 w-6" />
                 )
               }
+              footer={
+                <div className="grid w-full gap-2 sm:grid-cols-2">
+                  <Button asChild variant="outline">
+                    <Link href={`/dashboard/conversations/${conversation.id}`}>
+                      View conversation
+                    </Link>
+                  </Button>
+                  <DeleteConversationButton
+                    conversationId={conversation.id}
+                    onDeleted={() =>
+                      setConversations((current) =>
+                        current.filter((item) => item.id !== conversation.id),
+                      )
+                    }
+                  />
+                </div>
+              }
             >
               <p className="text-sm text-muted-foreground">
                 {conversation.messageCount} messages ·{" "}
@@ -205,11 +223,6 @@ export default function DashboardPage() {
               <p className="mt-2 text-xs text-muted-foreground">
                 Received {new Date(conversation.receivedAt).toLocaleString()}
               </p>
-              <Button asChild className="mt-4 w-full" variant="outline">
-                <Link href={`/dashboard/conversations/${conversation.id}`}>
-                  View conversation
-                </Link>
-              </Button>
             </StyledCard>
           ))
         ) : (

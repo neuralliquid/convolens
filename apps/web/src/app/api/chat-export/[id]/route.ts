@@ -24,3 +24,25 @@ export async function GET(
     return apiAuthErrorResponse(error);
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const token = await getConvolensApiToken();
+    const { id } = await params;
+    const response = await fetch(
+      `${getConvolensApiBaseUrl()}/api/chat-export/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      },
+    );
+    const payload = await response.json();
+    return Response.json(payload, { status: response.status });
+  } catch (error) {
+    return apiAuthErrorResponse(error);
+  }
+}
