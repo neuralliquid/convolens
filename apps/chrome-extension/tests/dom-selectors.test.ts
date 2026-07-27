@@ -92,3 +92,23 @@ test("normalizes a visual bubble to its enclosing WhatsApp message record", () =
 
   assert.equal(findMessageRecord(bubble as unknown as HTMLElement), record);
 });
+
+test("keeps the original visual bubble when detecting outgoing messages", () => {
+  const contentSource = readFileSync(
+    new URL("../src/content.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    contentSource,
+    /container\.classList\.contains\("message-out"\)/,
+  );
+  assert.match(
+    contentSource,
+    /container\.closest\('\[data-testid="msg-out"\]'\)/,
+  );
+  assert.match(
+    contentSource,
+    /messageRecord\.querySelector\('\[data-testid="msg-out"\]'\)/,
+  );
+});
