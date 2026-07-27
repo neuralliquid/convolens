@@ -28,6 +28,7 @@ import { parseWhatsAppMessageMetadata } from "./whatsapp-metadata";
 import {
   findConversationRoot,
   findMessageContainers,
+  findMessageRecord,
   findMessageText,
 } from "./dom-selectors";
 
@@ -495,9 +496,11 @@ function extractMessageData(
   participantRefs: Map<string, string>,
   diagnostics: ExtractionDiagnostics,
 ): ExtractedMessage | null {
+  const messageRecord = findMessageRecord(container);
+
   // Get message text
   const textEl = findMessageText(
-    container,
+    messageRecord,
     SELECTORS.primary.messageText,
     SELECTORS.fallback.messageText,
   );
@@ -505,30 +508,30 @@ function extractMessageData(
   const text = textEl?.textContent?.trim() || "";
 
   // Check for media messages
-  const isMedia = detectMediaMessage(container);
-  const mediaType = isMedia ? getMediaType(container) : undefined;
+  const isMedia = detectMediaMessage(messageRecord);
+  const mediaType = isMedia ? getMediaType(messageRecord) : undefined;
 
   // Skip if no text and no media
   if (!text && !isMedia) return null;
 
   // Get timestamp
   const timeEl =
-    container.querySelector(SELECTORS.primary.messageTime) ||
-    container.querySelector(SELECTORS.fallback.messageTime);
+    messageRecord.querySelector(SELECTORS.primary.messageTime) ||
+    messageRecord.querySelector(SELECTORS.fallback.messageTime);
   const timeText = timeEl?.textContent?.trim() || "";
 
   // Get sender (for group chats)
   const senderEl =
-    container.querySelector(SELECTORS.primary.senderName) ||
-    container.querySelector(SELECTORS.fallback.senderName);
+    messageRecord.querySelector(SELECTORS.primary.senderName) ||
+    messageRecord.querySelector(SELECTORS.fallback.senderName);
 
   // Determine direction
   const isOutgoing =
-    container.classList.contains("message-out") ||
-    container.closest('[data-testid="msg-out"]') !== null;
-  const metadata = getMessageMetadata(container);
+    messageRecord.classList.contains("message-out") ||
+    messageRecord.closest('[data-testid="msg-out"]') !== null;
+  const metadata = getMessageMetadata(messageRecord);
   const identity = extractSenderIdentity(
-    container,
+    messageRecord,
     senderEl,
     isOutgoing,
     isDirectChat,
