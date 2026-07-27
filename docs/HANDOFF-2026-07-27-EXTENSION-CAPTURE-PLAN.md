@@ -13,7 +13,7 @@ A repository-backed phased plan now covers the full extension discussion:
 - neutral image/video/audio/document/sticker markers without attachment download;
 - guided `Capture as I scroll`;
 - automatic older-history loading;
-- queue, retry, export, and result navigation;
+- safe retry, legacy raw-queue migration, export, and result navigation;
 - carefully labelled `Soon` functions;
 - console-source attribution for Agent Desktop, promise, preload, and message-channel signals;
 - authentic long-chat production acceptance.
@@ -42,6 +42,8 @@ Canonical plan:
 7. The comparison screenshots show that sender sources are complementary: ConvoLens can retain a phone while dropping the visible name because the extractor chooses one sender source by precedence.
 8. Media-only messages need sender-preservation fixtures, and video detection must take precedence over generic image-thumbnail evidence.
 9. Review on PR #146 identified that upgrading a stored sender from phone-only to `Name · phone` changes the existing sender-inclusive content hash and can create a duplicate intake unless compatibility is designed explicitly.
+10. Re-review identified that semantic-message compatibility must also match a stable source-conversation identity; otherwise two distinct chats with identical messages can be collapsed incorrectly.
+11. Re-review identified that the current `pendingUploads` queue persists complete payloads in `chrome.storage.local`, contradicting a memory-only raw-content target unless queue migration/removal is a prerequisite.
 
 ## Immediate next implementation slice
 
@@ -61,10 +63,19 @@ Then implement the sender/media fidelity slice before the shared operation-state
 2. Render `Name · phone`, name-only, phone-only, or `Unidentified participant N` deterministically.
 3. Preserve the message participant reference through persistence and read projection.
 4. Keep the v1 hash valid while introducing a versioned exact v2 hash and an owner-scoped semantic compatibility fingerprint that excludes mutable sender labels and generated source IDs.
-5. Prove a phone-only pre-upgrade intake and a later `Name · phone` recapture resolve to the original intake; ambiguous candidates must not auto-collapse.
-6. Detect video before image when both indicators exist.
-7. Render neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges.
-8. Show captions separately and do not download attachments.
+5. Require matching owner, platform, and stable source-conversation identity before accepting a compatibility match; legacy intakes without that scope require explicit reconciliation.
+6. Prove a scoped phone-only intake and later `Name · phone` recapture resolve to the original intake, while two distinct chats with identical messages remain distinct.
+7. Detect video before image when both indicators exist.
+8. Render neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges.
+9. Show captions separately and do not download attachments.
+
+Before claiming raw capture content is memory-only:
+
+1. Stop adding new full payloads to `chrome.storage.local`.
+2. Represent network/rate failures as retry-required, with in-memory retry while the tab remains alive.
+3. Add a one-time authenticated migration UI for existing `pendingUploads`: user-confirmed retry or deletion, followed by removal from local storage.
+4. Require recapture/review after tab loss rather than silently persisting a new raw queue.
+5. Keep any future durable offline queue behind a separate threat model, opt-in, encryption, retention, deletion, and operator-acceptance decision.
 
 Do not start automatic scrolling in the hotfix PR.
 
@@ -94,7 +105,10 @@ Redact tokens, cookies, message/contact data, and runtime/session values.
 - Do not discard a name because a phone was found in another sender source.
 - Do not silently link People Directory identities from captured labels.
 - Do not let sender-label enrichment create a second intake for the same ordered semantic message stream.
-- Do not silently collapse ambiguous hash-compatibility candidates.
+- Do not match compatibility candidates across different or unknown source-conversation identities.
+- Do not silently collapse unscoped or ambiguous hash-compatibility candidates.
+- Do not claim memory-only raw capture while `pendingUploads` still contains full payloads.
+- Do not silently retry or delete legacy queued payloads during migration.
 - Do not imply that a media badge represents a retained attachment.
 - Do not show more than two secondary `Soon` capabilities.
 - Do not claim authentic acceptance until the authorized long-chat, persistence, deduplication, restart, isolation, and deletion sequence passes.
@@ -109,5 +123,5 @@ Redact tokens, cookies, message/contact data, and runtime/session values.
 ## Copy-paste continuation
 
 ```text
-Continue ConvoLens extension work from docs/EXTENSION-CAPTURE-EXPERIENCE-PLAN.md and docs/HANDOFF-2026-07-27-EXTENSION-CAPTURE-PLAN.md. Recheck live PR #146, current origin/main, checks, reviews, and worktree state. Preserve unrelated work. Begin with Phase 0 console attribution; do not assume generic content.js/dashboard errors belong to ConvoLens. Then implement Phase 1 as a narrow PR: truthful loaded-message wording, popup extraction that does not mutate page progress, terminal progress reset, safe messaging-channel handling, and focused 16-rendered-message regression coverage. Follow with the sender/media fidelity slice: collect visible name and phone independently, preserve participant references, add versioned exact and compatibility hashes so label enrichment cannot duplicate a pre-upgrade intake, detect video before image, and render neutral media badges without downloading attachments. Compatibility matches must be owner-scoped and ambiguity must fail conservatively. Do not implement automatic scrolling in the hotfix. Keep production acceptance operator-held until the full authorized sequence passes.
+Continue ConvoLens extension work from docs/EXTENSION-CAPTURE-EXPERIENCE-PLAN.md and docs/HANDOFF-2026-07-27-EXTENSION-CAPTURE-PLAN.md. Recheck live PR #146, current origin/main, checks, reviews, and worktree state. Preserve unrelated work. Begin with Phase 0 console and local-storage attribution; do not assume generic content.js/dashboard errors belong to ConvoLens, and inventory the complete-payload `pendingUploads` path. Then implement Phase 1 as a narrow PR: truthful loaded-message wording, popup extraction that does not mutate page progress, terminal progress reset, safe messaging-channel handling, no new raw local queue entries, a user-confirmed legacy queue migration, and focused 16-rendered-message regression coverage. Follow with the sender/media fidelity slice: collect visible name and phone independently, preserve participant references, establish stable source-conversation identity, and add scoped versioned exact/compatibility hashes so label enrichment cannot duplicate a scoped intake or collapse two distinct chats. Legacy intakes without stable conversation identity require explicit reconciliation. Detect video before image and render neutral media badges without downloading attachments. Do not implement automatic scrolling in the hotfix. Keep production acceptance operator-held until the full authorized sequence passes.
 ```

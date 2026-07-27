@@ -16,7 +16,7 @@ ConvoLens will offer three explicit WhatsApp capture modes:
 
 The extension must never describe the currently rendered messages as the complete chat unless it has positively verified the top of the conversation. Nothing is uploaded until the user reviews the capture scope and confirms the send.
 
-The current permanent pill will become a compact, movable launcher. Its expanded panel will provide capture scope, preview, operation status, queue/retry actions, and at most two clearly secondary `Soon` capabilities.
+The current permanent pill will become a compact, movable launcher. Its expanded panel will provide capture scope, preview, operation status, safe retry actions, and at most two clearly secondary `Soon` capabilities.
 
 ## 2. Confirmed current behaviour
 
@@ -114,7 +114,7 @@ idle
   -> collecting
   -> ready-for-review
   -> uploading
-  -> received | duplicate | queued | failed | cancelled
+  -> received | duplicate | retry-required | failed | cancelled
 ```
 
 Each operation contains:
@@ -129,7 +129,20 @@ Each operation contains:
 - start and completion timestamps;
 - safe error or cancellation reason.
 
-Raw captured content remains in the WhatsApp tab's memory until confirmed or cancelled. Initial delivery must not persist raw messages in `chrome.storage.local`. Only non-sensitive operation metadata may be retained for popup reopening and support diagnostics.
+The current extension's offline queue stores complete `chatData` payloads in `chrome.storage.local`. That existing behaviour conflicts with the target privacy boundary and must be migrated explicitly rather than ignored.
+
+For the initial target:
+
+- raw captured content remains in the WhatsApp tab's memory until confirmed, sent, failed, or cancelled;
+- new raw payloads are not added to `chrome.storage.local`;
+- a network/rate failure becomes `retry-required`, not a durable raw-message queue entry;
+- retry while the tab is alive may reuse the in-memory reviewed payload;
+- retry after tab reload requires the user to recapture and review;
+- only non-sensitive operation metadata may be retained for popup reopening and support diagnostics.
+
+On upgrade, legacy `pendingUploads` require a one-time migration surface. Automatic retry pauses until the authenticated user chooses **Retry now** or **Delete local queue**. The UI must disclose that these entries contain locally stored conversation data, show only safe counts/timestamps before confirmation, remove successfully sent or deleted entries, and remove the legacy storage key once empty. No legacy entry is silently uploaded, discarded, or copied into a new queue format.
+
+Durable offline message queuing remains unavailable until a separate threat model, explicit opt-in, encryption/key-management design, retention/expiry policy, deletion flow, and operator acceptance are approved. A future queue must not be implied by the initial launcher UI.
 
 ### 4.1 Sender display fallback
 
@@ -165,6 +178,7 @@ Deliverables:
 - Explicit separation of Agent Desktop logs from ConvoLens defects.
 - Captured real URLs and initiators for preload warnings, with sensitive query values redacted.
 - A focused audit inventory of every ConvoLens `runtime.onMessage`, `tabs.sendMessage`, and `runtime.sendMessage` path.
+- An inventory of legacy `pendingUploads`, automatic retry triggers, raw fields persisted locally, and the migration/removal path.
 
 Exit gate:
 
@@ -180,12 +194,14 @@ Deliverables:
 
 - Extraction accepts an optional progress reporter.
 - Popup `GET_CURRENT_CHAT` extraction does not mutate the in-page launcher.
-- The in-page path resets progress on success, duplicate, queued, error, empty extraction, and cancellation.
+- The in-page path resets progress on success, duplicate, retry-required, error, empty extraction, and cancellation.
 - Unknown-duration work uses an indeterminate indicator.
 - `Send Current Chat` becomes `Send Loaded Messages`.
 - Success becomes `<n> loaded messages received by ConvoLens`.
 - Copy states that older messages not loaded by WhatsApp were excluded.
 - Messaging senders catch and classify channel closure instead of producing unhandled promise rejections.
+- Stop adding new raw payloads to `pendingUploads`; network/rate failures become user-visible `retry-required` outcomes.
+- Add the one-time legacy-queue migration surface defined in section 4 before claiming the no-raw-local-persistence boundary.
 
 Exit gate:
 
@@ -206,11 +222,13 @@ Deliverables:
 - Preserve message-to-participant references through the API and durable conversation projection.
 - Preserve deduplication across sender-label upgrades with an explicit compatibility contract:
   - keep the existing v1 content hash unchanged for already persisted intakes;
-  - add a versioned v2 exact hash for new captures that excludes mutable presentation labels and uses stable participant evidence only when available;
-  - add an owner-scoped compatibility fingerprint over the ordered semantic message stream (`content`, timestamp, direction, media flag/type), excluding generated source IDs and sender display labels;
-  - backfill or lazily derive that compatibility fingerprint for existing durable intakes before relying on it during rollout;
-  - look up the exact v2 hash first, then accept a compatibility match only when exactly one owner-scoped intake has the same ordered semantic stream;
-  - treat multiple compatibility candidates as ambiguous and do not silently collapse them;
+  - capture a stable source-conversation identity before enabling automatic sender-label compatibility;
+  - add a versioned v2 exact hash for new captures, scoped by owner, source platform, and stable source-conversation identity, that excludes mutable presentation labels and uses stable participant evidence only when available;
+  - add a scoped compatibility fingerprint over the ordered semantic message stream (`content`, timestamp, direction, media flag/type), excluding generated source IDs and sender display labels;
+  - backfill or lazily derive that compatibility fingerprint for existing durable intakes, but accept it automatically only when the stable source-conversation identity also matches;
+  - look up the exact v2 hash first, then accept a compatibility match only when exactly one owner/platform/source-conversation-scoped intake has the same ordered semantic stream;
+  - treat missing stable conversation identity, multiple candidates, or conflicting stable participant evidence as ambiguous and do not silently collapse them;
+  - surface historical intakes without stable source-conversation identity as explicit reconciliation candidates rather than deduplicating them from message similarity alone;
   - allow sender evidence to be enriched without rewriting the historical raw label or creating a second conversation.
 - Add fixtures for:
   - name and phone both present;
@@ -220,9 +238,10 @@ Deliverables:
   - missing sender metadata;
   - direct-chat, outgoing, and system actors.
 - Add compatibility fixtures for:
-  - a pre-upgrade phone-only intake followed by an otherwise identical `Name · phone` capture;
-  - a pre-upgrade unidentified sender followed by a capture with newly available raw evidence;
-  - two distinct group captures whose messages look similar but whose exact stable evidence differs;
+  - a stable-conversation-scoped phone-only intake followed by an otherwise identical `Name · phone` capture;
+  - a historical intake without stable conversation identity followed by a capture with newly available raw evidence, which must require reconciliation;
+  - two distinct source conversations owned by the same user with identical ordered message tuples, which must remain distinct;
+  - matching message tuples with conflicting stable participant evidence, which must remain unresolved;
   - multiple compatibility candidates, which must remain unresolved instead of being auto-deduplicated.
 - Detect video before image when both kinds of indicators occur in a thumbnail subtree.
 - Prefer semantic elements and accessible metadata (`video`, audio player, document/sticker markers) before generic image thumbnails.
@@ -237,8 +256,10 @@ Exit gate:
 - Media-only messages retain the correct sender whenever WhatsApp exposes one.
 - A video thumbnail with an image descendant is stored and displayed as `Video`, not `Image`.
 - Image and video messages display intentional labels rather than raw lowercase placeholders.
-- Re-capturing a pre-upgrade phone-only conversation after the label becomes `Name · phone` returns the original intake as a duplicate rather than persisting a second conversation.
-- Existing v1 hashes remain valid, v2 hashes are deterministic, and ambiguous compatibility matches fail conservatively.
+- Re-capturing a stable-conversation-scoped phone-only intake after the label becomes `Name · phone` returns the original intake as a duplicate rather than persisting a second conversation.
+- Two distinct chats with identical ordered semantic messages do not collapse into one intake.
+- Historical intakes without stable source-conversation identity require explicit reconciliation.
+- Existing v1 hashes remain valid, v2 hashes are deterministic, and unscoped or ambiguous compatibility matches fail conservatively.
 - No raw participant or message evidence is added to logs.
 
 ### Phase 3 — Shared operation state
@@ -272,7 +293,7 @@ Deliverables:
 - Upper, middle, and lower presets.
 - Persisted position, constrained to the current viewport.
 - Expanded panel that opens inward and remains on-screen.
-- Ready, collecting, review-count, received, queued, and attention states.
+- Ready, collecting, review-count, received, retry-required, legacy-queue-migration, and attention states.
 - Keyboard, focus, reduced-motion, forced-colour, and narrow-window support.
 
 Exit gate:
@@ -356,11 +377,11 @@ Live actions, in order:
 
 1. Open the received ConvoLens conversation.
 2. Display new-versus-duplicate result.
-3. Show queued upload count and retry safely.
+3. Show retry-required state and retry safely while the reviewed in-memory payload remains available.
 4. Display last capture count and time.
 5. Export the reviewed capture locally.
 6. Remember the preferred capture mode.
-7. Add a browser-toolbar badge for queue or attention state.
+7. Add a browser-toolbar badge for retry-required, legacy-migration, or attention state.
 
 Initial planned actions:
 
@@ -384,7 +405,9 @@ Rules:
 Exit gate:
 
 - Retry cannot create unexpected duplicate conversations.
-- Queue state survives service-worker restart without persisting raw capture content unnecessarily.
+- Retry-required state survives service-worker restart only as non-sensitive metadata; raw retry after tab loss requires recapture and review.
+- Legacy raw queue entries are sent or deleted only after user confirmation and are removed from local storage afterward.
+- No new raw-message queue is introduced without the separate durable-queue approval defined in section 4.
 - Result links open the exact persisted conversation.
 - Local export matches the reviewed payload.
 
@@ -402,7 +425,7 @@ Automated matrix:
 - image/video/audio/document/sticker classification, captions, and unreadable-message accounting;
 - name-plus-phone, name-only, phone-only, and unidentified sender projection;
 - cancellation, navigation, popup closure, tab reload, and service-worker restart;
-- offline queue and retry;
+- legacy raw-queue migration, in-memory retry, tab loss, and recapture-required behaviour;
 - API new-versus-duplicate response;
 - messaging-channel teardown without unhandled promise rejection;
 - preload inventory and web performance baseline;
@@ -437,7 +460,7 @@ This document is the plan PR. Implementation should remain split into reviewable
 6. **PR F:** preview and loaded-message mode.
 7. **PR G:** guided `Capture as I scroll`.
 8. **PR H:** automatic older-history loading.
-9. **PR I:** queue, retry, result links, local export, and toolbar badge.
+9. **PR I:** safe retry, legacy-queue migration, result links, local export, and toolbar badge.
 10. **PR J:** carefully labelled future-action previews.
 11. **PR K:** release evidence, operator acceptance, and durable closeout.
 
@@ -451,9 +474,12 @@ Each implementation PR must preserve unrelated work, validate the exact changed 
 - Never discard an available display name merely because a phone appears in higher-priority metadata.
 - Never infer a person link from a display name or phone fallback.
 - Never change a rendered sender label in a way that silently bypasses duplicate-ingest protection.
-- Never collapse ambiguous compatibility matches; require exact evidence or explicit reconciliation.
+- Never deduplicate across chats from semantic message similarity alone; require matching stable source-conversation scope.
+- Never collapse unscoped or ambiguous compatibility matches; require exact evidence or explicit reconciliation.
 - Never label a video as an image solely because its thumbnail contains an image element.
 - Never imply that a media marker means ConvoLens downloaded or retained the attachment.
+- Never claim raw capture content is memory-only while a code path still writes it to `chrome.storage.local`.
+- Never silently upload or delete a legacy locally queued conversation during migration.
 - Never log message text, raw sender/contact values, tokens, cookies, or session/runtime identifiers.
 - Never attribute a third-party extension error to ConvoLens from a generic filename alone.
 - Never turn `Soon` capabilities into implied live functionality.
