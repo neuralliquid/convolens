@@ -28,7 +28,7 @@ Canonical plan:
 - Base branch: `main`
 - Base commit: `2f8ab1a5895b92ed999934f33e52ac8e88324f9c`
 - Plan branch: `agent/extension-capture-plan`
-- Plan PR: populated after draft PR creation
+- Plan PR: [#146](https://github.com/neuralliquid/convolens/pull/146) (draft)
 - The primary checkout's untracked `docs/HANDOFF-2026-07-24-EXTENSION-RUNTIME.md` was left untouched.
 
 ## Confirmed findings
