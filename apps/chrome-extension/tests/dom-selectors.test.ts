@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   findConversationRoot,
   findMessageContainers,
+  findMessageRecord,
   findMessageText,
   MESSAGE_TEXT_SELECTOR,
 } from "../src/dom-selectors.ts";
@@ -83,4 +84,11 @@ test("reads text through the generic selector used for container discovery", () 
     ),
     genericText,
   );
+});
+
+test("normalizes a visual bubble to its enclosing WhatsApp message record", () => {
+  const record = {};
+  const bubble = { closest: () => record };
+
+  assert.equal(findMessageRecord(bubble as unknown as HTMLElement), record);
 });

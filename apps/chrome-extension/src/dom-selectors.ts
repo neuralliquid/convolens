@@ -61,6 +61,18 @@ export function findMessageContainers(
   return Array.from(containers);
 }
 
+/**
+ * A visual message bubble can be nested inside WhatsApp's actual message
+ * record. Normalize to that record before reading metadata or sender fields,
+ * because those fields may be siblings of the bubble rather than descendants.
+ */
+export function findMessageRecord(element: HTMLElement): HTMLElement {
+  return (
+    (element.closest('[data-id], [role="row"]') as HTMLElement | null) ||
+    element
+  );
+}
+
 export function findMessageText(
   container: Element,
   primarySelector: string,

@@ -24,7 +24,7 @@ test("renders the runtime manifest version and keeps release versions aligned", 
     /extensionVersion\.textContent = `v\$\{chrome\.runtime\.getManifest\(\)\.version\}`/,
   );
   assert.equal(manifest.version, packageJson.version);
-  assert.equal(manifest.version, "1.0.9");
+  assert.equal(manifest.version, "1.0.10");
 });
 
 test("opens the conversation dashboard from both popup entry points", () => {
