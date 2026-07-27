@@ -48,6 +48,11 @@ yarn-error.log*
 /test-results/
 /playwright-report/
 tests/__results__/
+/.playwright-cli/
+/output/playwright/
+
+# Local extension package output
+/apps/chrome-extension/convolens-extension/
 
 # Turborepo
 .turbo/
