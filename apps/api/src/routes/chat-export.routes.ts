@@ -115,6 +115,22 @@ function isValidParticipant(value: unknown): value is ExtractedParticipant {
   return ['rawDisplayName', 'rawUsername', 'normalizedPhone', 'platformUserId'].every((field) => participant[field] === undefined || typeof participant[field] === 'string');
 }
 
+/**
+ * Preserve the v1 participant list during the v2 rollout. An observation may
+ * intentionally lack a raw label (for example, a numbered fallback), so use
+ * the corresponding synthesized message sender in that case.
+ */
+export function getLegacyParticipantLabels(chatData: ExtensionChatData): string[] {
+  if (!chatData.participants) {
+    return [...new Set(chatData.messages.map((message) => message.sender))];
+  }
+
+  return [...new Set(chatData.participants
+    .map((participant) => participant.rawDisplayName ||
+      chatData.messages.find((message) => message.senderRef === participant.ref)?.sender)
+    .filter((name): name is string => Boolean(name)))];
+}
+
 function isValidMessage(msg: unknown): msg is ExtractedMessage {
   if (!msg || typeof msg !== 'object') return false;
 
@@ -287,9 +303,7 @@ router.post('/extension', authenticateToken, async (req, res) => {
       isGroup: chatData.isGroup,
       // v2 observations remain raw connector evidence for PR 2. This keeps the
       // v1 persistence and deduplication contract unchanged during rollout.
-      participants: chatData.participants
-        ? [...new Set(chatData.participants.map((participant) => participant.rawDisplayName).filter((name): name is string => Boolean(name)))]
-        : [...new Set(chatData.messages.map((message) => message.sender))],
+      participants: getLegacyParticipantLabels(chatData),
       sourceExtractedAt: new Date(chatData.extractedAt),
       provenance: {
         connectorVersion: chatData.version,

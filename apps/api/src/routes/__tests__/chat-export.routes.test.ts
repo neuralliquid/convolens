@@ -1,4 +1,4 @@
-import { isValidExtensionChatData } from '../chat-export.routes.js';
+import { getLegacyParticipantLabels, isValidExtensionChatData } from '../chat-export.routes.js';
 
 const v1Payload = {
   chatName: 'Team chat',
@@ -39,5 +39,18 @@ describe('extension chat payload validation', () => {
       participants: [],
       messages: [{ ...v1Payload.messages[0], senderRef: 'participant_missing' }],
     })).toBe(false);
+  });
+
+  it('retains a numbered fallback participant in the legacy list', () => {
+    const payload = {
+      ...v1Payload,
+      payloadVersion: 2 as const,
+      participants: [{
+        ref: 'participant_1', isSelf: false, extractionMethod: 'fallback', confidence: 'low',
+      }],
+      messages: [{ ...v1Payload.messages[0], sender: 'Unidentified participant 1', senderRef: 'participant_1' }],
+    };
+
+    expect(getLegacyParticipantLabels(payload)).toEqual(['Unidentified participant 1']);
   });
 });

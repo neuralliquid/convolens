@@ -387,6 +387,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
 
   // Detect if this is a group chat
   const isGroup = detectGroupChat();
+  const isDirectChat = detectDirectChat();
 
   // Get message container
   const messageList = findConversationRoot(
@@ -427,7 +428,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
     }
 
     try {
-      const message = extractMessageData(messageContainers[i] as HTMLElement, isGroup, chatName, participants, participantRefs);
+      const message = extractMessageData(messageContainers[i] as HTMLElement, isDirectChat, chatName, participants, participantRefs);
       if (message) {
         messages.push(message);
       }
@@ -461,7 +462,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
  */
 function extractMessageData(
   container: HTMLElement,
-  isGroup: boolean,
+  isDirectChat: boolean,
   chatName: string,
   participants: ExtractedParticipant[],
   participantRefs: Map<string, string>,
@@ -497,7 +498,7 @@ function extractMessageData(
   const isOutgoing =
     container.classList.contains("message-out") ||
     container.closest('[data-testid="msg-out"]') !== null;
-  const identity = extractSenderIdentity(container, senderEl, isOutgoing, isGroup, chatName);
+  const identity = extractSenderIdentity(container, senderEl, isOutgoing, isDirectChat, chatName);
   const senderRef = registerParticipant(identity, participants, participantRefs);
 
   return {
@@ -516,7 +517,7 @@ function extractSenderIdentity(
   container: HTMLElement,
   senderEl: Element | null,
   isOutgoing: boolean,
-  isGroup: boolean,
+  isDirectChat: boolean,
   chatName: string,
 ): Omit<ExtractedParticipant, "ref"> {
   if (isOutgoing) {
@@ -526,7 +527,8 @@ function extractSenderIdentity(
     container.querySelector("[data-pre-plain-text]")?.getAttribute("data-pre-plain-text") || "";
   const metadataSender = metadata.match(/\]\s*(.+?):\s*$/)?.[1]?.trim();
   const explicitSender = senderEl?.textContent?.trim();
-  const headerSender = !isGroup
+  // A failure to recognise a group is not proof this is a direct chat.
+  const headerSender = isDirectChat
     ? (querySelector(SELECTORS.primary.contactName, SELECTORS.fallback.contactName)?.textContent?.trim() ||
       (chatName === "Unknown Chat" ? undefined : chatName))
     : undefined;
@@ -580,6 +582,13 @@ function detectGroupChat(): boolean {
   );
   const text = participantInfo?.textContent || "";
   return text.includes("participant") || text.includes("members");
+}
+
+function detectDirectChat(): boolean {
+  const subtitle = document.querySelector('[data-testid="conversation-subtitle"]')?.textContent?.trim().toLowerCase() || "";
+  // These are direct-chat-only states in WhatsApp Web. Do not infer a direct
+  // chat merely because the group detector did not recognise localized UI.
+  return /\bonline\b|\btyping\b|last seen|disappearing messages/.test(subtitle);
 }
 
 function detectMediaMessage(container: HTMLElement): boolean {
