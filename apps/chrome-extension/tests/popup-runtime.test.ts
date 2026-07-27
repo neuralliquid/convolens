@@ -24,7 +24,19 @@ test("renders the runtime manifest version and keeps release versions aligned", 
     /extensionVersion\.textContent = `v\$\{chrome\.runtime\.getManifest\(\)\.version\}`/,
   );
   assert.equal(manifest.version, packageJson.version);
-  assert.equal(manifest.version, "1.0.5");
+  assert.equal(manifest.version, "1.0.6");
+});
+
+test("opens the conversation dashboard from both popup entry points", () => {
+  assert.match(popupHtml, /id="dashboardLink"/);
+  assert.match(
+    popupSource,
+    /dashboardLink\.href = `\$\{DASHBOARD_URL\}\/dashboard`/,
+  );
+  assert.match(
+    popupSource,
+    /openDashboard\.addEventListener\("click", \(\) => \{\s+chrome\.tabs\.create\(\{ url: `\$\{DASHBOARD_URL\}\/dashboard` \}\)/,
+  );
 });
 
 test("targets the active WhatsApp tab before searching background tabs", () => {

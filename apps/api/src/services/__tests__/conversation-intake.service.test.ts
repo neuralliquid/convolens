@@ -109,6 +109,19 @@ describe('ConversationIntakeService', () => {
     expect(await dataSource.getRepository(ConversationIntake).count()).toBe(2);
   });
 
+  it('deletes only the owning user conversation and cascades its messages', async () => {
+    const owned = await service.save(baseInput);
+    const otherUser = await service.save({ ...baseInput, userId: 'mystira-user-2' });
+
+    expect(await service.deleteForUser('mystira-user-2', owned.conversation.id)).toBe(false);
+    expect(await service.getForUser(baseInput.userId, owned.conversation.id)).not.toBeNull();
+
+    expect(await service.deleteForUser(baseInput.userId, owned.conversation.id)).toBe(true);
+    expect(await service.getForUser(baseInput.userId, owned.conversation.id)).toBeNull();
+    expect(await dataSource.getRepository(ConversationMessage).count()).toBe(2);
+    expect(await service.getForUser('mystira-user-2', otherUser.conversation.id)).not.toBeNull();
+  });
+
   it('excludes generated source IDs from the durable content hash', () => {
     const firstHash = createConversationContentHash(baseInput);
     const secondHash = createConversationContentHash({

@@ -84,7 +84,9 @@ describe("external surface containment", () => {
   it("reads the wrapped WhatsApp connection status returned by the extension", () => {
     const popupRuntime = readRepo("apps/chrome-extension/popup/popup.js");
 
-    expect(popupRuntime).toMatch(/const connectionStatus = response\.data \|\| response/);
+    expect(popupRuntime).toMatch(
+      /const connectionStatus = response\.data \|\| response/,
+    );
     expect(popupRuntime).toMatch(
       /connectionStatus\.isWhatsAppWeb && connectionStatus\.isLoggedIn/,
     );
@@ -97,9 +99,15 @@ describe("external surface containment", () => {
     );
 
     expect(globalStyles).toMatch(/--font-sans:\s*Arial, Helvetica/);
-    expect(globalStyles).toMatch(/body\s*{[^}]*font-family:\s*var\(--font-sans\)/s);
-    expect(globalStyles).toMatch(/button,[\s\S]*textarea\s*{\s*font:\s*inherit/);
-    expect(navigationStyles).toMatch(/\.navLink\s*{[^}]*white-space:\s*nowrap/s);
+    expect(globalStyles).toMatch(
+      /body\s*{[^}]*font-family:\s*var\(--font-sans\)/s,
+    );
+    expect(globalStyles).toMatch(
+      /button,[\s\S]*textarea\s*{\s*font:\s*inherit/,
+    );
+    expect(navigationStyles).toMatch(
+      /\.navLink\s*{[^}]*white-space:\s*nowrap/s,
+    );
     expect(navigationStyles).toMatch(
       /\.mobileMenuButton\s*{\s*display:\s*none\s*!important/,
     );
@@ -116,6 +124,15 @@ describe("external surface containment", () => {
     expect(navigation).not.toMatch(
       /(?:\/groups|\/notifications|\/customize|\/settings|\/profile)/,
     );
+  });
+
+  it("shows the package-derived app version in the public footer", () => {
+    const footer = read("components/layouts/footer/index.tsx");
+
+    expect(footer).toMatch(
+      /import webPackage from ["']\.\.\/\.\.\/\.\.\/\.\.\/package\.json["']/,
+    );
+    expect(footer).toContain("App v{webPackage.version}");
   });
 
   it("prevents search indexing during the private preview", () => {

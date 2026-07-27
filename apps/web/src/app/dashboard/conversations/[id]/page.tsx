@@ -9,6 +9,7 @@ import PageWrapper from "../../../page-wrapper";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { StyledCard } from "@/components/ui/styled-card";
+import { DeleteConversationButton } from "@/components/conversations/delete-conversation-button";
 
 interface ConversationMessage {
   id: string;
@@ -101,12 +102,20 @@ export default function ConversationPage() {
             : "Durable conversation intake"
         }
         actions={
-          <Button asChild variant="outline">
-            <Link href="/dashboard">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to dashboard
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href="/dashboard">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to dashboard
+              </Link>
+            </Button>
+            {conversation ? (
+              <DeleteConversationButton
+                conversationId={conversation.id}
+                onDeleted={() => router.push("/dashboard")}
+              />
+            ) : null}
+          </>
         }
       />
 

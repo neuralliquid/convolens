@@ -174,6 +174,11 @@ export class ConversationIntakeService {
       order: { messages: { position: 'ASC' } },
     });
   }
+
+  async deleteForUser(userId: string, id: string): Promise<boolean> {
+    const result = await this.dataSource.getRepository(ConversationIntake).delete({ id, userId });
+    return result.affected === 1;
+  }
 }
 
 export const conversationIntakeService = new ConversationIntakeService();

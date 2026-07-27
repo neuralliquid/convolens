@@ -369,4 +369,28 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @route DELETE /api/chat-export/:id
+ * @description Delete one durable conversation intake owned by the current user
+ * @access Private
+ */
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const deleted = await conversationIntakeService.deleteForUser(userId, req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    return res.json({ message: 'Conversation deleted' });
+  } catch (error) {
+    logger.error('Error deleting conversation intake:', error);
+    return res.status(500).json({ error: 'Failed to delete conversation' });
+  }
+});
+
 export { router as default };

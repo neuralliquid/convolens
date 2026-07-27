@@ -20,8 +20,10 @@ const userEmail = document.getElementById("userEmail");
 const userAvatar = document.getElementById("userAvatar");
 const actionStatus = document.getElementById("actionStatus");
 const extensionVersion = document.getElementById("extensionVersion");
+const dashboardLink = document.getElementById("dashboardLink");
 
 extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
+dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
 
 function setActionStatus(message = "", type = "info") {
   actionStatus.textContent = message;
@@ -241,7 +243,7 @@ extractBtn.addEventListener("click", async () => {
 });
 
 openDashboard.addEventListener("click", () => {
-  chrome.tabs.create({ url: `${DASHBOARD_URL}/dashboard/import` });
+  chrome.tabs.create({ url: `${DASHBOARD_URL}/dashboard` });
 });
 
 // Initialize

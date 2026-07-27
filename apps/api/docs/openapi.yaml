@@ -224,6 +224,27 @@ paths:
                         $ref: '#/components/schemas/ConversationDetail'
         '404':
           description: Conversation not found for this user
+    delete:
+      summary: Delete a stored conversation intake
+      description: Permanently delete one conversation and its messages for the signed-in owner
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation deleted
+        '401':
+          description: Not authenticated
+        '404':
+          description: Conversation not found for this user
 
   /api/chat-export/upload:
     post:
