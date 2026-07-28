@@ -4,7 +4,9 @@ import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import {
   ConversationIntakeService,
+  createConversationCompatibilityHash,
   createConversationContentHash,
+  createConversationContentHashV2,
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
 
@@ -35,6 +37,34 @@ const baseInput: ConversationIntakeInput = {
     },
   ],
 };
+
+function stableInput(
+  sourceConversationId = 'whatsapp:120363123456789@g.us',
+  rawDisplayName = '+27821234567',
+  normalizedPhone = '+27821234567'
+): ConversationIntakeInput {
+  return {
+    ...baseInput,
+    sourceConversationId,
+    sourceConversationIdentityStable: true,
+    participants: [rawDisplayName],
+    participantEvidence: [
+      {
+        ref: 'participant_1',
+        rawDisplayName,
+        normalizedPhone,
+        isSelf: false,
+        extractionMethod: 'metadata',
+        confidence: 'high',
+      },
+    ],
+    messages: baseInput.messages.map((message) => ({
+      ...message,
+      senderName: rawDisplayName,
+      senderRef: 'participant_1',
+    })),
+  };
+}
 
 describe('ConversationIntakeService', () => {
   let dataSource: DataSource;
@@ -133,5 +163,80 @@ describe('ConversationIntakeService', () => {
     });
 
     expect(secondHash).toBe(firstHash);
+  });
+
+  it('deduplicates a scoped phone-only intake after its display name is enriched', async () => {
+    const first = await service.save(stableInput());
+    const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    const second = await service.save(enriched);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.reconciliationRequired).toBe(false);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.participantEvidence?.[0]).toEqual(
+      expect.objectContaining({
+        preferredDisplayName: 'Greg Wright',
+        normalizedPhone: '+27821234567',
+        rawLabels: expect.arrayContaining(['+27821234567', 'Greg Wright']),
+      })
+    );
+  });
+
+  it('requires reconciliation when a historical unscoped intake matches semantically', async () => {
+    const historical = await service.save(baseInput);
+    const captured = await service.save(stableInput());
+
+    expect(captured.duplicate).toBe(false);
+    expect(captured.reconciliationRequired).toBe(true);
+    expect(captured.conversation.reconciliationCandidateIds).toEqual([historical.conversation.id]);
+  });
+
+  it('keeps identical ordered messages in distinct stable conversations separate', async () => {
+    const first = await service.save(stableInput('whatsapp:120363111111111@g.us'));
+    const second = await service.save(stableInput('whatsapp:120363222222222@g.us'));
+
+    expect(first.conversation.id).not.toBe(second.conversation.id);
+    expect(second.duplicate).toBe(false);
+    expect(second.reconciliationRequired).toBe(false);
+  });
+
+  it('does not collapse conflicting stable participant evidence', async () => {
+    await service.save(stableInput());
+    const conflicting = await service.save(
+      stableInput('whatsapp:120363123456789@g.us', 'Other participant', '+27829999999')
+    );
+
+    expect(conflicting.duplicate).toBe(false);
+    expect(conflicting.reconciliationRequired).toBe(true);
+  });
+
+  it('does not auto-deduplicate when multiple compatibility candidates exist', async () => {
+    await service.save(stableInput());
+    await service.save(
+      stableInput('whatsapp:120363123456789@g.us', 'Other participant', '+27829999999')
+    );
+    const third = await service.save(
+      stableInput('whatsapp:120363123456789@g.us', 'Third participant', '+27828888888')
+    );
+
+    expect(third.duplicate).toBe(false);
+    expect(third.reconciliationRequired).toBe(true);
+    expect(third.conversation.reconciliationCandidateIds).toHaveLength(2);
+  });
+
+  it('creates deterministic v2 and compatibility hashes without mutable labels', () => {
+    const phoneOnly = stableInput();
+    const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    expect(createConversationContentHashV2(enriched)).toBe(
+      createConversationContentHashV2(phoneOnly)
+    );
+    expect(createConversationCompatibilityHash(enriched)).toBe(
+      createConversationCompatibilityHash(phoneOnly)
+    );
+    expect(
+      createConversationContentHashV2(
+        stableInput('whatsapp:120363987654321@g.us', 'Greg Wright', '+27821234567')
+      )
+    ).not.toBe(createConversationContentHashV2(enriched));
   });
 });

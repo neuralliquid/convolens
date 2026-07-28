@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { DataSource } from 'typeorm';
+import { IsNull, type DataSource } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
   ConversationIntake,
+  type ConversationParticipantEvidence,
   type ConversationProvenance,
   type ConversationSourceKind,
 } from '../db/entities/ConversationIntake';
@@ -11,6 +12,7 @@ import { ConversationMessage } from '../db/entities/ConversationMessage';
 export interface ConversationMessageInput {
   sourceMessageId?: string;
   senderName: string;
+  senderRef?: string;
   content: string;
   sentAt: Date;
   isOutgoing?: boolean;
@@ -24,9 +26,11 @@ export interface ConversationIntakeInput {
   sourcePlatform: string;
   sourceKind: ConversationSourceKind;
   sourceConversationId?: string;
+  sourceConversationIdentityStable?: boolean;
   displayName: string;
   isGroup: boolean;
   participants: string[];
+  participantEvidence?: ConversationParticipantEvidence[];
   sourceExtractedAt?: Date;
   provenance?: ConversationProvenance;
   messages: ConversationMessageInput[];
@@ -48,6 +52,7 @@ export interface ConversationIntakeSummary {
 export interface SaveConversationResult {
   conversation: ConversationIntake;
   duplicate: boolean;
+  reconciliationRequired: boolean;
 }
 
 function normalizeHashValue(value: string): string {
@@ -71,11 +76,139 @@ export function createConversationContentHash(
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
+function stableParticipantKey(
+  participant: ConversationParticipantEvidence | undefined
+): string | null {
+  if (!participant) return null;
+  if (participant.isSelf) return 'self';
+  return (
+    participant.platformUserId || participant.normalizedPhone || participant.rawUsername || null
+  );
+}
+
+function participantMap(input: Pick<ConversationIntakeInput, 'participantEvidence'>) {
+  return new Map(
+    (input.participantEvidence || []).map((participant) => [participant.ref, participant])
+  );
+}
+
+export function createConversationContentHashV2(input: ConversationIntakeInput): string {
+  if (!input.sourceConversationIdentityStable || !input.sourceConversationId) {
+    throw new Error('A stable source conversation identity is required for a v2 content hash');
+  }
+  const participants = participantMap(input);
+  const canonical = {
+    owner: normalizeHashValue(input.userId),
+    sourcePlatform: input.sourcePlatform.toLowerCase(),
+    sourceConversationId: normalizeHashValue(input.sourceConversationId),
+    messages: input.messages.map((message) => ({
+      participant: stableParticipantKey(
+        message.senderRef ? participants.get(message.senderRef) : undefined
+      ),
+      content: normalizeHashValue(message.content),
+      sentAt: message.sentAt.toISOString(),
+      isOutgoing: Boolean(message.isOutgoing),
+      isMedia: Boolean(message.isMedia),
+      mediaType: message.mediaType || null,
+    })),
+  };
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+export function createConversationCompatibilityHash(
+  input: Pick<ConversationIntakeInput, 'messages'>
+): string {
+  const canonical = input.messages.map((message) => ({
+    content: normalizeHashValue(message.content),
+    sentAt: message.sentAt.toISOString(),
+    isOutgoing: Boolean(message.isOutgoing),
+    isMedia: Boolean(message.isMedia),
+    mediaType: message.mediaType || null,
+  }));
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function storedCompatibilityHash(conversation: ConversationIntake): string {
+  return createConversationCompatibilityHash({
+    messages: conversation.messages.map((message) => ({
+      senderName: message.senderName,
+      senderRef: message.senderRef,
+      content: message.content,
+      sentAt: message.sentAt,
+      isOutgoing: message.isOutgoing,
+      isMedia: message.isMedia,
+      mediaType: message.mediaType,
+    })),
+  });
+}
+
+function hasConflictingStableEvidence(
+  candidate: ConversationIntake,
+  input: ConversationIntakeInput
+): boolean {
+  const existingParticipants = new Map(
+    (candidate.participantEvidence || []).map((participant) => [participant.ref, participant])
+  );
+  const incomingParticipants = participantMap(input);
+  return input.messages.some((message, position) => {
+    const existingMessage = candidate.messages[position];
+    const existingKey = stableParticipantKey(
+      existingMessage?.senderRef ? existingParticipants.get(existingMessage.senderRef) : undefined
+    );
+    const incomingKey = stableParticipantKey(
+      message.senderRef ? incomingParticipants.get(message.senderRef) : undefined
+    );
+    return Boolean(existingKey && incomingKey && existingKey !== incomingKey);
+  });
+}
+
+function mergeParticipantEvidence(
+  existing: ConversationParticipantEvidence[] = [],
+  incoming: ConversationParticipantEvidence[] = []
+): ConversationParticipantEvidence[] {
+  const merged = existing.map((participant) => ({ ...participant }));
+  for (const observation of incoming) {
+    const stableKey = stableParticipantKey(observation);
+    const match = merged.find(
+      (participant) =>
+        (stableKey && stableParticipantKey(participant) === stableKey) ||
+        (!stableKey && participant.ref === observation.ref)
+    );
+    if (!match) {
+      merged.push({
+        ...observation,
+        preferredDisplayName: observation.rawDisplayName,
+        rawLabels: observation.rawDisplayName ? [observation.rawDisplayName] : [],
+      });
+      continue;
+    }
+    match.rawLabels = [
+      ...new Set(
+        [...(match.rawLabels || []), match.rawDisplayName, observation.rawDisplayName].filter(
+          (value): value is string => Boolean(value)
+        )
+      ),
+    ];
+    match.preferredDisplayName =
+      observation.rawDisplayName || match.preferredDisplayName || match.rawDisplayName;
+    match.normalizedPhone = match.normalizedPhone || observation.normalizedPhone;
+    match.platformUserId = match.platformUserId || observation.platformUserId;
+    match.rawUsername = match.rawUsername || observation.rawUsername;
+  }
+  return merged;
+}
+
 export class ConversationIntakeService {
   constructor(private readonly dataSource: DataSource = AppDataSource) {}
 
   async save(input: ConversationIntakeInput): Promise<SaveConversationResult> {
-    const contentHash = createConversationContentHash(input);
+    const usesStableV2 = Boolean(
+      input.sourceConversationIdentityStable && input.sourceConversationId
+    );
+    const contentHash = usesStableV2
+      ? createConversationContentHashV2(input)
+      : createConversationContentHash(input);
+    const compatibilityHash = createConversationCompatibilityHash(input);
     const intakeRepository = this.dataSource.getRepository(ConversationIntake);
     const existing = await intakeRepository.findOne({
       where: { userId: input.userId, contentHash },
@@ -84,8 +217,70 @@ export class ConversationIntakeService {
     });
 
     if (existing) {
-      return { conversation: existing, duplicate: true };
+      existing.participantEvidence = mergeParticipantEvidence(
+        existing.participantEvidence,
+        input.participantEvidence
+      );
+      existing.compatibilityHash = existing.compatibilityHash || compatibilityHash;
+      await intakeRepository.save(existing);
+      return { conversation: existing, duplicate: true, reconciliationRequired: false };
     }
+
+    const scopeCandidates = await intakeRepository.find({
+      where: [
+        {
+          userId: input.userId,
+          sourcePlatform: input.sourcePlatform,
+          compatibilityHash,
+        },
+        {
+          userId: input.userId,
+          sourcePlatform: input.sourcePlatform,
+          compatibilityHash: IsNull(),
+        },
+      ],
+      relations: { messages: true },
+      order: { messages: { position: 'ASC' } },
+    });
+    const candidatesNeedingBackfill = scopeCandidates.filter(
+      (candidate) => !candidate.compatibilityHash
+    );
+    for (const candidate of candidatesNeedingBackfill) {
+      candidate.compatibilityHash = storedCompatibilityHash(candidate);
+    }
+    if (candidatesNeedingBackfill.length > 0) {
+      await intakeRepository.save(candidatesNeedingBackfill);
+    }
+    const semanticCandidates = scopeCandidates.filter(
+      (candidate) => candidate.compatibilityHash === compatibilityHash
+    );
+    const sameStableConversation = usesStableV2
+      ? semanticCandidates.filter(
+          (candidate) =>
+            candidate.sourceConversationIdentityStable &&
+            candidate.sourceConversationId === input.sourceConversationId
+        )
+      : [];
+    const compatibleCandidates = sameStableConversation.filter(
+      (candidate) => !hasConflictingStableEvidence(candidate, input)
+    );
+    if (sameStableConversation.length === 1 && compatibleCandidates.length === 1) {
+      const duplicate = compatibleCandidates[0];
+      duplicate.compatibilityHash = duplicate.compatibilityHash || compatibilityHash;
+      duplicate.participantEvidence = mergeParticipantEvidence(
+        duplicate.participantEvidence,
+        input.participantEvidence
+      );
+      await intakeRepository.save(duplicate);
+      return { conversation: duplicate, duplicate: true, reconciliationRequired: false };
+    }
+
+    const reconciliationCandidates = semanticCandidates.filter(
+      (candidate) =>
+        !candidate.sourceConversationIdentityStable ||
+        (usesStableV2 && candidate.sourceConversationId === input.sourceConversationId)
+    );
+    const reconciliationRequired = reconciliationCandidates.length > 0;
 
     try {
       const conversation = await this.dataSource.transaction(async (manager) => {
@@ -94,12 +289,20 @@ export class ConversationIntakeService {
           sourcePlatform: input.sourcePlatform,
           sourceKind: input.sourceKind,
           sourceConversationId: input.sourceConversationId,
+          sourceConversationIdentityStable: usesStableV2,
           displayName: input.displayName.trim().slice(0, 255),
           isGroup: input.isGroup,
           participants: [
             ...new Set(input.participants.map((value) => value.trim()).filter(Boolean)),
           ].sort((a, b) => a.localeCompare(b)),
+          participantEvidence: mergeParticipantEvidence([], input.participantEvidence),
           contentHash,
+          contentHashVersion: usesStableV2 ? 2 : 1,
+          compatibilityHash,
+          reconciliationStatus: reconciliationRequired ? 'required' : 'none',
+          reconciliationCandidateIds: reconciliationRequired
+            ? reconciliationCandidates.map((candidate) => candidate.id)
+            : undefined,
           status: 'received',
           sourceExtractedAt: input.sourceExtractedAt,
           provenance: input.provenance,
@@ -111,6 +314,7 @@ export class ConversationIntakeService {
             position,
             sourceMessageId: message.sourceMessageId,
             senderName: message.senderName.trim().slice(0, 255) || 'Unknown',
+            senderRef: message.senderRef,
             content: message.content,
             sentAt: message.sentAt,
             isOutgoing: Boolean(message.isOutgoing),
@@ -128,7 +332,7 @@ export class ConversationIntakeService {
         return savedIntake;
       });
 
-      return { conversation, duplicate: false };
+      return { conversation, duplicate: false, reconciliationRequired };
     } catch (error) {
       // A concurrent identical intake can win the unique constraint race.
       const duplicate = await intakeRepository.findOne({
@@ -137,7 +341,7 @@ export class ConversationIntakeService {
         order: { messages: { position: 'ASC' } },
       });
       if (duplicate) {
-        return { conversation: duplicate, duplicate: true };
+        return { conversation: duplicate, duplicate: true, reconciliationRequired: false };
       }
       throw error;
     }

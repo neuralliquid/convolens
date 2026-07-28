@@ -37,6 +37,9 @@ export class ConversationMessage {
   @Column({ type: 'varchar', length: 255 })
   senderName!: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  senderRef?: string;
+
   @Column({ type: 'text' })
   content!: string;
 

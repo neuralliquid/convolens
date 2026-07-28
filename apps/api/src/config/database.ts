@@ -5,6 +5,7 @@ import { User } from '../db/entities/User';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 import { CreateConversationIntake1753400000000 } from '../db/migrations/1753400000000-CreateConversationIntake';
+import { AddConversationFidelity1753660000000 } from '../db/migrations/1753660000000-AddConversationFidelity';
 import { postgresNativeUuidOptions } from './postgres-uuid';
 import { logger } from '../utils/logger';
 
@@ -19,7 +20,7 @@ const commonOptions = {
   synchronize: !isProduction && process.env.DB_SYNCHRONIZE !== 'false',
   logging: process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development',
   entities: [Message, Group, User, ConversationIntake, ConversationMessage],
-  migrations: [CreateConversationIntake1753400000000],
+  migrations: [CreateConversationIntake1753400000000, AddConversationFidelity1753660000000],
   migrationsRun,
   subscribers: [],
   cache: {

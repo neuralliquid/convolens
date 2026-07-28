@@ -15,11 +15,19 @@ interface ConversationMessage {
   id: string;
   position: number;
   senderName: string;
+  senderRef?: string;
   content: string;
   sentAt: string;
   isOutgoing: boolean;
   isMedia: boolean;
   mediaType?: string;
+}
+
+interface ParticipantEvidence {
+  ref: string;
+  rawDisplayName?: string;
+  preferredDisplayName?: string;
+  normalizedPhone?: string;
 }
 
 interface Conversation {
@@ -28,9 +36,42 @@ interface Conversation {
   sourcePlatform: string;
   sourceKind: "extension" | "upload";
   participants?: string[];
+  participantEvidence?: ParticipantEvidence[];
+  reconciliationStatus?: "none" | "required";
+  reconciliationCandidateIds?: string[];
   status: string;
   receivedAt: string;
   messages: ConversationMessage[];
+}
+
+const MEDIA_LABELS: Record<string, string> = {
+  image: "Image",
+  video: "Video",
+  audio: "Audio",
+  document: "Document",
+  sticker: "Sticker",
+};
+
+function mediaLabel(message: ConversationMessage): string {
+  return MEDIA_LABELS[message.mediaType?.toLowerCase() || ""] || "Media";
+}
+
+function isLegacyMediaPlaceholder(content: string, label: string): boolean {
+  return content.trim().toLowerCase() === `[${label.toLowerCase()}]`;
+}
+
+function senderLabel(
+  conversation: Conversation,
+  message: ConversationMessage,
+): string {
+  const evidence = conversation.participantEvidence?.find(
+    (participant) => participant.ref === message.senderRef,
+  );
+  const name = evidence?.preferredDisplayName || evidence?.rawDisplayName;
+  if (!name) return evidence?.normalizedPhone || message.senderName;
+  if (!evidence?.normalizedPhone || name.includes(evidence.normalizedPhone))
+    return name;
+  return `${name} · ${evidence.normalizedPhone}`;
 }
 
 export default function ConversationPage() {
@@ -125,6 +166,13 @@ export default function ConversationPage() {
         </div>
       ) : conversation ? (
         <>
+          {conversation.reconciliationStatus === "required" ? (
+            <div className="mt-8 rounded-xl border border-amber-300 bg-amber-50 p-5 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+              This capture was stored separately because it may match an older
+              intake without enough stable identity evidence. Review is
+              required; ConvoLens did not merge or discard either conversation.
+            </div>
+          ) : null}
           <section className="mt-8 grid gap-6 md:grid-cols-2">
             <StyledCard
               title="Intake status"
@@ -156,14 +204,27 @@ export default function ConversationPage() {
                 className="rounded-xl border bg-card p-4 text-card-foreground"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold">{message.senderName}</p>
+                  <p className="font-semibold">
+                    {senderLabel(conversation, message)}
+                  </p>
                   <time className="text-xs text-muted-foreground">
                     {new Date(message.sentAt).toLocaleString()}
                   </time>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                  {message.content}
-                </p>
+                {message.isMedia ? (
+                  <span className="mt-3 inline-flex rounded-full border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                    {mediaLabel(message)}
+                  </span>
+                ) : null}
+                {message.content &&
+                !isLegacyMediaPlaceholder(
+                  message.content,
+                  mediaLabel(message),
+                ) ? (
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                    {message.content}
+                  </p>
+                ) : null}
               </article>
             ))}
           </section>
