@@ -276,6 +276,12 @@ describe('ConversationIntakeService', () => {
     expect(first.conversation.contentHashVersion).toBe(1);
     expect(upgraded.duplicate).toBe(true);
     expect(upgraded.conversation.id).toBe(first.conversation.id);
+    expect(upgraded.conversation.sourceConversationIdentityStable).toBe(true);
+
+    const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    const enrichedCapture = await service.save(enriched);
+    expect(enrichedCapture.duplicate).toBe(true);
+    expect(enrichedCapture.conversation.id).toBe(first.conversation.id);
   });
 
   it('keeps identical ordered messages in distinct stable conversations separate', async () => {
@@ -311,9 +317,28 @@ describe('ConversationIntakeService', () => {
     expect(third.conversation.reconciliationCandidateIds).toHaveLength(2);
   });
 
+  it('does not auto-deduplicate while matching unscoped history exists', async () => {
+    const stable = await service.save(stableInput());
+    const historical = stableInput();
+    delete historical.sourceConversationId;
+    historical.sourceConversationIdentityStable = false;
+    const unscoped = await service.save(historical);
+    const enriched = stableInput();
+    enriched.participantEvidence![0].platformUserId = '27821234567@c.us';
+
+    const recapture = await service.save(enriched);
+
+    expect(recapture.duplicate).toBe(false);
+    expect(recapture.reconciliationRequired).toBe(true);
+    expect(recapture.conversation.reconciliationCandidateIds).toEqual(
+      expect.arrayContaining([stable.conversation.id, unscoped.conversation.id])
+    );
+  });
+
   it('bounds compatibility backfill and warns while older candidates remain', async () => {
     const intakeRepository = dataSource.getRepository(ConversationIntake);
     const messageRepository = dataSource.getRepository(ConversationMessage);
+    const stable = await service.save(stableInput('whatsapp:bounded-backfill@g.us'));
     const historical = Array.from({ length: 101 }, (_, index) =>
       intakeRepository.create({
         userId: baseInput.userId,
@@ -344,11 +369,14 @@ describe('ConversationIntakeService', () => {
       { chunk: 100 }
     );
 
-    const captured = await service.save(stableInput('whatsapp:bounded-backfill@g.us'));
+    const enriched = stableInput('whatsapp:bounded-backfill@g.us');
+    enriched.participantEvidence![0].platformUserId = 'bounded-backfill@c.us';
+    const captured = await service.save(enriched);
 
     expect(captured.duplicate).toBe(false);
     expect(captured.reconciliationRequired).toBe(true);
-    expect(captured.conversation.reconciliationCandidateIds).toEqual([]);
+    expect(captured.conversation.id).not.toBe(stable.conversation.id);
+    expect(captured.conversation.reconciliationCandidateIds).toContain(stable.conversation.id);
     expect(await intakeRepository.countBy({ compatibilityHash: IsNull() })).toBeGreaterThan(0);
   });
 

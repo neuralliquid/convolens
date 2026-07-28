@@ -298,14 +298,21 @@ export class ConversationIntakeService {
     conversation: ConversationIntake,
     input: ConversationIntakeInput,
     compatibilityHash: string,
-    applyMediaCorrections = false
+    options: {
+      applyMediaCorrections?: boolean;
+      persistVerifiedStableScope?: boolean;
+    } = {}
   ): Promise<SaveConversationResult> {
     conversation.participantEvidence = mergeParticipantEvidence(
       conversation.participantEvidence,
       input.participantEvidence
     );
     conversation.compatibilityHash = conversation.compatibilityHash || compatibilityHash;
-    if (applyMediaCorrections) {
+    if (options.persistVerifiedStableScope) {
+      conversation.sourceConversationId = input.sourceConversationId;
+      conversation.sourceConversationIdentityStable = true;
+    }
+    if (options.applyMediaCorrections) {
       const correctedMessages = applyCorrectedVisualMediaEvidence(conversation, input);
       if (correctedMessages.length > 0) {
         await this.dataSource.getRepository(ConversationMessage).save(correctedMessages);
@@ -350,7 +357,9 @@ export class ConversationIntakeService {
       }));
 
     if (existing) {
-      return this.updateDuplicate(existing, input, compatibilityHash);
+      return this.updateDuplicate(existing, input, compatibilityHash, {
+        persistVerifiedStableScope: existing === legacyScopedMatch,
+      });
     }
 
     const exactCompatibilityCandidates = await intakeRepository.find({
@@ -398,9 +407,19 @@ export class ConversationIntakeService {
     const compatibleCandidates = sameStableConversation.filter(
       (candidate) => !hasConflictingStableEvidence(candidate, input)
     );
-    if (sameStableConversation.length === 1 && compatibleCandidates.length === 1) {
+    const hasUnscopedSemanticCandidates = semanticCandidates.some(
+      (candidate) => !candidate.sourceConversationIdentityStable
+    );
+    if (
+      sameStableConversation.length === 1 &&
+      compatibleCandidates.length === 1 &&
+      !hasUnscopedSemanticCandidates &&
+      !hasDeferredCompatibilityCandidates
+    ) {
       const duplicate = compatibleCandidates[0];
-      return this.updateDuplicate(duplicate, input, compatibilityHash, true);
+      return this.updateDuplicate(duplicate, input, compatibilityHash, {
+        applyMediaCorrections: true,
+      });
     }
 
     const reconciliationCandidates = semanticCandidates.filter((candidate) =>

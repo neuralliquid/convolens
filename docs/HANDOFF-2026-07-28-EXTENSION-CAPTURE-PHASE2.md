@@ -7,9 +7,9 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Sender metadata, visible names, and message-scoped phone evidence are combined independently and rendered as `Name · phone`, name-only, phone-only, or a numbered unidentified fallback.
 - The extension normalizes sampled bubbles to WhatsApp message records and emits a stable source-conversation identity only when a JID is present in scoped DOM evidence. Timestamp-generated capture IDs never enable compatibility matching.
 - Structured participant evidence and every per-message `senderRef` value now survive API persistence and authenticated read projection without collapsing initially referenced evidence rows.
-- Existing durable hashes remain v1. A scoped v1 intake is reused when the same source identity upgrades to v2; stable new captures otherwise use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
+- Existing durable hashes remain v1. A scoped v1 intake is reused and permanently records its verified source identity when it upgrades to v2; stable new captures otherwise use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
-- Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation and no conflicting stable participant evidence.
+- Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation, no conflicting stable participant evidence, no matching unscoped history, and no deferred compatibility-backfill rows.
 - Historical unscoped, conflicting, or multiple matches are stored separately with an explicit reconciliation warning; neither intake is silently merged or discarded.
 - Historical compatibility hashes are backfilled in batches of 100. A capture remains conservatively marked for reconciliation while additional unprocessed history exists.
 - Compatibility normalizes legacy captionless and corrected visual-media evidence, persists the known image-to-video correction, compares all overlapping stable participant identifiers, enriches name-only references without duplicating them, and preserves reconciliation warnings on exact repeats or later loss of stable scope.
@@ -35,8 +35,8 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 32 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 103 passed, 0 failed across 9 suites.
-- Focused migration, route, and compatibility tests: 28 passed, 0 failed.
+- API Jest suite: 104 passed, 0 failed across 9 suites.
+- Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
