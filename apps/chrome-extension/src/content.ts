@@ -408,13 +408,25 @@ async function reviewPageCapture(
   const action = confirmed
     ? "CONFIRM_CAPTURE_OPERATION"
     : "CANCEL_CAPTURE_OPERATION";
-  const response = (await chrome.runtime.sendMessage({
-    action,
-    operationId: operation.operationId,
-    reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
-  })) as ExtensionResponse<CaptureOperationSnapshot>;
-  if (response.success && response.data) renderCaptureOperation(response.data);
-  else if (!response.success) updateStatus(response.error, "error");
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      action,
+      operationId: operation.operationId,
+      reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    if (response.success && response.data) {
+      renderCaptureOperation(response.data);
+      return;
+    }
+    pageConfirmationOperationId = null;
+    updateStatus(
+      response.success ? "Capture could not continue." : response.error,
+      "error",
+    );
+  } catch (error) {
+    pageConfirmationOperationId = null;
+    throw error;
+  }
 }
 
 function renderCaptureOperation(operation: CaptureOperationSnapshot): void {

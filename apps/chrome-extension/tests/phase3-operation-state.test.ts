@@ -265,6 +265,25 @@ test("checks for a reviewed operation before new-extraction throttling", () => {
   );
 });
 
+test("unlocks page confirmation after a temporary request failure", () => {
+  const reviewFunction = contentSource.slice(
+    contentSource.indexOf("async function reviewPageCapture"),
+    contentSource.indexOf("function renderCaptureOperation"),
+  );
+  assert.match(
+    reviewFunction,
+    /if \(response\.success && response\.data\)[\s\S]*return;/,
+  );
+  assert.match(
+    reviewFunction,
+    /pageConfirmationOperationId = null;[\s\S]*response\.success \? "Capture could not continue\."/,
+  );
+  assert.match(
+    reviewFunction,
+    /catch \(error\) \{\s*pageConfirmationOperationId = null;\s*throw error;/,
+  );
+});
+
 test("keeps stale content collection cleanup scoped to its operation", () => {
   assert.match(
     contentSource,
