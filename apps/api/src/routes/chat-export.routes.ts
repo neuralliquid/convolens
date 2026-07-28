@@ -54,6 +54,7 @@ interface ExtractedParticipant {
 interface ExtensionChatData {
   chatName: string;
   chatId: string;
+  sourceConversationId?: string;
   extractedAt: string;
   messageCount: number;
   messages: ExtractedMessage[];
@@ -84,6 +85,15 @@ export function isValidExtensionChatData(data: unknown): data is ExtensionChatDa
   // Required string fields
   if (typeof obj.chatName !== 'string' || obj.chatName.length === 0) return false;
   if (typeof obj.chatId !== 'string' || obj.chatId.length === 0) return false;
+  if (
+    obj.sourceConversationId !== undefined &&
+    (typeof obj.sourceConversationId !== 'string' ||
+      obj.sourceConversationId.length > 500 ||
+      !/^whatsapp:[0-9][0-9a-z.-]*@(g\.us|c\.us|s\.whatsapp\.net|lid)$/i.test(
+        obj.sourceConversationId
+      ))
+  )
+    return false;
   if (typeof obj.extractedAt !== 'string') return false;
   if (typeof obj.version !== 'string') return false;
 
@@ -161,6 +171,7 @@ function isValidParticipant(value: unknown): value is ExtractedParticipant {
   if (
     typeof participant.ref !== 'string' ||
     participant.ref.length === 0 ||
+    participant.ref.length > 100 ||
     typeof participant.isSelf !== 'boolean'
   )
     return false;
@@ -220,7 +231,11 @@ function isValidMessage(msg: unknown): msg is ExtractedMessage {
   }
 
   if (obj.replyTo !== undefined && typeof obj.replyTo !== 'string') return false;
-  if (obj.senderRef !== undefined && typeof obj.senderRef !== 'string') return false;
+  if (
+    obj.senderRef !== undefined &&
+    (typeof obj.senderRef !== 'string' || obj.senderRef.length > 100)
+  )
+    return false;
 
   return true;
 }
@@ -375,12 +390,13 @@ router.post('/extension', authenticateToken, async (req, res) => {
       userId,
       sourcePlatform: 'whatsapp',
       sourceKind: 'extension',
-      sourceConversationId: chatData.chatId,
+      sourceConversationId: chatData.sourceConversationId,
+      sourceConversationIdentityStable: Boolean(chatData.sourceConversationId),
       displayName: sanitizedChatName,
       isGroup: chatData.isGroup,
-      // v2 observations remain raw connector evidence for PR 2. This keeps the
-      // v1 persistence and deduplication contract unchanged during rollout.
+      // Keep the legacy label list while also preserving structured capture evidence.
       participants: getLegacyParticipantLabels(chatData),
+      participantEvidence: chatData.participants,
       sourceExtractedAt: new Date(chatData.extractedAt),
       provenance: {
         connectorVersion: chatData.version,
@@ -390,6 +406,7 @@ router.post('/extension', authenticateToken, async (req, res) => {
       messages: chatData.messages.map((message) => ({
         sourceMessageId: message.id,
         senderName: message.sender,
+        senderRef: message.senderRef,
         content: message.text,
         sentAt: new Date(message.timestamp),
         isOutgoing: message.isOutgoing,
@@ -406,6 +423,7 @@ router.post('/extension', authenticateToken, async (req, res) => {
       messageCount: chatData.messages.length,
       receivedAt: saved.conversation.receivedAt,
       dashboardUrl: `/dashboard/conversations/${saved.conversation.id}`,
+      reconciliationRequired: saved.reconciliationRequired,
     };
 
     metrics.trackExtraction(true, 'chrome-extension', chatData.messages.length);
@@ -413,9 +431,12 @@ router.post('/extension', authenticateToken, async (req, res) => {
     return res.status(200).json({
       message: saved.duplicate
         ? 'Conversation was already received'
-        : 'Chat data received successfully',
+        : saved.reconciliationRequired
+          ? 'Chat stored separately and requires duplicate reconciliation'
+          : 'Chat data received successfully',
       data: result,
       duplicate: saved.duplicate,
+      reconciliationRequired: saved.reconciliationRequired,
     });
   } catch (error) {
     logger.error('Error processing extension chat data:', error);
@@ -469,9 +490,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
           sourcePlatform: conversation.sourcePlatform,
           sourceKind: conversation.sourceKind,
           sourceConversationId: conversation.sourceConversationId,
+          sourceConversationIdentityStable: conversation.sourceConversationIdentityStable,
           displayName: conversation.displayName,
           isGroup: conversation.isGroup,
           participants: conversation.participants || [],
+          participantEvidence: conversation.participantEvidence || [],
+          contentHashVersion: conversation.contentHashVersion,
+          reconciliationStatus: conversation.reconciliationStatus,
+          reconciliationCandidateIds: conversation.reconciliationCandidateIds || [],
           status: conversation.status,
           errorCode: conversation.errorCode,
           sourceExtractedAt: conversation.sourceExtractedAt,
@@ -483,6 +509,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
             position: message.position,
             sourceMessageId: message.sourceMessageId,
             senderName: message.senderName,
+            senderRef: message.senderRef,
             content: message.content,
             sentAt: message.sentAt,
             isOutgoing: message.isOutgoing,

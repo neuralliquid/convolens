@@ -156,6 +156,7 @@ export interface SendChatDataMessage {
   data: {
     chatName: string;
     chatId: string;
+    sourceConversationId?: string;
     extractedAt: string;
     messageCount: number;
     messages: Array<{

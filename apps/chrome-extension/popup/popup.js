@@ -298,9 +298,14 @@ confirmCapture.addEventListener("click", async () => {
     });
     if (sendResult.success) {
       const messageCount = captureToSend.messages.length;
+      const reconciliationRequired = Boolean(
+        sendResult.data?.reconciliationRequired,
+      );
       if (pendingCapture === captureToSend) clearCapturePreview();
       setActionStatus(
-        `${messageCount} loaded message${messageCount === 1 ? "" : "s"} received by ConvoLens.`,
+        reconciliationRequired
+          ? `${messageCount} loaded message${messageCount === 1 ? "" : "s"} stored separately. Review the possible prior intake in ConvoLens.`
+          : `${messageCount} loaded message${messageCount === 1 ? "" : "s"} received by ConvoLens.`,
         "success",
       );
     } else {

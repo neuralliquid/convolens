@@ -26,6 +26,11 @@ import {
 } from "./config";
 import { parseWhatsAppMessageMetadata } from "./whatsapp-metadata";
 import {
+  combineSenderEvidence,
+  extractStableWhatsAppConversationId,
+} from "./whatsapp-identity";
+import { classifyMediaEvidence, type MediaType } from "./media-evidence";
+import {
   findConversationRoot,
   findMessageContainers,
   findMessageRecord,
@@ -78,6 +83,7 @@ interface ExtractionDiagnostics {
 interface ExtractedChat {
   chatName: string;
   chatId: string;
+  sourceConversationId?: string;
   extractedAt: string;
   messageCount: number;
   messages: ExtractedMessage[];
@@ -355,8 +361,13 @@ async function handleExtractClick(): Promise<void> {
 
     if (response.success) {
       reviewedCapture = null;
+      const reconciliationRequired = Boolean(
+        response.data?.reconciliationRequired,
+      );
       updateStatus(
-        `${chatData.messages.length} loaded messages received by ConvoLens`,
+        reconciliationRequired
+          ? `${chatData.messages.length} loaded messages stored separately. Review the possible prior intake in ConvoLens.`
+          : `${chatData.messages.length} loaded messages received by ConvoLens`,
         "success",
       );
       state.lastExtraction = Date.now();
@@ -454,6 +465,17 @@ async function extractCurrentChat(
   const participantRefs = new Map<string, string>();
   const totalMessages = messageContainers.length;
   const diagnostics = createExtractionDiagnostics(totalMessages);
+  const sourceConversationId = extractStableWhatsAppConversationId([
+    messageList.getAttribute("data-chat-id"),
+    messageList.getAttribute("data-jid"),
+    messageList.closest("[data-chat-id]")?.getAttribute("data-chat-id"),
+    messageList.closest("[data-jid]")?.getAttribute("data-jid"),
+    ...messageContainers
+      .slice(0, 20)
+      .map((container) =>
+        findMessageRecord(container as HTMLElement).getAttribute("data-id"),
+      ),
+  ]);
 
   for (let i = 0; i < messageContainers.length; i++) {
     // Update progress
@@ -494,6 +516,7 @@ async function extractCurrentChat(
   return {
     chatName,
     chatId: generateChatId(chatName),
+    sourceConversationId,
     extractedAt: new Date().toISOString(),
     messageCount: messages.length,
     messages,
@@ -562,8 +585,9 @@ function extractMessageData(
     chatName,
     metadata.value,
   );
+  const { displayLabel, ...participantIdentity } = identity;
   const senderRef = registerParticipant(
-    identity,
+    participantIdentity,
     participants,
     participantRefs,
   );
@@ -571,15 +595,14 @@ function extractMessageData(
 
   diagnostics.extractedMessageCount += 1;
   diagnostics.metadataPathCounts[metadata.path] += 1;
-  diagnostics.senderMethodCounts[identity.extractionMethod] += 1;
+  diagnostics.senderMethodCounts[participantIdentity.extractionMethod] += 1;
   diagnostics.timestampMethodCounts[timestamp.method] += 1;
 
   return {
     id: generateMessageId(),
-    text: isMedia && !text ? `[${mediaType || "Media"}]` : text,
+    text,
     sender:
-      identity.rawDisplayName ||
-      `Unidentified participant ${participants.length || 1}`,
+      displayLabel || `Unidentified participant ${participants.length || 1}`,
     timestamp: timestamp.value,
     isOutgoing,
     isMedia,
@@ -595,10 +618,11 @@ function extractSenderIdentity(
   isDirectChat: boolean,
   chatName: string,
   metadata: string,
-): Omit<ExtractedParticipant, "ref"> {
+): Omit<ExtractedParticipant, "ref"> & { displayLabel?: string } {
   if (isOutgoing) {
     return {
       rawDisplayName: "You",
+      displayLabel: "You",
       isSelf: true,
       extractionMethod: "outgoing",
       confidence: "high",
@@ -617,14 +641,22 @@ function extractSenderIdentity(
       )?.textContent?.trim() ||
       (chatName === "Unknown Chat" ? undefined : chatName)
     : undefined;
-  const rawDisplayName = metadataSender || explicitSender || headerSender;
+  const scopedPhoneEvidence = [
+    senderEl?.getAttribute("data-phone"),
+    senderEl?.getAttribute("title"),
+    senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id"),
+  ].filter((value): value is string => Boolean(value));
+  const combined = combineSenderEvidence({
+    metadataSender,
+    visibleSender: explicitSender,
+    headerSender,
+    scopedPhoneEvidence,
+  });
+  const rawDisplayName = combined.rawDisplayName;
   const rawUsername = rawDisplayName?.match(/^@[^\s]+$/)?.[0];
   // WhatsApp commonly renders the phone alongside the sender label. It is
   // capture-scoped evidence, never a contact-book scrape.
-  const phoneSource = rawDisplayName?.match(/\+?[0-9][0-9\s().-]{5,}/)?.[0];
-  const normalizedPhone = phoneSource
-    ? phoneSource.replace(/[^0-9+]/g, "")
-    : undefined;
+  const normalizedPhone = combined.normalizedPhone;
   // data-id identifies an individual message in WhatsApp Web, not its sender.
   const platformUserId =
     container.getAttribute("data-contact-id") ||
@@ -639,6 +671,7 @@ function extractSenderIdentity(
         : "fallback";
   return {
     rawDisplayName,
+    displayLabel: combined.displayLabel,
     rawUsername,
     normalizedPhone,
     platformUserId,
@@ -723,33 +756,33 @@ function detectDirectChat(): boolean {
 }
 
 function detectMediaMessage(container: HTMLElement): boolean {
-  const mediaIndicators = [
-    '[data-testid="media-state-icon"]',
-    '[data-testid="image-thumb"]',
-    '[data-testid="video-thumb"]',
-    '[data-testid="audio-player"]',
-    '[data-testid="document-thumb"]',
-    ".message-image",
-    ".message-video",
-    ".message-audio",
-    ".message-document",
-  ];
+  if (getMediaType(container)) return true;
+  const mediaIndicators = ['[data-testid="media-state-icon"]'];
 
   return mediaIndicators.some(
     (selector) => container.querySelector(selector) !== null,
   );
 }
 
-function getMediaType(
-  container: HTMLElement,
-): "image" | "video" | "audio" | "document" | "sticker" | undefined {
-  if (container.querySelector('[data-testid="image-thumb"]')) return "image";
-  if (container.querySelector('[data-testid="video-thumb"]')) return "video";
-  if (container.querySelector('[data-testid="audio-player"]')) return "audio";
-  if (container.querySelector('[data-testid="document-thumb"]'))
-    return "document";
-  if (container.querySelector('[data-testid="sticker"]')) return "sticker";
-  return undefined;
+function getMediaType(container: HTMLElement): MediaType | undefined {
+  return classifyMediaEvidence({
+    video:
+      container.querySelector(
+        'video, [data-testid="video-thumb"], .message-video',
+      ) !== null,
+    audio:
+      container.querySelector(
+        'audio, [data-testid="audio-player"], .message-audio',
+      ) !== null,
+    document:
+      container.querySelector(
+        '[data-testid="document-thumb"], .message-document',
+      ) !== null,
+    sticker: container.querySelector('[data-testid="sticker"]') !== null,
+    image:
+      container.querySelector('[data-testid="image-thumb"], .message-image') !==
+      null,
+  });
 }
 
 function parseTimestamp(

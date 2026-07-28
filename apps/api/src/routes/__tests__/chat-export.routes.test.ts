@@ -31,6 +31,7 @@ describe('extension chat payload validation', () => {
         ...v1Payload,
         version: '1.0.7',
         payloadVersion: 2,
+        sourceConversationId: 'whatsapp:120363123456789@g.us',
         participants: [
           {
             ref: 'participant_1',
@@ -42,6 +43,24 @@ describe('extension chat payload validation', () => {
           },
         ],
         messages: [{ ...v1Payload.messages[0], senderRef: 'participant_1' }],
+      })
+    ).toBe(true);
+  });
+
+  it('rejects a generated capture id as stable conversation identity', () => {
+    expect(
+      isValidExtensionChatData({
+        ...v1Payload,
+        sourceConversationId: 'chat_team_chat_madeup',
+      })
+    ).toBe(false);
+  });
+
+  it('accepts a WhatsApp LID as stable conversation identity', () => {
+    expect(
+      isValidExtensionChatData({
+        ...v1Payload,
+        sourceConversationId: 'whatsapp:123456789012345@lid',
       })
     ).toBe(true);
   });
