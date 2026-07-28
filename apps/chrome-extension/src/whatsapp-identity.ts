@@ -5,26 +5,34 @@ export interface SenderEvidenceInput {
   scopedPhoneEvidence?: string[];
 }
 
-const PHONE_PATTERN = /\+?[0-9][0-9\s().-]{5,}/;
+const PHONE_VALUE_PATTERN = /^\+?[0-9][0-9\s().-]*$/;
+const PHONE_SUFFIX_PATTERN = /\s[·|]\s*(\+?[0-9][0-9\s().-]*)$/;
 const WHATSAPP_JID_PATTERN =
   /([0-9][0-9A-Za-z.-]*@(?:g\.us|c\.us|s\.whatsapp\.net))/i;
 
 export function normalizePhone(value?: string): string | undefined {
-  const match = value?.match(PHONE_PATTERN)?.[0];
-  if (!match) return undefined;
-  const normalized = match.replace(/[^0-9+]/g, "");
-  return normalized.length >= 6 ? normalized : undefined;
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const candidate = trimmed.match(PHONE_SUFFIX_PATTERN)?.[1] || trimmed;
+  if (!PHONE_VALUE_PATTERN.test(candidate)) return undefined;
+  const normalized = candidate.replace(/[^0-9+]/g, "");
+  const digitCount = normalized.replace(/\D/g, "").length;
+  const minimumDigits = normalized.startsWith("+") ? 8 : 9;
+  return digitCount >= minimumDigits ? normalized : undefined;
 }
 
 function isPhoneOnly(value?: string): boolean {
   if (!value) return false;
-  const phone = normalizePhone(value);
-  return Boolean(phone && value.replace(PHONE_PATTERN, "").trim().length === 0);
+  return Boolean(
+    normalizePhone(value) && PHONE_VALUE_PATTERN.test(value.trim()),
+  );
 }
 
 function withoutPhone(value: string): string {
+  const suffix = value.trim().match(PHONE_SUFFIX_PATTERN);
+  if (!suffix || !normalizePhone(suffix[1])) return value.trim();
   return value
-    .replace(PHONE_PATTERN, "")
+    .slice(0, suffix.index)
     .replace(/^[\s·|,:;-]+|[\s·|,:;-]+$/g, "")
     .trim();
 }

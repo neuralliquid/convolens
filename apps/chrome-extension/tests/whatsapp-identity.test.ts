@@ -41,6 +41,26 @@ test("separates a combined visible name and phone label", () => {
   );
 });
 
+test("does not fabricate phone evidence from dates or numeric identifiers", () => {
+  assert.deepEqual(
+    combineSenderEvidence({ metadataSender: "Team 2026-07-28" }),
+    {
+      rawDisplayName: "Team 2026-07-28",
+      normalizedPhone: undefined,
+      displayLabel: "Team 2026-07-28",
+    },
+  );
+  assert.deepEqual(combineSenderEvidence({ metadataSender: "Shop 123456" }), {
+    rawDisplayName: "Shop 123456",
+    normalizedPhone: undefined,
+    displayLabel: "Shop 123456",
+  });
+  assert.equal(
+    combineSenderEvidence({ metadataSender: "2026-07-28" }).normalizedPhone,
+    undefined,
+  );
+});
+
 test("uses only a WhatsApp JID as stable conversation identity", () => {
   assert.equal(
     extractStableWhatsAppConversationId(["false_120363123456789@g.us_ABCD"]),

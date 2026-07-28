@@ -4,7 +4,7 @@
 
 Phase 2 implements the remaining sender, deduplication, and media-fidelity slice from the phased extension plan.
 
-- Sender metadata, visible names, and message-scoped phone evidence are combined independently and rendered as `Name · phone`, name-only, phone-only, or a numbered unidentified fallback.
+- Sender metadata, visible names, and message-scoped phone evidence are combined independently and rendered as `Name · phone`, name-only, phone-only, or a numbered unidentified fallback. Mixed labels containing dates or arbitrary numeric identifiers are not promoted to phone evidence.
 - The extension normalizes sampled bubbles to WhatsApp message records and emits a stable source-conversation identity only when a JID is present in scoped DOM evidence. Timestamp-generated capture IDs never enable compatibility matching.
 - Structured participant evidence and every per-message `senderRef` value now survive API persistence and authenticated read projection without collapsing initially referenced evidence rows.
 - Existing durable hashes remain v1. A scoped v1 intake is reused and permanently records its verified source identity when it upgrades to v2; stable new captures otherwise use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
@@ -33,14 +33,14 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 ## Validation
 
-- Chrome extension Node tests: 32 passed, 0 failed.
+- Chrome extension Node tests: 33 passed, 0 failed.
 - Chrome extension TypeScript: passed.
 - API Jest suite: 104 passed, 0 failed across 9 suites.
 - Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `EDF83E2A82F62543C72C150A35D785788EDD23FD0869E7900C776B1F6B538ACF`.
+- Packaged ZIP SHA-256: `BFB9B1DBD07AF8D4589BF4878FAC980CB849D0A9D2CEBCF4CBD8B7E98BE154C9`.
 - Prettier and `git diff --check`: passed for the changed surfaces.
 
 ## Boundaries still open
