@@ -109,6 +109,19 @@ test("allows a page-owned retry-required operation to confirm again", () => {
   );
 });
 
+test("allows an explicit page click to continue a popup-started review", () => {
+  const clickHandler = contentSource.slice(
+    contentSource.indexOf("async function handleExtractClick"),
+    contentSource.indexOf("async function reviewPageCapture"),
+  );
+  assert.match(
+    clickHandler,
+    /\["ready-for-review", "retry-required"\]\.includes\(response\.data\.state\)/,
+  );
+  assert.doesNotMatch(clickHandler, /response\.data\.initiator/);
+  assert.match(clickHandler, /await reviewPageCapture\(response\.data\)/);
+});
+
 test("invalidates collection and upload continuations across auth changes", () => {
   assert.match(backgroundSource, /let captureLifecycleEpoch = 0/);
   assert.match(

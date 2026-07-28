@@ -353,7 +353,6 @@ async function handleExtractClick(): Promise<void> {
     }
     renderCaptureOperation(response.data);
     if (
-      response.data.initiator === "page" &&
       ["ready-for-review", "retry-required"].includes(response.data.state)
     ) {
       if (response.data.state === "retry-required") {
