@@ -513,6 +513,7 @@ async function confirmCaptureOperation(
 async function uploadCaptureOperation(
   initialOperation: CaptureOperationSnapshot,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const uploadAuthenticationIntent = committedAuthenticationIntentGeneration;
   const expectedOwnerId = captureOperationOwnerIds.get(
     initialOperation.operationId,
   );
@@ -557,6 +558,7 @@ async function uploadCaptureOperation(
     const uploadResult = await sendChatData(
       payloadResponse.data,
       expectedOwnerId,
+      uploadAuthenticationIntent,
     );
     if (!isCurrentCaptureOperation(operation, operationEpoch)) {
       return await abandonCaptureOperation(
@@ -758,6 +760,7 @@ function normalizeChannelLifecycleReason(error: unknown): string {
 async function sendChatData(
   chatData: any,
   expectedOwnerId: string,
+  uploadAuthenticationIntent: number,
 ): Promise<ExtensionResponse> {
   try {
     let stored = await chrome.storage.local.get([
@@ -770,7 +773,7 @@ async function sendChatData(
       !stored[STORAGE_KEYS.authToken] ||
       (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
     ) {
-      const syncResult = await syncMystiraSession();
+      const syncResult = await syncMystiraSession(uploadAuthenticationIntent);
       if (!syncResult.success) {
         return syncResult;
       }
@@ -1015,10 +1018,8 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
 }
 
 async function syncMystiraSession(
-  expectedAuthenticationIntent?: number,
+  authenticationIntent: number,
 ): Promise<ExtensionResponse> {
-  const authenticationIntent =
-    expectedAuthenticationIntent ?? authenticationIntentGeneration;
   try {
     const config = getConfig();
     const sessionResponse = await fetch(

@@ -21,6 +21,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Background session refresh and password sign-in results are bound to the authentication intent that started them. Logout invalidates older intents immediately, waits for already-authorized uploads without holding the authentication-write lock, then serializes the final clear so a late refresh cannot restore a cleared account or deadlock an upload.
 - Logout rechecks its intent after acquiring the final-clear lock. A later explicit password sign-in or external Mystira session validation wins; an upload-internal refresh remains part of the older operation and cannot supersede logout.
 - That final check uses the latest successfully committed authentication intent rather than a merely started attempt, so a failed later validation cannot cause logout to report success while leaving old credentials behind.
+- Upload-internal session refresh receives the committed authentication intent captured when that upload began; it cannot inherit a newer failed sign-in attempt from global state or supersede a pending logout.
 - Cancelled pointer drags restore the last saved launcher placement instead of persisting interrupted coordinates.
 - Opening the panel moves focus into its first enabled control, while pointer cancellation clears drag click-suppression state.
 - Escape, focus-visible, reduced-motion, forced-colour, dark-mode, and narrow-window behavior are included.
@@ -46,7 +47,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `0C3327EADF3F03F78FDC00E409531C5F3B8C3FA9A816A2692036906F2BE109AF`.
+- Packaged ZIP SHA-256: `3FFA99EAA1BD0BC7906D979673358F9AAF136ADB8F6EDA445780E73BEAA88C20`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open

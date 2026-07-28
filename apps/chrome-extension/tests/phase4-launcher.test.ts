@@ -190,7 +190,7 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     backgroundSource,
-    /syncMystiraSession[\s\S]*expectedAuthenticationIntent \?\? authenticationIntentGeneration[\s\S]*replaceAuthenticatedUser\([\s\S]*authenticationIntent[\s\S]*if \(!replaced\)/,
+    /syncMystiraSession\(\s*authenticationIntent: number[\s\S]*replaceAuthenticatedUser\([\s\S]*authenticationIntent[\s\S]*if \(!replaced\)/,
   );
   assert.match(
     backgroundSource,
@@ -207,6 +207,14 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   assert.match(
     backgroundSource,
     /notifyContentScripts\(token\)[\s\S]*committedAuthenticationIntentGeneration = Math\.max/,
+  );
+  assert.match(
+    backgroundSource,
+    /uploadCaptureOperation[\s\S]*const uploadAuthenticationIntent = committedAuthenticationIntentGeneration[\s\S]*sendChatData\([\s\S]*uploadAuthenticationIntent/,
+  );
+  assert.match(
+    backgroundSource,
+    /sendChatData\([\s\S]*uploadAuthenticationIntent: number[\s\S]*syncMystiraSession\(uploadAuthenticationIntent\)/,
   );
 });
 
