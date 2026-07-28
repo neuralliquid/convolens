@@ -13,6 +13,10 @@ const popupSource = await readFile(
 
 test("sends only verified WhatsApp conversation identity as stable scope", () => {
   assert.match(contentSource, /extractStableWhatsAppConversationId/);
+  assert.match(
+    contentSource,
+    /findMessageRecord\(container as HTMLElement\)\.getAttribute\("data-id"\)/,
+  );
   assert.match(contentSource, /sourceConversationId/);
   assert.doesNotMatch(contentSource, /sourceConversationId:\s*generateChatId/);
 });

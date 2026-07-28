@@ -5,7 +5,7 @@
 Phase 2 implements the remaining sender, deduplication, and media-fidelity slice from the phased extension plan.
 
 - Sender metadata, visible names, and message-scoped phone evidence are combined independently and rendered as `Name · phone`, name-only, phone-only, or a numbered unidentified fallback.
-- The extension emits a stable source-conversation identity only when a WhatsApp JID is present in scoped DOM evidence. Timestamp-generated capture IDs never enable compatibility matching.
+- The extension normalizes sampled bubbles to WhatsApp message records and emits a stable source-conversation identity only when a JID is present in scoped DOM evidence. Timestamp-generated capture IDs never enable compatibility matching.
 - Structured participant evidence and per-message `senderRef` values now survive API persistence and authenticated read projection.
 - Existing durable hashes remain v1. Stable new captures use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
@@ -39,7 +39,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `98AE1751B0FCE30FD6293D99E672B4C72F35BBA79C2475DEC518D839EB30B62D`.
+- Packaged ZIP SHA-256: `EDF83E2A82F62543C72C150A35D785788EDD23FD0869E7900C776B1F6B538ACF`.
 - Prettier and `git diff --check`: passed for the changed surfaces.
 
 ## Boundaries still open

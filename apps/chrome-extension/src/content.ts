@@ -472,7 +472,9 @@ async function extractCurrentChat(
     messageList.closest("[data-jid]")?.getAttribute("data-jid"),
     ...messageContainers
       .slice(0, 20)
-      .map((container) => container.getAttribute("data-id")),
+      .map((container) =>
+        findMessageRecord(container as HTMLElement).getAttribute("data-id"),
+      ),
   ]);
 
   for (let i = 0; i < messageContainers.length; i++) {
