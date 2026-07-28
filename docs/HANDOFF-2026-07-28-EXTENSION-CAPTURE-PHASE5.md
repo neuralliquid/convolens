@@ -20,7 +20,7 @@ Phase 5 makes the exact loaded-message scope visible before either extension sur
 - Base: `origin/main` at `1a5b45f33ab03fbcb56c74ff08580a48a6e22faa` (merged PR #152).
 - Branch: `agent/extension-capture-phase5`.
 - Worktree: `C:/tmp/convolens-extension-phase5`.
-- Pull request: pending.
+- Pull request: [#153](https://github.com/neuralliquid/convolens/pull/153).
 - The primary checkout and its pre-existing untracked handoff remain untouched.
 
 ## Validation
