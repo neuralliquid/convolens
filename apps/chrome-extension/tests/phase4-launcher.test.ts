@@ -125,6 +125,10 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     contentSource,
+    /async function refreshLauncherFromValidatedAuthentication[\s\S]*launcherAuthRefreshGeneration \+= 1[\s\S]*resetLauncherAccountState\(false\)/,
+  );
+  assert.match(
+    contentSource,
     /await refreshLauncherFromValidatedAuthentication\(\)\.catch\(\(\) => undefined\)/,
   );
   assert.match(

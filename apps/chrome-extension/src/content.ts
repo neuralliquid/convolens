@@ -527,6 +527,7 @@ function normalizeAuthToken(value: unknown): string | null {
 }
 
 async function refreshLauncherFromValidatedAuthentication(): Promise<void> {
+  launcherAuthRefreshGeneration += 1;
   authToken = null;
   resetLauncherAccountState(false);
   const authResponse = (await chrome.runtime.sendMessage({
