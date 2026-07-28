@@ -356,4 +356,29 @@ describe('ConversationIntakeService', () => {
       createConversationCompatibilityHash(legacy)
     );
   });
+
+  it('persists a corrected video type when compatibility deduplicates legacy media', async () => {
+    const legacy = stableInput();
+    legacy.messages[0] = {
+      ...legacy.messages[0],
+      content: '[image]',
+      isMedia: true,
+      mediaType: 'image',
+    };
+    const first = await service.save(legacy);
+    const corrected = stableInput();
+    corrected.messages[0] = {
+      ...corrected.messages[0],
+      content: '',
+      isMedia: true,
+      mediaType: 'video',
+    };
+
+    const second = await service.save(corrected);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.messages[0].mediaType).toBe('video');
+    expect(second.conversation.messages[0].content).toBe('[image]');
+  });
 });

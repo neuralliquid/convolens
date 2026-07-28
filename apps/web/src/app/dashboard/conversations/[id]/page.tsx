@@ -57,7 +57,11 @@ function mediaLabel(message: ConversationMessage): string {
 }
 
 function isLegacyMediaPlaceholder(content: string, label: string): boolean {
-  return content.trim().toLowerCase() === `[${label.toLowerCase()}]`;
+  const normalized = content.trim().toLowerCase();
+  return (
+    normalized === `[${label.toLowerCase()}]` ||
+    /^\[(?:image|video|audio|document|sticker|media)\]$/.test(normalized)
+  );
 }
 
 function senderLabel(

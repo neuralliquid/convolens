@@ -202,21 +202,28 @@ function hasConflictingStableEvidence(
   });
 }
 
+function findParticipantEvidenceMatch(
+  participants: ConversationParticipantEvidence[],
+  observation: ConversationParticipantEvidence
+): ConversationParticipantEvidence | undefined {
+  const stableKeys = stableParticipantKeys(observation);
+  return participants.find((participant) => {
+    const existingKeys = stableParticipantKeys(participant);
+    return (
+      (stableKeys.length > 0 && participantsShareStableEvidence(participant, observation)) ||
+      (participant.ref === observation.ref &&
+        (stableKeys.length === 0 || existingKeys.length === 0))
+    );
+  });
+}
+
 function mergeParticipantEvidence(
   existing: ConversationParticipantEvidence[] = [],
   incoming: ConversationParticipantEvidence[] = []
 ): ConversationParticipantEvidence[] {
   const merged = existing.map((participant) => ({ ...participant }));
   for (const observation of incoming) {
-    const stableKeys = stableParticipantKeys(observation);
-    const match = merged.find((participant) => {
-      const existingKeys = stableParticipantKeys(participant);
-      return (
-        (stableKeys.length > 0 && participantsShareStableEvidence(participant, observation)) ||
-        (participant.ref === observation.ref &&
-          (stableKeys.length === 0 || existingKeys.length === 0))
-      );
-    });
+    const match = findParticipantEvidenceMatch(merged, observation);
     if (!match) {
       merged.push({
         ...observation,
@@ -239,6 +246,27 @@ function mergeParticipantEvidence(
     match.rawUsername = match.rawUsername || observation.rawUsername;
   }
   return merged;
+}
+
+function applyCorrectedVisualMediaEvidence(
+  conversation: ConversationIntake,
+  input: ConversationIntakeInput
+): ConversationMessage[] {
+  return conversation.messages.filter((message, position) => {
+    const incoming = input.messages[position];
+    if (
+      message.isMedia &&
+      incoming?.isMedia &&
+      message.mediaType === 'image' &&
+      incoming.mediaType === 'video' &&
+      normalizeCompatibilityContent(message) === '' &&
+      normalizeCompatibilityContent(incoming) === ''
+    ) {
+      message.mediaType = 'video';
+      return true;
+    }
+    return false;
+  });
 }
 
 function initializeParticipantEvidence(
@@ -338,6 +366,10 @@ export class ConversationIntakeService {
         duplicate.participantEvidence,
         input.participantEvidence
       );
+      const correctedMessages = applyCorrectedVisualMediaEvidence(duplicate, input);
+      if (correctedMessages.length > 0) {
+        await this.dataSource.getRepository(ConversationMessage).save(correctedMessages);
+      }
       await intakeRepository.save(duplicate);
       return {
         conversation: duplicate,
