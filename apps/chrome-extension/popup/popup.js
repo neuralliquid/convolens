@@ -26,7 +26,8 @@ const captureSummary = document.getElementById("captureSummary");
 const confirmCapture = document.getElementById("confirmCapture");
 const cancelCapture = document.getElementById("cancelCapture");
 
-let pendingCapture = null;
+let currentOperation = null;
+let activeWhatsAppTabId = null;
 
 extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
 dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
@@ -70,9 +71,69 @@ function openTab(url) {
 }
 
 function clearCapturePreview() {
-  pendingCapture = null;
   captureSummary.textContent = "";
   capturePreview.classList.remove("show");
+}
+
+function renderCaptureOperation(operation) {
+  if (!operation) return;
+  currentOperation = operation;
+  const count = operation.extractedCount || 0;
+  const busy = ["inspecting", "collecting", "uploading"].includes(
+    operation.state,
+  );
+  extractBtn.disabled = busy;
+  confirmCapture.disabled = operation.state === "uploading";
+  cancelCapture.disabled = operation.state === "uploading";
+
+  if (["ready-for-review", "retry-required"].includes(operation.state)) {
+    captureSummary.textContent = `${count} loaded message${count === 1 ? "" : "s"} from the selected chat.`;
+    capturePreview.classList.add("show");
+  } else {
+    clearCapturePreview();
+  }
+
+  switch (operation.state) {
+    case "inspecting":
+    case "collecting":
+      setActionStatus("Reading loaded messages…", "info");
+      break;
+    case "ready-for-review":
+      setActionStatus(
+        "Review the loaded-message scope, then confirm or cancel.",
+        "info",
+      );
+      break;
+    case "uploading":
+      setActionStatus(`Sending ${count} loaded messages…`, "info");
+      break;
+    case "received":
+      setActionStatus(
+        operation.reconciliationRequired
+          ? `${count} loaded messages stored separately. Review the possible prior intake in ConvoLens.`
+          : `${count} loaded message${count === 1 ? "" : "s"} received by ConvoLens.`,
+        "success",
+      );
+      break;
+    case "duplicate":
+      setActionStatus(
+        operation.reconciliationRequired
+          ? `${count} loaded messages stored separately. Review the possible prior intake in ConvoLens.`
+          : `${count} loaded message${count === 1 ? "" : "s"} already exists in ConvoLens.`,
+        "success",
+      );
+      break;
+    case "retry-required":
+      setActionStatus(
+        operation.reason || "Upload not sent. Review and retry from this tab.",
+        "error",
+      );
+      break;
+    case "failed":
+    case "cancelled":
+      setActionStatus(operation.reason || "Capture cancelled.", "error");
+      break;
+  }
 }
 
 function isWhatsAppTab(tab) {
@@ -129,7 +190,16 @@ async function init() {
   }
 
   // Check WhatsApp Web connection
-  checkWhatsAppStatus();
+  await checkWhatsAppStatus();
+  if (activeWhatsAppTabId) {
+    const operationResponse = await sendRuntimeMessage({
+      action: "GET_CAPTURE_OPERATION",
+      tabId: activeWhatsAppTabId,
+    });
+    if (operationResponse.success && operationResponse.data) {
+      renderCaptureOperation(operationResponse.data);
+    }
+  }
 }
 
 // Show logged in state
@@ -157,6 +227,7 @@ async function checkWhatsAppStatus() {
     const tab = await getWhatsAppTab();
 
     if (tab?.id) {
+      activeWhatsAppTabId = tab.id;
       const response = await sendToWhatsApp(tab.id, {
         action: "CHECK_STATUS",
       });
@@ -219,6 +290,7 @@ signupBtn.addEventListener("click", () => {
 logoutBtn.addEventListener("click", async () => {
   try {
     await sendRuntimeMessage({ action: "LOGOUT" });
+    currentOperation = null;
     clearCapturePreview();
     showLoggedOut();
   } catch (error) {
@@ -229,7 +301,6 @@ logoutBtn.addEventListener("click", async () => {
 extractBtn.addEventListener("click", async () => {
   const defaultLabel = "Review loaded messages";
   setActionStatus("");
-  clearCapturePreview();
 
   try {
     const tab = await getWhatsAppTab();
@@ -238,30 +309,19 @@ extractBtn.addEventListener("click", async () => {
       setActionStatus("Open WhatsApp Web and select a chat first.", "error");
       return;
     }
+    activeWhatsAppTabId = tab.id;
 
     extractBtn.textContent = "Reading loaded messages…";
     extractBtn.disabled = true;
 
-    const response = await sendToWhatsApp(tab.id, {
-      action: "GET_CURRENT_CHAT",
+    const response = await sendRuntimeMessage({
+      action: "START_CAPTURE_OPERATION",
+      tabId: tab.id,
+      initiator: "popup",
     });
 
-    if (response.success) {
-      const messageCount = response.data?.messages?.length || 0;
-      if (!messageCount) {
-        setActionStatus(
-          "No readable loaded messages were found in the selected chat.",
-          "error",
-        );
-        return;
-      }
-      pendingCapture = response.data;
-      captureSummary.textContent = `${messageCount} loaded message${messageCount === 1 ? "" : "s"} from ${response.data.chatName || "the selected chat"}.`;
-      capturePreview.classList.add("show");
-      setActionStatus(
-        "Review the loaded-message scope, then confirm or cancel.",
-        "info",
-      );
+    if (response.success && response.data) {
+      renderCaptureOperation(response.data);
     } else {
       setActionStatus(
         response.error ||
@@ -280,34 +340,25 @@ extractBtn.addEventListener("click", async () => {
 });
 
 confirmCapture.addEventListener("click", async () => {
-  if (!pendingCapture) return;
-  const captureToSend = pendingCapture;
+  if (!currentOperation || !activeWhatsAppTabId) return;
+  const operationId = currentOperation.operationId;
   confirmCapture.disabled = true;
   cancelCapture.disabled = true;
   extractBtn.disabled = true;
   logoutBtn.disabled = true;
   setActionStatus(
-    `Sending ${captureToSend.messages.length} loaded messages…`,
+    `Sending ${currentOperation.extractedCount} loaded messages…`,
     "info",
   );
 
   try {
     const sendResult = await sendRuntimeMessage({
-      action: "SEND_CHAT_DATA",
-      data: captureToSend,
+      action: "CONFIRM_CAPTURE_OPERATION",
+      tabId: activeWhatsAppTabId,
+      operationId,
     });
-    if (sendResult.success) {
-      const messageCount = captureToSend.messages.length;
-      const reconciliationRequired = Boolean(
-        sendResult.data?.reconciliationRequired,
-      );
-      if (pendingCapture === captureToSend) clearCapturePreview();
-      setActionStatus(
-        reconciliationRequired
-          ? `${messageCount} loaded message${messageCount === 1 ? "" : "s"} stored separately. Review the possible prior intake in ConvoLens.`
-          : `${messageCount} loaded message${messageCount === 1 ? "" : "s"} received by ConvoLens.`,
-        "success",
-      );
+    if (sendResult.success && sendResult.data) {
+      renderCaptureOperation(sendResult.data);
     } else {
       setActionStatus(
         sendResult.retryRequired
@@ -328,8 +379,28 @@ confirmCapture.addEventListener("click", async () => {
 });
 
 cancelCapture.addEventListener("click", () => {
-  clearCapturePreview();
-  setActionStatus("Upload cancelled. Nothing was sent.", "info");
+  if (!currentOperation || !activeWhatsAppTabId) return;
+  sendRuntimeMessage({
+    action: "CANCEL_CAPTURE_OPERATION",
+    tabId: activeWhatsAppTabId,
+    operationId: currentOperation.operationId,
+    reason: "Upload cancelled. Nothing was sent.",
+  })
+    .then((response) => {
+      if (response.success && response.data)
+        renderCaptureOperation(response.data);
+      else if (!response.success) setActionStatus(response.error, "error");
+    })
+    .catch((error) => setActionStatus(normalizeExtensionError(error), "error"));
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (
+    message?.action === "CAPTURE_OPERATION_UPDATED" &&
+    message.operation?.tabId === activeWhatsAppTabId
+  ) {
+    renderCaptureOperation(message.operation);
+  }
 });
 
 openDashboard.addEventListener("click", () => {

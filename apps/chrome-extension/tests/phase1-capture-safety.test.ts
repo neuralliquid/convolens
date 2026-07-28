@@ -28,7 +28,7 @@ test("requires loaded-message review and confirmation in both upload surfaces", 
 test("keeps popup extraction page-UI-silent and resets terminal progress", () => {
   assert.match(
     contentSource,
-    /extractCurrentChatWithRetry\(EXTRACTION_CONFIG\.retryAttempts, true\)/,
+    /extractCurrentChatWithRetry\(\s*EXTRACTION_CONFIG\.retryAttempts,\s*true/,
   );
   assert.match(contentSource, /if \(!silent && i % 10 === 0\)/);
   assert.match(
@@ -70,12 +70,13 @@ test("classifies popup and service-worker channel teardown", () => {
   assert.match(contentSource, /function respondSafely/);
 });
 
-test("snapshots a confirmed capture until its upload settles", () => {
-  assert.match(popupSource, /const captureToSend = pendingCapture/);
-  assert.match(popupSource, /data: captureToSend/);
-  assert.match(popupSource, /extractBtn\.disabled = true/);
-  assert.match(popupSource, /logoutBtn\.disabled = true/);
-  assert.match(popupSource, /pendingCapture === captureToSend/);
+test("keeps confirmed raw data in tab memory while the background upload settles", () => {
+  assert.match(contentSource, /payload: ExtractedChat \| null/);
+  assert.match(contentSource, /GET_CAPTURE_OPERATION_PAYLOAD/);
+  assert.match(backgroundSource, /captureUploadPromises\.get/);
+  assert.match(backgroundSource, /uploadCaptureOperation\(operation\)/);
+  assert.match(popupSource, /CONFIRM_CAPTURE_OPERATION/);
+  assert.doesNotMatch(popupSource, /pendingCapture/);
 });
 
 test("classifies upstream HTTP 429 as retry-required", () => {
