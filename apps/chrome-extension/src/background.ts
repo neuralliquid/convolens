@@ -234,12 +234,19 @@ async function loadCaptureOperations(): Promise<void> {
   captureOperationsLoadPromise = (async () => {
     const stored = await chrome.storage.session.get([
       STORAGE_KEYS.captureOperations,
+      STORAGE_KEYS.captureLifecycleEpoch,
     ]);
+    const persistedEpoch = stored[STORAGE_KEYS.captureLifecycleEpoch];
+    captureLifecycleEpoch =
+      Number.isInteger(persistedEpoch) && persistedEpoch >= 0
+        ? persistedEpoch
+        : 0;
     const persisted = stored[STORAGE_KEYS.captureOperations];
-    if (!persisted || typeof persisted !== "object") return;
 
     const interrupted: CaptureOperationSnapshot[] = [];
-    for (const [tabIdValue, value] of Object.entries(persisted)) {
+    for (const [tabIdValue, value] of Object.entries(
+      persisted && typeof persisted === "object" ? persisted : {},
+    )) {
       const tabId = Number(tabIdValue);
       if (!Number.isInteger(tabId) || !value || typeof value !== "object") {
         continue;
@@ -279,6 +286,7 @@ async function loadCaptureOperations(): Promise<void> {
 async function persistCaptureOperations(): Promise<void> {
   await chrome.storage.session.set({
     [STORAGE_KEYS.captureOperations]: Object.fromEntries(captureOperations),
+    [STORAGE_KEYS.captureLifecycleEpoch]: captureLifecycleEpoch,
   });
 }
 
@@ -306,6 +314,7 @@ async function startCaptureOperation(
   message: StartCaptureOperationMessage,
   sender: chrome.runtime.MessageSender,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  await loadCaptureOperations();
   const operationEpoch = captureLifecycleEpoch;
   if (captureAuthTransitionCount > 0) {
     return {
@@ -320,7 +329,6 @@ async function startCaptureOperation(
       error: "Open WhatsApp Web and select a chat first.",
     };
   }
-  await loadCaptureOperations();
   if (operationEpoch !== captureLifecycleEpoch) {
     return {
       success: false,
@@ -965,6 +973,7 @@ function isRateLimitError(error: unknown): boolean {
 // =============================================================================
 
 async function getAuthStatus(): Promise<ExtensionResponse> {
+  await loadCaptureOperations();
   let stored = await chrome.storage.local.get([
     STORAGE_KEYS.authToken,
     STORAGE_KEYS.authTokenExpiresAt,
@@ -1148,6 +1157,7 @@ async function replaceAuthenticatedUser(
   user: { id?: string },
   expiresAt?: number,
 ): Promise<void> {
+  await loadCaptureOperations();
   let releaseWrite: () => void = () => undefined;
   const previousWrite = authenticationWriteTail;
   authenticationWriteTail = new Promise<void>((resolve) => {

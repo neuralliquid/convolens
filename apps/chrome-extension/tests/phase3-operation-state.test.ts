@@ -68,6 +68,14 @@ test("persists only operation snapshots and keeps raw capture in tab memory", ()
   );
   assert.match(persistenceFunction, /chrome\.storage\.session\.set/);
   assert.match(persistenceFunction, /Object\.fromEntries\(captureOperations\)/);
+  assert.match(
+    persistenceFunction,
+    /STORAGE_KEYS\.captureLifecycleEpoch.*captureLifecycleEpoch/s,
+  );
+  assert.match(
+    backgroundSource,
+    /const persistedEpoch = stored\[STORAGE_KEYS\.captureLifecycleEpoch\][\s\S]*captureLifecycleEpoch =/,
+  );
   assert.match(contentSource, /payload: ExtractedChat \| null/);
   assert.match(contentSource, /activeCaptureOperation/);
   assert.match(contentSource, /getOpaqueChatKey/);

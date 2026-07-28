@@ -180,6 +180,10 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
     contentSource,
     /launcherCaptureAuthGeneration = typedMessage\.authGeneration/,
   );
+  assert.match(
+    backgroundSource,
+    /async function getAuthStatus[\s\S]*await loadCaptureOperations\(\)[\s\S]*authGeneration: captureLifecycleEpoch/,
+  );
 });
 
 test("moves focus into the panel and clears cancelled-drag suppression", () => {
