@@ -1249,12 +1249,6 @@ async function clearCaptureStateAndAuthentication(
   waitForUploads: boolean,
 ): Promise<void> {
   authenticationIntentGeneration += 1;
-  let releaseWrite: () => void = () => undefined;
-  const previousWrite = authenticationWriteTail;
-  authenticationWriteTail = new Promise<void>((resolve) => {
-    releaseWrite = resolve;
-  });
-  await previousWrite;
   captureAuthTransitionCount += 1;
   try {
     await loadCaptureOperations();
@@ -1266,11 +1260,20 @@ async function clearCaptureStateAndAuthentication(
       await Promise.allSettled([...captureUploadPromises.values()]);
     }
 
-    await invalidateLoadedCaptureOperations();
-    await clearAuthenticationState();
+    let releaseWrite: () => void = () => undefined;
+    const previousWrite = authenticationWriteTail;
+    authenticationWriteTail = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    await previousWrite;
+    try {
+      await invalidateLoadedCaptureOperations();
+      await clearAuthenticationState();
+    } finally {
+      releaseWrite();
+    }
   } finally {
     captureAuthTransitionCount -= 1;
-    releaseWrite();
   }
 }
 

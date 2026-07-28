@@ -194,7 +194,7 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     backgroundSource,
-    /clearCaptureStateAndAuthentication[\s\S]*authenticationIntentGeneration \+= 1[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
+    /clearCaptureStateAndAuthentication[\s\S]*authenticationIntentGeneration \+= 1[\s\S]*Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
   );
   assert.match(
     backgroundSource,
