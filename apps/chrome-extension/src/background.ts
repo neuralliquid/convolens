@@ -68,6 +68,9 @@ let captureOperationsLoadPromise: Promise<void> | null = null;
 let captureLifecycleEpoch = 0;
 let captureAuthTransitionCount = 0;
 let authenticationWriteTail: Promise<void> = Promise.resolve();
+let authenticationIntentGeneration = 0;
+let committedAuthenticationIntentGeneration = 0;
+const activeAuthenticationClearIntents = new Set<number>();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const operation = captureOperations.get(tabId);
@@ -144,6 +147,13 @@ async function handleMessage(
       return { success: true, data: captureOperations.get(tabId) };
     }
 
+    case "GET_LEGACY_QUEUE_SUMMARY":
+      return await getLegacyQueueSummary();
+
+    case "REFRESH_LAUNCHER_STATE":
+      await notifyLauncherStateRefresh();
+      return { success: true };
+
     case "CONFIRM_CAPTURE_OPERATION":
       return await confirmCaptureOperation(message, _sender);
 
@@ -166,7 +176,7 @@ async function handleMessage(
       return await getAuthStatus();
 
     case "SYNC_MYSTIRA_AUTH":
-      return await syncMystiraSession();
+      return await syncMystiraSession(++authenticationIntentGeneration);
 
     case "LOGIN": {
       const typedMessage = message as LoginMessage;
@@ -227,17 +237,27 @@ async function loadCaptureOperations(): Promise<void> {
   captureOperationsLoadPromise = (async () => {
     const stored = await chrome.storage.session.get([
       STORAGE_KEYS.captureOperations,
+      STORAGE_KEYS.captureLifecycleEpoch,
     ]);
+    const persistedEpoch = stored[STORAGE_KEYS.captureLifecycleEpoch];
+    captureLifecycleEpoch =
+      Number.isInteger(persistedEpoch) && persistedEpoch >= 0
+        ? persistedEpoch
+        : 0;
     const persisted = stored[STORAGE_KEYS.captureOperations];
-    if (!persisted || typeof persisted !== "object") return;
 
     const interrupted: CaptureOperationSnapshot[] = [];
-    for (const [tabIdValue, value] of Object.entries(persisted)) {
+    for (const [tabIdValue, value] of Object.entries(
+      persisted && typeof persisted === "object" ? persisted : {},
+    )) {
       const tabId = Number(tabIdValue);
       if (!Number.isInteger(tabId) || !value || typeof value !== "object") {
         continue;
       }
-      const operation = value as CaptureOperationSnapshot;
+      const operation = {
+        ...(value as CaptureOperationSnapshot),
+        authGeneration: captureLifecycleEpoch,
+      };
       const restored = isActiveCaptureState(operation.state)
         ? completeCaptureOperation(
             operation,
@@ -269,6 +289,7 @@ async function loadCaptureOperations(): Promise<void> {
 async function persistCaptureOperations(): Promise<void> {
   await chrome.storage.session.set({
     [STORAGE_KEYS.captureOperations]: Object.fromEntries(captureOperations),
+    [STORAGE_KEYS.captureLifecycleEpoch]: captureLifecycleEpoch,
   });
 }
 
@@ -296,6 +317,7 @@ async function startCaptureOperation(
   message: StartCaptureOperationMessage,
   sender: chrome.runtime.MessageSender,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  await loadCaptureOperations();
   const operationEpoch = captureLifecycleEpoch;
   if (captureAuthTransitionCount > 0) {
     return {
@@ -310,7 +332,6 @@ async function startCaptureOperation(
       error: "Open WhatsApp Web and select a chat first.",
     };
   }
-  await loadCaptureOperations();
   if (operationEpoch !== captureLifecycleEpoch) {
     return {
       success: false,
@@ -345,7 +366,12 @@ async function startCaptureOperation(
     return { success: true, data: existing };
   }
 
-  let operation = createCaptureOperation(tabId, message.initiator);
+  let operation = createCaptureOperation(
+    tabId,
+    message.initiator,
+    new Date(),
+    operationEpoch,
+  );
   captureOperationEpochs.set(operation.operationId, operationEpoch);
   captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
   await publishCaptureOperation(operation);
@@ -488,6 +514,7 @@ async function confirmCaptureOperation(
 async function uploadCaptureOperation(
   initialOperation: CaptureOperationSnapshot,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const uploadAuthenticationIntent = committedAuthenticationIntentGeneration;
   const expectedOwnerId = captureOperationOwnerIds.get(
     initialOperation.operationId,
   );
@@ -532,6 +559,7 @@ async function uploadCaptureOperation(
     const uploadResult = await sendChatData(
       payloadResponse.data,
       expectedOwnerId,
+      uploadAuthenticationIntent,
     );
     if (!isCurrentCaptureOperation(operation, operationEpoch)) {
       return await abandonCaptureOperation(
@@ -733,6 +761,7 @@ function normalizeChannelLifecycleReason(error: unknown): string {
 async function sendChatData(
   chatData: any,
   expectedOwnerId: string,
+  uploadAuthenticationIntent: number,
 ): Promise<ExtensionResponse> {
   try {
     let stored = await chrome.storage.local.get([
@@ -745,7 +774,7 @@ async function sendChatData(
       !stored[STORAGE_KEYS.authToken] ||
       (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
     ) {
-      const syncResult = await syncMystiraSession();
+      const syncResult = await syncMystiraSession(uploadAuthenticationIntent);
       if (!syncResult.success) {
         return syncResult;
       }
@@ -789,10 +818,7 @@ async function sendChatData(
       STORAGE_KEYS.user,
     ]);
     const finalOwnerId = finalCredentialState[STORAGE_KEYS.user]?.id;
-    if (
-      typeof finalOwnerId !== "string" ||
-      finalOwnerId !== expectedOwnerId
-    ) {
+    if (typeof finalOwnerId !== "string" || finalOwnerId !== expectedOwnerId) {
       await clearCaptureStateForAccountChange();
       return {
         success: false,
@@ -953,6 +979,7 @@ function isRateLimitError(error: unknown): boolean {
 // =============================================================================
 
 async function getAuthStatus(): Promise<ExtensionResponse> {
+  await loadCaptureOperations();
   let stored = await chrome.storage.local.get([
     STORAGE_KEYS.authToken,
     STORAGE_KEYS.authTokenExpiresAt,
@@ -963,7 +990,18 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
     !stored[STORAGE_KEYS.authToken] ||
     (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
   ) {
-    await syncMystiraSession();
+    const syncResponse = await syncMystiraSession(
+      ++authenticationIntentGeneration,
+    );
+    if (!syncResponse.success) {
+      return {
+        success: true,
+        data: {
+          isAuthenticated: false,
+          authGeneration: captureLifecycleEpoch,
+        },
+      };
+    }
     stored = await chrome.storage.local.get([
       STORAGE_KEYS.authToken,
       STORAGE_KEYS.user,
@@ -974,12 +1012,15 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
     success: true,
     data: {
       isAuthenticated: !!stored[STORAGE_KEYS.authToken],
+      authGeneration: captureLifecycleEpoch,
       user: stored[STORAGE_KEYS.user],
     },
   };
 }
 
-async function syncMystiraSession(): Promise<ExtensionResponse> {
+async function syncMystiraSession(
+  authenticationIntent: number,
+): Promise<ExtensionResponse> {
   try {
     const config = getConfig();
     const sessionResponse = await fetch(
@@ -1038,11 +1079,18 @@ async function syncMystiraSession(): Promise<ExtensionResponse> {
       };
     }
 
-    await replaceAuthenticatedUser(
+    const replaced = await replaceAuthenticatedUser(
       exchanged.token,
       exchanged.user,
       Date.now() + exchanged.expiresIn * 1000,
+      authenticationIntent,
     );
+    if (!replaced) {
+      return {
+        success: false,
+        error: "Authentication changed while the session was refreshing.",
+      };
+    }
 
     return {
       success: true,
@@ -1067,7 +1115,24 @@ async function notifyContentScripts(token: string | null): Promise<void> {
     tabs.map((tab) =>
       tab.id
         ? chrome.tabs
-            .sendMessage(tab.id, { action: "SET_AUTH_TOKEN", token })
+            .sendMessage(tab.id, {
+              action: "SET_AUTH_TOKEN",
+              token,
+              authGeneration: captureLifecycleEpoch,
+            })
+            .catch(() => undefined)
+        : Promise.resolve(),
+    ),
+  );
+}
+
+async function notifyLauncherStateRefresh(): Promise<void> {
+  const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+  await Promise.all(
+    tabs.map((tab) =>
+      tab.id
+        ? chrome.tabs
+            .sendMessage(tab.id, { action: "REFRESH_LAUNCHER_STATE" })
             .catch(() => undefined)
         : Promise.resolve(),
     ),
@@ -1078,6 +1143,7 @@ async function handleLogin(
   email: string,
   password: string,
 ): Promise<ExtensionResponse> {
+  const authenticationIntent = ++authenticationIntentGeneration;
   try {
     const config = await getApiConfig();
 
@@ -1096,7 +1162,18 @@ async function handleLogin(
 
     const { token, user } = await response.json();
 
-    await replaceAuthenticatedUser(token, user);
+    const replaced = await replaceAuthenticatedUser(
+      token,
+      user,
+      undefined,
+      authenticationIntent,
+    );
+    if (!replaced) {
+      return {
+        success: false,
+        error: "Authentication changed before sign-in completed.",
+      };
+    }
 
     return { success: true, data: { user } };
   } catch (error) {
@@ -1108,13 +1185,27 @@ async function replaceAuthenticatedUser(
   token: string,
   user: { id?: string },
   expiresAt?: number,
-): Promise<void> {
+  expectedAuthenticationIntent?: number,
+): Promise<boolean> {
+  await loadCaptureOperations();
   let releaseWrite: () => void = () => undefined;
   const previousWrite = authenticationWriteTail;
   authenticationWriteTail = new Promise<void>((resolve) => {
     releaseWrite = resolve;
   });
   await previousWrite;
+  const committedAuthenticationIntent =
+    expectedAuthenticationIntent ?? authenticationIntentGeneration;
+  if (
+    typeof expectedAuthenticationIntent === "number" &&
+    (committedAuthenticationIntentGeneration > expectedAuthenticationIntent ||
+      [...activeAuthenticationClearIntents].some(
+        (clearIntent) => clearIntent > expectedAuthenticationIntent,
+      ))
+  ) {
+    releaseWrite();
+    return false;
+  }
   captureAuthTransitionCount += 1;
 
   try {
@@ -1145,6 +1236,11 @@ async function replaceAuthenticatedUser(
     }
 
     await notifyContentScripts(token);
+    committedAuthenticationIntentGeneration = Math.max(
+      committedAuthenticationIntentGeneration,
+      committedAuthenticationIntent,
+    );
+    return true;
   } finally {
     captureAuthTransitionCount -= 1;
     releaseWrite();
@@ -1169,6 +1265,8 @@ async function clearAuthenticationState(): Promise<void> {
 async function clearCaptureStateAndAuthentication(
   waitForUploads: boolean,
 ): Promise<void> {
+  const clearAuthenticationIntent = ++authenticationIntentGeneration;
+  activeAuthenticationClearIntents.add(clearAuthenticationIntent);
   captureAuthTransitionCount += 1;
   try {
     await loadCaptureOperations();
@@ -1180,10 +1278,30 @@ async function clearCaptureStateAndAuthentication(
       await Promise.allSettled([...captureUploadPromises.values()]);
     }
 
-    await invalidateLoadedCaptureOperations();
-    await clearAuthenticationState();
+    let releaseWrite: () => void = () => undefined;
+    const previousWrite = authenticationWriteTail;
+    authenticationWriteTail = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    await previousWrite;
+    try {
+      if (
+        committedAuthenticationIntentGeneration > clearAuthenticationIntent
+      ) {
+        return;
+      }
+      await invalidateLoadedCaptureOperations();
+      await clearAuthenticationState();
+      committedAuthenticationIntentGeneration = Math.max(
+        committedAuthenticationIntentGeneration,
+        clearAuthenticationIntent,
+      );
+    } finally {
+      releaseWrite();
+    }
   } finally {
     captureAuthTransitionCount -= 1;
+    activeAuthenticationClearIntents.delete(clearAuthenticationIntent);
   }
 }
 
@@ -1260,6 +1378,26 @@ async function getApiConfig() {
 async function clearPendingUploads(): Promise<ExtensionResponse> {
   await chrome.storage.local.remove(STORAGE_KEYS.pendingUploads);
   return { success: true };
+}
+
+async function getLegacyQueueSummary(): Promise<
+  ExtensionResponse<{ count: number }>
+> {
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEYS.pendingUploads,
+    STORAGE_KEYS.user,
+  ]);
+  const pending = stored[STORAGE_KEYS.pendingUploads];
+  const authenticatedOwnerId = stored[STORAGE_KEYS.user]?.id;
+  return {
+    success: true,
+    data: {
+      count:
+        typeof authenticatedOwnerId === "string" && Array.isArray(pending)
+          ? pending.length
+          : 0,
+    },
+  };
 }
 
 // =============================================================================

@@ -29,6 +29,7 @@ test("models active and terminal capture operation states", () => {
     new Date("2026-07-28T12:00:00.000Z"),
   );
   assert.equal(started.tabId, 42);
+  assert.equal(started.authGeneration, 0);
   assert.equal(started.state, "inspecting");
   assert.equal(isActiveCaptureState(started.state), true);
 
@@ -67,6 +68,14 @@ test("persists only operation snapshots and keeps raw capture in tab memory", ()
   );
   assert.match(persistenceFunction, /chrome\.storage\.session\.set/);
   assert.match(persistenceFunction, /Object\.fromEntries\(captureOperations\)/);
+  assert.match(
+    persistenceFunction,
+    /STORAGE_KEYS\.captureLifecycleEpoch.*captureLifecycleEpoch/s,
+  );
+  assert.match(
+    backgroundSource,
+    /const persistedEpoch = stored\[STORAGE_KEYS\.captureLifecycleEpoch\][\s\S]*captureLifecycleEpoch =/,
+  );
   assert.match(contentSource, /payload: ExtractedChat \| null/);
   assert.match(contentSource, /activeCaptureOperation/);
   assert.match(contentSource, /getOpaqueChatKey/);
@@ -196,7 +205,7 @@ test("invalidates retained reviews when authentication writes change owner", () 
   );
   assert.match(
     backgroundSource,
-    /await replaceAuthenticatedUser\(token, user\)/,
+    /replaceAuthenticatedUser\(\s*token,\s*user/,
   );
 });
 

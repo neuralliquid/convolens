@@ -92,6 +92,8 @@ export const STORAGE_KEYS = {
   extractionHistory: "extractionHistory",
   pendingUploads: "pendingUploads",
   captureOperations: "captureOperations",
+  captureLifecycleEpoch: "captureLifecycleEpoch",
+  launcherPosition: "launcherPosition",
 };
 
 // =============================================================================
@@ -150,6 +152,7 @@ export interface CheckStatusMessage {
 export interface SetAuthTokenMessage {
   action: "SET_AUTH_TOKEN";
   token: string | null;
+  authGeneration: number;
 }
 
 export interface SendChatDataMessage {
@@ -261,6 +264,14 @@ export interface ClearPendingUploadsMessage {
   action: "CLEAR_PENDING_UPLOADS";
 }
 
+export interface GetLegacyQueueSummaryMessage {
+  action: "GET_LEGACY_QUEUE_SUMMARY";
+}
+
+export interface RefreshLauncherStateMessage {
+  action: "REFRESH_LAUNCHER_STATE";
+}
+
 // Union type of all message types
 export type ExtensionMessage =
   | GetCurrentChatMessage
@@ -283,7 +294,9 @@ export type ExtensionMessage =
   | LogoutMessage
   | GetSettingsMessage
   | UpdateSettingsMessage
-  | ClearPendingUploadsMessage;
+  | ClearPendingUploadsMessage
+  | GetLegacyQueueSummaryMessage
+  | RefreshLauncherStateMessage;
 
 // Helper type to extract action names
 export type MessageAction = ExtensionMessage["action"];
@@ -306,6 +319,7 @@ export type ExtensionResponse<T = unknown> = SuccessResponse<T> | ErrorResponse;
 // Specific response data types
 export interface AuthStatusData {
   isAuthenticated: boolean;
+  authGeneration: number;
   user?: {
     id: string;
     email: string;

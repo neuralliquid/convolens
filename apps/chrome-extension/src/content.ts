@@ -23,6 +23,7 @@ import {
   type ExtensionResponse,
   type SetAuthTokenMessage,
   type CheckStatusData,
+  type AuthStatusData,
 } from "./config";
 import type {
   CaptureCollectionSummary,
@@ -41,6 +42,15 @@ import {
   findMessageRecord,
   findMessageText,
 } from "./dom-selectors";
+import {
+  DEFAULT_LAUNCHER_POSITION,
+  getLauncherTop,
+  normalizeLauncherPosition,
+  resolveLauncherEdge,
+  resolveLauncherPreset,
+  type LauncherPosition,
+  type LauncherPreset,
+} from "./launcher-position";
 
 // =============================================================================
 // Types
@@ -120,7 +130,6 @@ const state: ExtractionState = {
 
 let authToken: string | null = null;
 let currentChatId: string | null = null;
-let statusUI: HTMLElement | null = null;
 let chatObserver: MutationObserver | null = null;
 let isInitialized = false;
 interface ActiveCaptureOperation {
@@ -134,6 +143,13 @@ let activeCaptureOperation: ActiveCaptureOperation | null = null;
 let pageConfirmationOperationId: string | null = null;
 let lastCountedTerminalOperationId: string | null = null;
 const chatIdentityTokens = new Map<string, string>();
+let launcherPosition: LauncherPosition = DEFAULT_LAUNCHER_POSITION;
+let launcherOperation: CaptureOperationSnapshot | null = null;
+let legacyQueueCount = 0;
+let launcherSuppressClick = false;
+let launcherAuthRefreshGeneration = 0;
+let launcherOperationRenderGeneration = 0;
+let launcherCaptureAuthGeneration = 0;
 
 // =============================================================================
 // Initialization
@@ -164,16 +180,10 @@ async function init(): Promise<void> {
   // Wait for WhatsApp to fully load
   await waitForWhatsAppReady();
 
-  // Load saved auth token
-  try {
-    const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
-    authToken = stored[STORAGE_KEYS.authToken];
-  } catch (error) {
-    console.warn("[ConvoLens] Failed to load auth token:", error);
-  }
-
   // Inject UI elements
-  injectUI();
+  await injectUI();
+  await refreshLauncherFromValidatedAuthentication().catch(() => undefined);
+  window.addEventListener("resize", handleViewportResize);
 
   // Observe chat navigation
   observeChatChanges();
@@ -199,6 +209,7 @@ function cleanup(): void {
     chatObserver = null;
   }
   chrome.runtime.onMessage.removeListener(handleMessage);
+  window.removeEventListener("resize", handleViewportResize);
   isInitialized = false;
   console.log("[ConvoLens] Cleanup completed");
 }
@@ -240,22 +251,60 @@ async function waitForWhatsAppReady(timeout: number = 30000): Promise<void> {
 // UI Injection
 // =============================================================================
 
-function injectUI(): void {
+async function injectUI(): Promise<void> {
   // Remove existing UI if present
   document.getElementById("convolens-fab")?.remove();
 
-  // Create floating action button container
+  let stored: Record<string, any> = {};
+  try {
+    stored = await chrome.storage.local.get([STORAGE_KEYS.launcherPosition]);
+  } catch {
+    // Default placement and an empty migration count remain safe fallbacks.
+  }
+  launcherPosition = normalizeLauncherPosition(
+    stored[STORAGE_KEYS.launcherPosition],
+  );
+
+  // Create the compact launcher and its inward-opening workflow panel.
   const fab = document.createElement("div");
   fab.id = "convolens-fab";
+  fab.className = "ws-launcher";
   fab.innerHTML = `
-    <div id="ws-status" class="ws-status ws-hidden" role="status" aria-live="polite">
-      <div class="ws-status-icon"></div>
-      <span id="ws-status-text">Ready</span>
-    </div>
-    <div id="ws-progress" class="ws-progress ws-hidden">
-      <div class="ws-progress-bar"></div>
-    </div>
-    <button id="ws-extract-btn" class="ws-fab-btn" title="Review the messages currently loaded in this chat">
+    <section id="ws-launcher-panel" class="ws-launcher-panel" aria-label="ConvoLens capture" hidden>
+      <header class="ws-launcher-header">
+        <div>
+          <strong>ConvoLens capture</strong>
+          <span>WhatsApp messages currently loaded</span>
+        </div>
+        <button id="ws-launcher-close" class="ws-icon-btn" type="button" aria-label="Close ConvoLens capture panel">×</button>
+      </header>
+      <div id="ws-status" class="ws-status ws-status-info" role="status" aria-live="polite">
+        <div class="ws-status-icon"></div>
+        <span id="ws-status-text">Sign in to ConvoLens before reviewing loaded messages.</span>
+      </div>
+      <div id="ws-progress" class="ws-progress ws-hidden" aria-hidden="true">
+        <div class="ws-progress-bar"></div>
+      </div>
+      <button id="ws-extract-btn" class="ws-capture-btn" type="button" disabled>
+        Sign in to capture
+      </button>
+      <p class="ws-scope-copy">Older messages that WhatsApp has not loaded are excluded. Nothing is sent before review and confirmation.</p>
+      <div id="ws-legacy-attention" class="ws-legacy-attention" hidden>
+        <strong>Legacy local captures need review</strong>
+        <span id="ws-legacy-count"></span>
+        <button id="ws-open-settings" class="ws-link-btn" type="button">Open migration settings</button>
+      </div>
+      <div class="ws-position-controls" aria-label="Launcher position">
+        <span>Position</span>
+        <div role="group" aria-label="Vertical launcher position">
+          <button type="button" data-launcher-preset="upper">Top</button>
+          <button type="button" data-launcher-preset="middle">Middle</button>
+          <button type="button" data-launcher-preset="lower">Bottom</button>
+        </div>
+        <button id="ws-launcher-side" class="ws-link-btn" type="button"></button>
+      </div>
+    </section>
+    <button id="ws-launcher-toggle" class="ws-launcher-toggle" type="button" aria-expanded="false" aria-controls="ws-launcher-panel" aria-label="Open ConvoLens capture panel. Drag to move.">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
         <polyline points="14 2 14 8 20 8"></polyline>
@@ -263,17 +312,273 @@ function injectUI(): void {
         <line x1="16" y1="17" x2="8" y2="17"></line>
         <polyline points="10 9 9 9 8 9"></polyline>
       </svg>
-      <span class="ws-fab-text">Review loaded messages</span>
+      <span id="ws-launcher-badge" class="ws-launcher-badge" aria-hidden="true"></span>
     </button>
   `;
 
   document.body.appendChild(fab);
-  statusUI = fab;
+  applyLauncherPosition();
+  setupLauncherInteraction();
 
-  // Add event listeners
   document
     .getElementById("ws-extract-btn")
     ?.addEventListener("click", handleExtractClick);
+  document
+    .getElementById("ws-launcher-close")
+    ?.addEventListener("click", () => {
+      setLauncherExpanded(false, true);
+    });
+  document.getElementById("ws-open-settings")?.addEventListener("click", () => {
+    chrome.runtime.openOptionsPage(() => {
+      if (chrome.runtime.lastError) {
+        updateStatus(
+          "Open extension settings to review legacy captures.",
+          "error",
+        );
+      }
+    });
+  });
+}
+
+function setupLauncherInteraction(): void {
+  const fab = document.getElementById("convolens-fab");
+  const toggle = document.getElementById(
+    "ws-launcher-toggle",
+  ) as HTMLButtonElement | null;
+  if (!fab || !toggle) return;
+
+  toggle.addEventListener("click", () => {
+    if (launcherSuppressClick) {
+      launcherSuppressClick = false;
+      return;
+    }
+    setLauncherExpanded(toggle.getAttribute("aria-expanded") !== "true");
+  });
+  toggle.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setLauncherExpanded(false);
+  });
+
+  let drag:
+    | { pointerId: number; startX: number; startY: number; startTop: number }
+    | undefined;
+  toggle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    drag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startTop: fab.getBoundingClientRect().top,
+    };
+    toggle.setPointerCapture(event.pointerId);
+  });
+  toggle.addEventListener("pointermove", (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const moved = Math.hypot(
+      event.clientX - drag.startX,
+      event.clientY - drag.startY,
+    );
+    if (moved < 5 && !launcherSuppressClick) return;
+    launcherSuppressClick = true;
+    setLauncherExpanded(false);
+    const top = Math.max(
+      12,
+      Math.min(
+        window.innerHeight - 56,
+        drag.startTop + event.clientY - drag.startY,
+      ),
+    );
+    fab.style.top = `${top}px`;
+    fab.classList.toggle("ws-edge-left", event.clientX < window.innerWidth / 2);
+    fab.classList.toggle(
+      "ws-edge-right",
+      event.clientX >= window.innerWidth / 2,
+    );
+  });
+  const finishDrag = (event: PointerEvent, cancelled = false) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (toggle.hasPointerCapture(event.pointerId)) {
+      toggle.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled) {
+      drag = undefined;
+      launcherSuppressClick = false;
+      applyLauncherPosition();
+      return;
+    }
+    if (launcherSuppressClick) {
+      const rect = fab.getBoundingClientRect();
+      void setLauncherPosition({
+        edge: resolveLauncherEdge(event.clientX, window.innerWidth),
+        preset: resolveLauncherPreset(
+          rect.top + rect.height / 2,
+          window.innerHeight,
+        ),
+      });
+    }
+    drag = undefined;
+  };
+  toggle.addEventListener("pointerup", (event) => finishDrag(event));
+  toggle.addEventListener("pointercancel", (event) => finishDrag(event, true));
+
+  fab
+    .querySelectorAll<HTMLButtonElement>("[data-launcher-preset]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        void setLauncherPosition({
+          ...launcherPosition,
+          preset: button.dataset.launcherPreset as LauncherPreset,
+        });
+      });
+    });
+  document.getElementById("ws-launcher-side")?.addEventListener("click", () => {
+    void setLauncherPosition({
+      ...launcherPosition,
+      edge: launcherPosition.edge === "right" ? "left" : "right",
+    });
+  });
+  fab.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setLauncherExpanded(false, true);
+  });
+}
+
+function setLauncherExpanded(expanded: boolean, restoreFocus = false): void {
+  const panel = document.getElementById("ws-launcher-panel") as HTMLElement;
+  const toggle = document.getElementById(
+    "ws-launcher-toggle",
+  ) as HTMLButtonElement;
+  if (!panel || !toggle) return;
+  panel.hidden = !expanded;
+  toggle.setAttribute("aria-expanded", String(expanded));
+  updateLauncherToggleLabel();
+  if (expanded) {
+    panel.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+  }
+  if (restoreFocus) toggle.focus();
+}
+
+async function setLauncherPosition(position: LauncherPosition): Promise<void> {
+  launcherPosition = normalizeLauncherPosition(position);
+  applyLauncherPosition();
+  await chrome.storage.local
+    .set({ [STORAGE_KEYS.launcherPosition]: launcherPosition })
+    .catch(() => undefined);
+}
+
+function applyLauncherPosition(): void {
+  const fab = document.getElementById("convolens-fab");
+  if (!fab) return;
+  fab.classList.toggle("ws-edge-left", launcherPosition.edge === "left");
+  fab.classList.toggle("ws-edge-right", launcherPosition.edge === "right");
+  fab.dataset.preset = launcherPosition.preset;
+  fab.style.top = `${getLauncherTop(launcherPosition.preset, window.innerHeight)}px`;
+  fab
+    .querySelectorAll<HTMLButtonElement>("[data-launcher-preset]")
+    .forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.launcherPreset === launcherPosition.preset),
+      );
+    });
+  const side = document.getElementById("ws-launcher-side");
+  if (side) {
+    side.textContent = `Move to ${launcherPosition.edge === "right" ? "left" : "right"} edge`;
+  }
+}
+
+function handleViewportResize(): void {
+  applyLauncherPosition();
+}
+
+function updateLegacyQueueState(count: number): void {
+  legacyQueueCount = count;
+  const notice = document.getElementById("ws-legacy-attention");
+  const label = document.getElementById("ws-legacy-count");
+  if (notice) notice.hidden = count === 0;
+  if (label) {
+    label.textContent = `${count} unowned local capture${count === 1 ? "" : "s"}. Export or confirmed deletion only.`;
+  }
+  updateLauncherBadge(launcherOperation);
+}
+
+function resetLauncherAccountState(authenticated: boolean): void {
+  launcherOperationRenderGeneration += 1;
+  launcherOperation = null;
+  pageConfirmationOperationId = null;
+  updateLegacyQueueState(0);
+  updateProgress(0);
+  updateStatus(
+    authenticated
+      ? "Ready to review loaded messages."
+      : "Sign in to ConvoLens before reviewing loaded messages.",
+    "info",
+  );
+  const button = document.getElementById(
+    "ws-extract-btn",
+  ) as HTMLButtonElement | null;
+  if (button) {
+    button.disabled = !authenticated;
+    button.textContent = authenticated
+      ? "Review loaded messages"
+      : "Sign in to capture";
+  }
+}
+
+function normalizeAuthToken(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+async function refreshLauncherFromValidatedAuthentication(): Promise<void> {
+  const refreshGeneration = ++launcherAuthRefreshGeneration;
+  authToken = null;
+  resetLauncherAccountState(false);
+  const authResponse = (await chrome.runtime.sendMessage({
+    action: "GET_AUTH_STATUS",
+  })) as ExtensionResponse<AuthStatusData>;
+  if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+  if (authResponse.success) {
+    launcherCaptureAuthGeneration = authResponse.data?.authGeneration || 0;
+  }
+  if (!authResponse.success || !authResponse.data?.isAuthenticated) return;
+
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
+  if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+  authToken = normalizeAuthToken(stored[STORAGE_KEYS.authToken]);
+  await refreshLauncherAuthenticationState(authToken);
+}
+
+async function refreshLauncherAuthenticationState(
+  token: string | null,
+): Promise<void> {
+  const refreshGeneration = ++launcherAuthRefreshGeneration;
+  resetLauncherAccountState(token !== null);
+  if (token === null) return;
+  const operationRenderGeneration = launcherOperationRenderGeneration;
+
+  try {
+    const [operationResponse, legacyResponse] = (await Promise.all([
+      chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
+      chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
+    ])) as [
+      ExtensionResponse<CaptureOperationSnapshot>,
+      ExtensionResponse<{ count: number }>,
+    ];
+    if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+    if (
+      operationRenderGeneration === launcherOperationRenderGeneration &&
+      operationResponse.success &&
+      operationResponse.data
+    ) {
+      renderCaptureOperation(operationResponse.data);
+    }
+    updateLegacyQueueState(
+      legacyResponse.success ? legacyResponse.data?.count || 0 : 0,
+    );
+  } catch (error) {
+    if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+    if (operationRenderGeneration !== launcherOperationRenderGeneration) return;
+    resetLauncherAccountState(token !== null);
+    throw error;
+  }
 }
 
 function updateStatus(
@@ -300,13 +605,6 @@ function updateStatus(
       statusIcon.classList.add("ws-spinner");
     }
   }
-
-  // Auto-hide after delay (except for loading)
-  if (type !== "loading") {
-    setTimeout(() => {
-      statusEl.classList.add("ws-hidden");
-    }, 3000);
-  }
 }
 
 function updateProgress(percent: number): void {
@@ -319,9 +617,11 @@ function updateProgress(percent: number): void {
 
   if (percent > 0 && percent < 100) {
     progressEl.classList.remove("ws-hidden");
+    progressEl.setAttribute("aria-hidden", "false");
     progressBar.style.width = `${percent}%`;
   } else {
     progressEl.classList.add("ws-hidden");
+    progressEl.setAttribute("aria-hidden", "true");
     progressBar.style.width = "0%";
   }
 }
@@ -335,9 +635,11 @@ async function handleExtractClick(): Promise<void> {
     const existingResponse = (await chrome.runtime.sendMessage({
       action: "GET_CAPTURE_OPERATION",
     })) as ExtensionResponse<CaptureOperationSnapshot>;
-    const existingOperation = existingResponse.success
-      ? existingResponse.data
-      : undefined;
+    const existingOperation =
+      existingResponse.success &&
+      existingResponse.data?.authGeneration === launcherCaptureAuthGeneration
+        ? existingResponse.data
+        : undefined;
     if (
       existingOperation &&
       ["ready-for-review", "retry-required"].includes(existingOperation.state)
@@ -383,10 +685,8 @@ async function handleExtractClick(): Promise<void> {
       );
       return;
     }
-    renderCaptureOperation(response.data);
-    if (
-      ["ready-for-review", "retry-required"].includes(response.data.state)
-    ) {
+    if (!renderCaptureOperation(response.data)) return;
+    if (["ready-for-review", "retry-required"].includes(response.data.state)) {
       if (response.data.state === "retry-required") {
         pageConfirmationOperationId = null;
       }
@@ -400,6 +700,7 @@ async function handleExtractClick(): Promise<void> {
 async function reviewPageCapture(
   operation: CaptureOperationSnapshot,
 ): Promise<void> {
+  if (operation.authGeneration !== launcherCaptureAuthGeneration) return;
   if (pageConfirmationOperationId === operation.operationId) return;
   pageConfirmationOperationId = operation.operationId;
   const confirmed = window.confirm(
@@ -415,7 +716,9 @@ async function reviewPageCapture(
       reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
     })) as ExtensionResponse<CaptureOperationSnapshot>;
     if (response.success && response.data) {
-      renderCaptureOperation(response.data);
+      if (!renderCaptureOperation(response.data)) {
+        pageConfirmationOperationId = null;
+      }
       return;
     }
     pageConfirmationOperationId = null;
@@ -429,7 +732,11 @@ async function reviewPageCapture(
   }
 }
 
-function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
+function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
+  if (operation.authGeneration !== launcherCaptureAuthGeneration) return false;
+  launcherOperationRenderGeneration += 1;
+  launcherOperation = operation;
+  updateLauncherBadge(operation);
   if (activeCaptureOperation?.operationId === operation.operationId) {
     activeCaptureOperation.state = operation.state;
   }
@@ -440,6 +747,7 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
     button.disabled = ["inspecting", "collecting", "uploading"].includes(
       operation.state,
     );
+    button.textContent = getLauncherActionLabel(operation);
   }
 
   switch (operation.state) {
@@ -492,6 +800,122 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
       updateStatus(operation.reason || "Capture cancelled.", "error");
       break;
   }
+  return true;
+}
+
+function getLauncherActionLabel(operation: CaptureOperationSnapshot): string {
+  switch (operation.state) {
+    case "inspecting":
+    case "collecting":
+      return "Reading loaded messages…";
+    case "ready-for-review":
+      return `Review ${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"}`;
+    case "uploading":
+      return "Sending reviewed messages…";
+    case "retry-required":
+      return "Review and retry";
+    default:
+      return "Review loaded messages";
+  }
+}
+
+function updateLauncherBadge(operation: CaptureOperationSnapshot | null): void {
+  const fab = document.getElementById("convolens-fab");
+  const badge = document.getElementById("ws-launcher-badge");
+  if (!fab || !badge) return;
+  const terminalAttention =
+    operation !== null &&
+    ["received", "duplicate"].includes(operation.state) &&
+    (operation.reconciliationRequired || legacyQueueCount > 0);
+  const state = terminalAttention
+    ? "attention"
+    : operation?.state || (legacyQueueCount > 0 ? "attention" : "ready");
+  fab.dataset.state = state;
+  let value = "";
+  if (operation?.state === "ready-for-review") {
+    value = String(operation.extractedCount);
+  } else if (
+    operation &&
+    ["inspecting", "collecting", "uploading"].includes(operation.state)
+  ) {
+    value = "…";
+  } else if (
+    operation &&
+    ["retry-required", "failed", "cancelled"].includes(operation.state)
+  ) {
+    value = "!";
+  } else if (
+    operation &&
+    ["received", "duplicate"].includes(operation.state) &&
+    (operation.reconciliationRequired || legacyQueueCount > 0)
+  ) {
+    value = "!";
+  } else if (operation && ["received", "duplicate"].includes(operation.state)) {
+    value = "✓";
+  } else if (legacyQueueCount > 0) {
+    value = "!";
+  }
+  badge.textContent = value;
+  badge.toggleAttribute("data-visible", value.length > 0);
+  updateLauncherToggleLabel();
+}
+
+function updateLauncherToggleLabel(): void {
+  const toggle = document.getElementById(
+    "ws-launcher-toggle",
+  ) as HTMLButtonElement | null;
+  if (!toggle) return;
+  const action =
+    toggle.getAttribute("aria-expanded") === "true" ? "Close" : "Open";
+  toggle.setAttribute(
+    "aria-label",
+    `${action} ConvoLens capture panel. ${getLauncherAccessibleStatus()} Drag to move.`,
+  );
+}
+
+function getLauncherAccessibleStatus(): string {
+  if (launcherOperation?.state === "ready-for-review") {
+    return `${launcherOperation.extractedCount} loaded message${launcherOperation.extractedCount === 1 ? "" : "s"} ready for review.`;
+  }
+  if (
+    launcherOperation &&
+    ["inspecting", "collecting"].includes(launcherOperation.state)
+  ) {
+    return "Reading loaded messages.";
+  }
+  if (launcherOperation?.state === "uploading") {
+    return "Sending reviewed messages.";
+  }
+  if (
+    launcherOperation &&
+    ["retry-required", "failed", "cancelled"].includes(launcherOperation.state)
+  ) {
+    return "Capture needs attention.";
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state) &&
+    launcherOperation.reconciliationRequired
+  ) {
+    return "Capture received. Reconciliation review required.";
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state) &&
+    legacyQueueCount > 0
+  ) {
+    return `Capture received. ${legacyQueueCount} legacy local capture${legacyQueueCount === 1 ? "" : "s"} need review.`;
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state)
+  ) {
+    return "Capture received by ConvoLens.";
+  }
+  if (legacyQueueCount > 0) {
+    return `${legacyQueueCount} legacy local capture${legacyQueueCount === 1 ? "" : "s"} need review.`;
+  }
+  return "Ready.";
 }
 
 function getCurrentChatIdentity(): string {
@@ -1269,13 +1693,32 @@ function handleMessage(
         });
         break;
       }
-      authToken = typedMessage.token;
+      authToken = normalizeAuthToken(typedMessage.token);
+      launcherCaptureAuthGeneration = typedMessage.authGeneration;
       chrome.storage.local
-        .set({ [STORAGE_KEYS.authToken]: typedMessage.token })
+        .set({ [STORAGE_KEYS.authToken]: authToken })
         .catch(() => undefined);
-      sendResponse({ success: true });
-      break;
+      refreshLauncherAuthenticationState(authToken)
+        .then(() => respondSafely(sendResponse, { success: true }))
+        .catch((error) => {
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          });
+        });
+      return true;
     }
+
+    case "REFRESH_LAUNCHER_STATE":
+      refreshLauncherFromValidatedAuthentication()
+        .then(() => respondSafely(sendResponse, { success: true }))
+        .catch((error) =>
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          }),
+        );
+      return true;
 
     default:
       sendResponse({ success: false, error: "Unknown action" });
