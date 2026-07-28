@@ -19,7 +19,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Base: `origin/main` at `6af10c01950e6b57cdaa17da78d7a5e9f170ffca` (merged PR #149).
 - Branch: `agent/extension-capture-phase2`.
 - Worktree: `C:/tmp/convolens-extension-phase2`.
-- Pull request: pending at handoff creation.
+- Pull request: [#150](https://github.com/neuralliquid/convolens/pull/150) (draft at handoff update).
 - The primary checkout and its pre-existing untracked `docs/HANDOFF-2026-07-24-EXTENSION-RUNTIME.md` remain untouched.
 
 ## Database boundary
