@@ -139,6 +139,19 @@ test("binds retained reviews to their authenticated owner", () => {
   assert.match(backgroundSource, /clearCaptureStateForAccountChange\(\)/);
 });
 
+test("revalidates the owner with the exact upload credential", () => {
+  assert.match(backgroundSource, /const finalCredentialState = await/);
+  assert.match(backgroundSource, /finalOwnerId !== expectedOwnerId/);
+  assert.match(
+    backgroundSource,
+    /Authorization: `Bearer \$\{finalAuthToken\}`/,
+  );
+  assert.ok(
+    backgroundSource.indexOf("const finalCredentialState = await") <
+      backgroundSource.indexOf("Authorization: `Bearer ${finalAuthToken}`"),
+  );
+});
+
 test("keeps in-flight upload truth across logout and tab closure", () => {
   const logoutCleanup = backgroundSource.slice(
     backgroundSource.indexOf(

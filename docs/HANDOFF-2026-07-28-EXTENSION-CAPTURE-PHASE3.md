@@ -10,7 +10,7 @@ Phase 3 implements the shared capture-operation slice from the phased extension 
 - `chrome.storage.session` retains only bounded operation metadata so reopening the popup can render the active or most recent operation. Chat identity is represented by an opaque, per-tab token; WhatsApp JIDs, contact labels, participants, and messages are not persisted in operation state.
 - Popup closure does not own or cancel an in-flight upload. The background upload promise continues, updates the shared operation, and safely ignores a closed response channel.
 - Concurrent starts reuse the current per-tab operation, and concurrent confirmations reuse one upload promise. Cancellation is refused once an upload has begun because an external request can no longer be truthfully undone.
-- Each collection/upload carries the current capture-lifecycle epoch and an in-memory binding to the authenticated owner that reviewed it. Sign-out blocks new capture work, lets any already-authorized upload record its real result, then invalidates the epoch and discards every prior-account operation and reviewed tab payload before clearing authentication. Authentication expiry or a refresh to a different owner invalidates and clears all operations without waiting on the request that detected the change. No stale async continuation can republish after a transition, so a later account cannot inherit an earlier account's review.
+- Each collection/upload carries the current capture-lifecycle epoch and an in-memory binding to the authenticated owner that reviewed it. The owner is revalidated together with the exact token immediately before the request is invoked, closing account-change races between confirmation and credential selection. Sign-out blocks new capture work, lets any already-authorized upload record its real result, then invalidates the epoch and discards every prior-account operation and reviewed tab payload before clearing authentication. Authentication expiry or a refresh to a different owner invalidates and clears all operations without waiting on the request that detected the change. No stale async continuation can republish after a transition, so a later account cannot inherit an earlier account's review.
 - Closing a tab cancels only pre-upload work. Once the background has entered `uploading`, tab closure cannot falsely label the external request cancelled; the background records the actual request result.
 - Content-script navigation compares the selected chat's verified JID or scoped header fallback and cancels pre-upload collection/review when the chat changes. Page unload, tab closure, missing receivers, and background restart become explicit cancellation outcomes.
 - Both surfaces render the same operation updates, including duplicate and reconciliation-required outcomes. Loaded-message confirmation remains mandatory, and guided/automatic history capture remains unavailable.
@@ -26,13 +26,13 @@ Phase 3 implements the shared capture-operation slice from the phased extension 
 
 ## Validation
 
-- Chrome extension Node tests: 44 passed, 0 failed, including shared-state, persistence-boundary, double-activation, navigation, teardown, auth-owner binding, auth-transition invalidation, in-flight logout truth, terminal-render deduplication, page retry, and popup-reopen source contracts.
+- Chrome extension Node tests: 45 passed, 0 failed, including shared-state, persistence-boundary, double-activation, navigation, teardown, exact-credential auth-owner binding, auth-transition invalidation, in-flight logout truth, terminal-render deduplication, page retry, and popup-reopen source contracts.
 - Chrome extension TypeScript: passed.
 - Popup JavaScript syntax and `git diff --check`: passed.
 - Repository forced Turbo build with a worktree-local cache: 8 of 8 packages passed. The ordinary exact-source rerun encountered a Windows shared-cache log permission error after task replay; the isolated-cache run completed all tasks uncached.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.14`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `76E3C8DA5F2D39DC85487287FD57F719AFB92867EDC384512B9B60FFDDAAD3EF`.
+- Packaged ZIP SHA-256: `A6793457B19B5AA10089204F289015C0259F4F6A37762012F7872DCE80436429`.
 
 ## Boundaries still open
 

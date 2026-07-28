@@ -718,13 +718,41 @@ async function sendChatData(
 
     // Send with retry (include tracing headers for distributed tracing)
     const config = await getApiConfig();
+    // Read the owner and token together after every preceding await. Once this
+    // continuation resumes, JavaScript constructs the Authorization header and
+    // invokes fetchWithRetry synchronously, so another auth message cannot
+    // interleave between this ownership check and credential selection.
+    const finalCredentialState = await chrome.storage.local.get([
+      STORAGE_KEYS.authToken,
+      STORAGE_KEYS.user,
+    ]);
+    const finalOwnerId = finalCredentialState[STORAGE_KEYS.user]?.id;
+    if (
+      expectedOwnerId &&
+      (typeof finalOwnerId !== "string" || finalOwnerId !== expectedOwnerId)
+    ) {
+      await clearCaptureStateForAccountChange();
+      return {
+        success: false,
+        error:
+          "The connected account changed. Recapture and review the loaded messages.",
+      };
+    }
+    const finalAuthToken = finalCredentialState[STORAGE_KEYS.authToken];
+    if (!finalAuthToken) {
+      return {
+        success: false,
+        error:
+          "Authentication is required. Sign in and recapture the loaded messages.",
+      };
+    }
     const result = await fetchWithRetry(
       `${config.apiUrl}/api/chat-export/extension`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${stored[STORAGE_KEYS.authToken]}`,
+          Authorization: `Bearer ${finalAuthToken}`,
           ...getTracingHeaders(),
         },
         body: JSON.stringify(chatData),
