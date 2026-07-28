@@ -17,6 +17,7 @@ Phase 1 changes the current WhatsApp capture surfaces from immediate upload to e
 
 - Base: `origin/main` at `890be5b50dd93f83ab19eed0e0ce9a4f6633f2d8` (merged PR #148).
 - Branch: `agent/extension-capture-phase1`.
+- Pull request: [#149](https://github.com/neuralliquid/convolens/pull/149).
 - Extension version: `1.0.12` in both manifest and package metadata.
 - Runtime/deployment impact: extension-only. No API, database, web deployment, Azure change, or production acceptance is included.
 - The primary checkout remains untouched at its earlier `main` commit with its existing untracked `docs/HANDOFF-2026-07-24-EXTENSION-RUNTIME.md`.
