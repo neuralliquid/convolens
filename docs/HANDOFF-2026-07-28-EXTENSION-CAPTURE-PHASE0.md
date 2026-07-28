@@ -18,11 +18,17 @@ Canonical audit:
 ## Repository state
 
 - Repository: `neuralliquid/convolens`
-- Base branch: `main`
-- Base commit: `e97bd12d089e016c507041ef8f29c115f52a8c56`
-- Working branch: `agent/extension-capture-phase0`
-- Isolated worktree: `C:\tmp\convolens-extension-phase0`
+- Phase 0 PR: [#147](https://github.com/neuralliquid/convolens/pull/147) (merged)
+- Phase 0 head: `97f036552adfb1236701df39c495071eb3744700`
+- Squash commit: `11c71231c733f7cedd8117428da802713a0d248d`
+- CI: run `30316296938` completed successfully at the exact head.
+- Head-specific Codex review: completed on `97f036552a` with no issues.
+- Review threads: none.
+- Mergeability and unchanged-head gate: verified immediately before squash merge.
+- `origin/main`: verified at `11c71231c733f7cedd8117428da802713a0d248d` after merge.
+- Runtime/deployment impact: none; Phase 0 changed audit documentation, a synthetic fixture, and focused regression coverage only.
 - The primary checkout remains untouched at its earlier `main` commit with its existing untracked `docs/HANDOFF-2026-07-24-EXTENSION-RUNTIME.md`.
+- Baton: final merge evidence is recorded on task `c3020f7e-6be8-4b83-9dca-6d6afe9df4e2` under the canonical ConvoLens project.
 
 ## Confirmed repository findings
 
@@ -74,3 +80,9 @@ Implement Phase 1 as PR B:
 10. Reuse the 16-of-200 fixture as the loaded-message regression baseline.
 
 Do not deploy an upload-capable intermediate build without the confirmation gate. Do not claim the browser console signals are resolved until the operator profile matrix is complete. Production acceptance remains operator-held.
+
+## Copy-paste continuation
+
+```text
+Continue ConvoLens extension capture work from merged PR #147 and docs/HANDOFF-2026-07-28-EXTENSION-CAPTURE-PHASE0.md. Recheck current origin/main, open PRs, checks, reviews, Baton task c3020f7e-6be8-4b83-9dca-6d6afe9df4e2, and worktree state. Preserve the primary checkout's existing untracked docs/HANDOFF-2026-07-24-EXTENSION-RUNTIME.md and use an isolated worktree from current origin/main. Implement Phase 1 as a narrow runtime PR: require a minimal loaded-message summary and explicit confirmation before either current surface uploads; make popup extraction page-UI-silent; reset in-page progress for every terminal outcome; use truthful loaded-message wording and exclusions; normalize message/channel teardown without unhandled rejections; stop writing new raw payloads to pendingUploads; remove update, alarm, online, and login automatic retries; and replace unowned legacy retry with safe summary plus export or confirmed deletion only. Never transmit an unowned legacy entry under the current account. Keep guided and automatic capture disabled and labelled Soon. Reuse the 16-of-200 fixture and preserve both same-sender, same-text, same-minute occurrences. Do not deploy an upload-capable intermediate build without confirmation. Keep generic browser-console attribution and authentic WhatsApp acceptance operator-held until their explicit evidence gates pass.
+```
