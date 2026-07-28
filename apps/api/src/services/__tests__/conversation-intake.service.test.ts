@@ -196,6 +196,21 @@ describe('ConversationIntakeService', () => {
     );
   });
 
+  it('serializes concurrent compatibility matches whose v2 hashes differ', async () => {
+    const phoneOnly = stableInput();
+    const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    enriched.participantEvidence![0].platformUserId = '27821234567@s.whatsapp.net';
+
+    expect(createConversationContentHashV2(enriched)).not.toBe(
+      createConversationContentHashV2(phoneOnly)
+    );
+    const captures = await Promise.all([service.save(phoneOnly), service.save(enriched)]);
+
+    expect(new Set(captures.map((capture) => capture.conversation.id)).size).toBe(1);
+    expect(captures.filter((capture) => capture.duplicate)).toHaveLength(1);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+  });
+
   it('enriches a name-only participant by ref without duplicating the evidence row', async () => {
     const nameOnly = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright');
     delete nameOnly.participantEvidence![0].normalizedPhone;

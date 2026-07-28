@@ -10,6 +10,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Existing durable hashes remain v1. A scoped v1 intake is reused and permanently records its verified source identity when it upgrades to v2; stable new captures otherwise use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
 - Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation, no conflicting stable participant evidence, no matching unscoped history, and no deferred compatibility-backfill rows.
+- Compatibility creation is serialized by owner, platform, and compatibility hash. PostgreSQL uses a transaction-scoped advisory lock, with a post-lock exact and semantic recheck, so concurrent equivalent captures with different v2 hashes cannot both create durable intakes.
 - Historical unscoped, conflicting, or multiple matches are stored separately with an explicit reconciliation warning; neither intake is silently merged or discarded.
 - Historical compatibility hashes are backfilled in batches of 100. A capture remains conservatively marked for reconciliation while additional unprocessed history exists.
 - Runtime startup and the documented TypeORM CLI commands share the same ordered migration registry, including the additive fidelity migration.
@@ -36,12 +37,12 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 33 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 104 passed, 0 failed across 9 suites.
+- API Jest suite: 105 passed, 0 failed across 9 suites, including the concurrent compatibility regression.
 - Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `401CDB36F4AE6FAA36CED796CE439DFB00E4B20C4C3C5AFE46631642B2386FED`.
+- Packaged ZIP SHA-256: `D9687AFE52EDEAD076EE7500325D4E4363E22A7757FDFE429A07C8057FE93BC0`.
 - Prettier and `git diff --check`: passed for the changed surfaces.
 
 ## Boundaries still open

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { IsNull, type DataSource } from 'typeorm';
+import { IsNull, type DataSource, type EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
   ConversationIntake,
@@ -10,6 +10,26 @@ import {
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
+const compatibilityQueues = new Map<string, Promise<void>>();
+
+async function withLocalCompatibilityLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = compatibilityQueues.get(key) || Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => gate);
+  compatibilityQueues.set(key, queued);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (compatibilityQueues.get(key) === queued) {
+      compatibilityQueues.delete(key);
+    }
+  }
+}
 
 export interface ConversationMessageInput {
   sourceMessageId?: string;
@@ -301,7 +321,8 @@ export class ConversationIntakeService {
     options: {
       applyMediaCorrections?: boolean;
       persistVerifiedStableScope?: boolean;
-    } = {}
+    } = {},
+    repositoryProvider: DataSource | EntityManager = this.dataSource
   ): Promise<SaveConversationResult> {
     conversation.participantEvidence = mergeParticipantEvidence(
       conversation.participantEvidence,
@@ -315,10 +336,10 @@ export class ConversationIntakeService {
     if (options.applyMediaCorrections) {
       const correctedMessages = applyCorrectedVisualMediaEvidence(conversation, input);
       if (correctedMessages.length > 0) {
-        await this.dataSource.getRepository(ConversationMessage).save(correctedMessages);
+        await repositoryProvider.getRepository(ConversationMessage).save(correctedMessages);
       }
     }
-    await this.dataSource.getRepository(ConversationIntake).save(conversation);
+    await repositoryProvider.getRepository(ConversationIntake).save(conversation);
     return {
       conversation,
       duplicate: true,
@@ -422,63 +443,156 @@ export class ConversationIntakeService {
       });
     }
 
-    const reconciliationCandidates = semanticCandidates.filter((candidate) =>
-      shouldRequireReconciliation(candidate, usesStableV2, input.sourceConversationId)
-    );
-    const reconciliationRequired =
-      reconciliationCandidates.length > 0 || hasDeferredCompatibilityCandidates;
+    const compatibilityLockKey = [
+      input.userId,
+      input.sourcePlatform.toLowerCase(),
+      compatibilityHash,
+    ]
+      .map((value) => normalizeHashValue(value))
+      .join('\u0000');
 
     try {
-      const conversation = await this.dataSource.transaction(async (manager) => {
-        const intake = manager.create(ConversationIntake, {
-          userId: input.userId,
-          sourcePlatform: input.sourcePlatform,
-          sourceKind: input.sourceKind,
-          sourceConversationId: input.sourceConversationId,
-          sourceConversationIdentityStable: usesStableV2,
-          displayName: input.displayName.trim().slice(0, 255),
-          isGroup: input.isGroup,
-          participants: [
-            ...new Set(input.participants.map((value) => value.trim()).filter(Boolean)),
-          ].sort((a, b) => a.localeCompare(b)),
-          participantEvidence: initializeParticipantEvidence(input.participantEvidence),
-          contentHash,
-          contentHashVersion: usesStableV2 ? 2 : 1,
-          compatibilityHash,
-          reconciliationStatus: reconciliationRequired ? 'required' : 'none',
-          reconciliationCandidateIds: reconciliationRequired
-            ? reconciliationCandidates.map((candidate) => candidate.id)
-            : undefined,
-          status: 'received',
-          sourceExtractedAt: input.sourceExtractedAt,
-          provenance: input.provenance,
-        });
-        const savedIntake = await manager.save(intake);
-        const messages = input.messages.map((message, position) =>
-          manager.create(ConversationMessage, {
-            intakeId: savedIntake.id,
-            position,
-            sourceMessageId: message.sourceMessageId,
-            senderName: message.senderName.trim().slice(0, 255) || 'Unknown',
-            senderRef: message.senderRef,
-            content: message.content,
-            sentAt: message.sentAt,
-            isOutgoing: Boolean(message.isOutgoing),
-            isMedia: Boolean(message.isMedia),
-            mediaType: message.mediaType,
-            replyToSourceMessageId: message.replyToSourceMessageId,
-          })
-        );
+      return await withLocalCompatibilityLock(compatibilityLockKey, () =>
+        this.dataSource.transaction(async (manager) => {
+          if (manager.connection.options.type === 'postgres') {
+            await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+              compatibilityLockKey,
+            ]);
+          }
 
-        if (messages.length > 0) {
-          await manager.save(messages, { chunk: 500 });
-        }
+          // The compatibility lock serializes semantically equivalent captures even when their
+          // v2 hashes differ. Recheck after acquiring it so a concurrent winner is visible.
+          const transactionRepository = manager.getRepository(ConversationIntake);
+          const lockedLegacyScopedMatch = usesStableV2
+            ? await transactionRepository.findOne({
+                where: {
+                  userId: input.userId,
+                  sourcePlatform: input.sourcePlatform,
+                  sourceConversationId: input.sourceConversationId,
+                  contentHash: legacyContentHash,
+                },
+                ...exactLookupOptions,
+              })
+            : null;
+          const lockedExisting =
+            lockedLegacyScopedMatch ||
+            (await transactionRepository.findOne({
+              where: { userId: input.userId, contentHash },
+              ...exactLookupOptions,
+            }));
+          if (lockedExisting) {
+            return this.updateDuplicate(
+              lockedExisting,
+              input,
+              compatibilityHash,
+              { persistVerifiedStableScope: lockedExisting === lockedLegacyScopedMatch },
+              manager
+            );
+          }
 
-        savedIntake.messages = messages;
-        return savedIntake;
-      });
+          const lockedExactCompatibilityCandidates = await transactionRepository.find({
+            where: {
+              userId: input.userId,
+              sourcePlatform: input.sourcePlatform,
+              compatibilityHash,
+            },
+            relations: { messages: true },
+            order: { messages: { position: 'ASC' } },
+          });
+          const lockedSemanticCandidates = [
+            ...lockedExactCompatibilityCandidates,
+            ...candidatesNeedingBackfill,
+          ].filter(
+            (candidate, index, candidates) =>
+              candidate.compatibilityHash === compatibilityHash &&
+              candidates.findIndex((other) => other.id === candidate.id) === index
+          );
+          const lockedSameStableConversation = usesStableV2
+            ? lockedSemanticCandidates.filter(
+                (candidate) =>
+                  candidate.sourceConversationIdentityStable &&
+                  candidate.sourceConversationId === input.sourceConversationId
+              )
+            : [];
+          const lockedCompatibleCandidates = lockedSameStableConversation.filter(
+            (candidate) => !hasConflictingStableEvidence(candidate, input)
+          );
+          const lockedHasUnscopedSemanticCandidates = lockedSemanticCandidates.some(
+            (candidate) => !candidate.sourceConversationIdentityStable
+          );
+          if (
+            lockedSameStableConversation.length === 1 &&
+            lockedCompatibleCandidates.length === 1 &&
+            !lockedHasUnscopedSemanticCandidates &&
+            !hasDeferredCompatibilityCandidates
+          ) {
+            return this.updateDuplicate(
+              lockedCompatibleCandidates[0],
+              input,
+              compatibilityHash,
+              { applyMediaCorrections: true },
+              manager
+            );
+          }
 
-      return { conversation, duplicate: false, reconciliationRequired };
+          const lockedReconciliationCandidates = lockedSemanticCandidates.filter((candidate) =>
+            shouldRequireReconciliation(candidate, usesStableV2, input.sourceConversationId)
+          );
+          const lockedReconciliationRequired =
+            lockedReconciliationCandidates.length > 0 || hasDeferredCompatibilityCandidates;
+
+          const intake = manager.create(ConversationIntake, {
+            userId: input.userId,
+            sourcePlatform: input.sourcePlatform,
+            sourceKind: input.sourceKind,
+            sourceConversationId: input.sourceConversationId,
+            sourceConversationIdentityStable: usesStableV2,
+            displayName: input.displayName.trim().slice(0, 255),
+            isGroup: input.isGroup,
+            participants: [
+              ...new Set(input.participants.map((value) => value.trim()).filter(Boolean)),
+            ].sort((a, b) => a.localeCompare(b)),
+            participantEvidence: initializeParticipantEvidence(input.participantEvidence),
+            contentHash,
+            contentHashVersion: usesStableV2 ? 2 : 1,
+            compatibilityHash,
+            reconciliationStatus: lockedReconciliationRequired ? 'required' : 'none',
+            reconciliationCandidateIds: lockedReconciliationRequired
+              ? lockedReconciliationCandidates.map((candidate) => candidate.id)
+              : undefined,
+            status: 'received',
+            sourceExtractedAt: input.sourceExtractedAt,
+            provenance: input.provenance,
+          });
+          const savedIntake = await manager.save(intake);
+          const messages = input.messages.map((message, position) =>
+            manager.create(ConversationMessage, {
+              intakeId: savedIntake.id,
+              position,
+              sourceMessageId: message.sourceMessageId,
+              senderName: message.senderName.trim().slice(0, 255) || 'Unknown',
+              senderRef: message.senderRef,
+              content: message.content,
+              sentAt: message.sentAt,
+              isOutgoing: Boolean(message.isOutgoing),
+              isMedia: Boolean(message.isMedia),
+              mediaType: message.mediaType,
+              replyToSourceMessageId: message.replyToSourceMessageId,
+            })
+          );
+
+          if (messages.length > 0) {
+            await manager.save(messages, { chunk: 500 });
+          }
+
+          savedIntake.messages = messages;
+          return {
+            conversation: savedIntake,
+            duplicate: false,
+            reconciliationRequired: lockedReconciliationRequired,
+          };
+        })
+      );
     } catch (error) {
       // A concurrent identical intake can win the unique constraint race.
       const duplicate = await intakeRepository.findOne({
