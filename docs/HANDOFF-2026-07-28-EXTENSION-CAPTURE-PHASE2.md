@@ -10,7 +10,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Existing durable hashes remain v1. A scoped v1 intake is reused and permanently records its verified source identity when it upgrades to v2; stable new captures otherwise use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
 - Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation, no conflicting stable participant evidence, no matching unscoped history, and no deferred compatibility-backfill rows.
-- Compatibility creation is serialized by owner, platform, and compatibility hash. PostgreSQL uses a transaction-scoped advisory lock, with a post-lock exact and semantic recheck, so concurrent equivalent captures with different v2 hashes cannot both create durable intakes.
+- Compatibility creation and duplicate evidence enrichment are serialized by owner, platform, and compatibility hash. PostgreSQL uses a transaction-scoped advisory lock, with a post-lock exact and semantic recheck, so concurrent equivalent captures cannot create duplicate intakes or lose independently learned participant evidence.
 - Historical unscoped, conflicting, or multiple matches are stored separately with an explicit reconciliation warning; neither intake is silently merged or discarded.
 - Historical compatibility hashes are backfilled in batches of 100. A capture remains conservatively marked for reconciliation while additional unprocessed history exists.
 - Runtime startup and the documented TypeORM CLI commands share the same ordered migration registry, including the additive fidelity migration.
@@ -28,7 +28,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 ## Database boundary
 
-- Migration `1753660000000-AddConversationFidelity.ts` adds stable-scope, participant-evidence, hash-version, compatibility, reconciliation, and message-sender-reference columns plus a scoped compatibility index.
+- Migration `1753660000000-AddConversationFidelity.ts` adds stable-scope, participant-evidence, hash-version, compatibility, reconciliation, and message-sender-reference columns plus an index ordered for owner/platform/compatibility-hash lookups.
 - Existing rows default to hash version 1 and unstable source identity.
 - Legacy compatibility hashes are derived and persisted lazily within the owning user's platform scope.
 - The migration has been validated against SQLite through the migration test, but it has not been applied to any shared or production environment.
@@ -37,7 +37,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 33 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 105 passed, 0 failed across 9 suites, including the concurrent compatibility regression.
+- API Jest suite: 106 passed, 0 failed across 9 suites, including concurrent compatibility and evidence-enrichment regressions.
 - Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.

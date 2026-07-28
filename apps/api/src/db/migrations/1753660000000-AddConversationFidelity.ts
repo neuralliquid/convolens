@@ -32,7 +32,7 @@ export class AddConversationFidelity1753660000000 implements MigrationInterface 
       'conversation_intakes',
       new TableIndex({
         name: 'IDX_conversation_intakes_compatibility_scope',
-        columnNames: ['userId', 'sourcePlatform', 'sourceConversationId', 'compatibilityHash'],
+        columnNames: ['userId', 'sourcePlatform', 'compatibilityHash', 'sourceConversationId'],
       })
     );
   }

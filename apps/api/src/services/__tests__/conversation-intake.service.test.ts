@@ -211,6 +211,25 @@ describe('ConversationIntakeService', () => {
     expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
   });
 
+  it('serializes concurrent duplicate evidence enrichment without losing either update', async () => {
+    const original = await service.save(stableInput());
+    const named = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    const identified = stableInput();
+    identified.participantEvidence![0].platformUserId = '27821234567@s.whatsapp.net';
+
+    await Promise.all([service.save(named), service.save(identified)]);
+
+    const persisted = await service.getForUser(baseInput.userId, original.conversation.id);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+    expect(persisted?.participantEvidence?.[0]).toEqual(
+      expect.objectContaining({
+        preferredDisplayName: 'Greg Wright',
+        normalizedPhone: '+27821234567',
+        platformUserId: '27821234567@s.whatsapp.net',
+      })
+    );
+  });
+
   it('enriches a name-only participant by ref without duplicating the evidence row', async () => {
     const nameOnly = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright');
     delete nameOnly.participantEvidence![0].normalizedPhone;

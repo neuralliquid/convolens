@@ -239,6 +239,12 @@ function findParticipantEvidenceMatch(
   });
 }
 
+function isPhoneOnlyDisplayName(value: string | undefined, normalizedPhone: string | undefined) {
+  if (!value || !normalizedPhone) return false;
+  const normalizePhoneCharacters = (candidate: string) => candidate.replace(/[^+\d]/g, '');
+  return normalizePhoneCharacters(value) === normalizePhoneCharacters(normalizedPhone);
+}
+
 function mergeParticipantEvidence(
   existing: ConversationParticipantEvidence[] = [],
   incoming: ConversationParticipantEvidence[] = []
@@ -262,7 +268,10 @@ function mergeParticipantEvidence(
       ),
     ];
     match.preferredDisplayName =
-      observation.rawDisplayName || match.preferredDisplayName || match.rawDisplayName;
+      observation.rawDisplayName &&
+      !isPhoneOnlyDisplayName(observation.rawDisplayName, observation.normalizedPhone)
+        ? observation.rawDisplayName
+        : match.preferredDisplayName || match.rawDisplayName || observation.rawDisplayName;
     match.normalizedPhone = match.normalizedPhone || observation.normalizedPhone;
     match.platformUserId = match.platformUserId || observation.platformUserId;
     match.rawUsername = match.rawUsername || observation.rawUsername;
@@ -359,39 +368,6 @@ export class ConversationIntakeService {
       relations: { messages: true },
       order: { messages: { position: 'ASC' as const } },
     };
-    const legacyScopedMatch = usesStableV2
-      ? await intakeRepository.findOne({
-          where: {
-            userId: input.userId,
-            sourcePlatform: input.sourcePlatform,
-            sourceConversationId: input.sourceConversationId,
-            contentHash: legacyContentHash,
-          },
-          ...exactLookupOptions,
-        })
-      : null;
-    const existing =
-      legacyScopedMatch ||
-      (await intakeRepository.findOne({
-        where: { userId: input.userId, contentHash },
-        ...exactLookupOptions,
-      }));
-
-    if (existing) {
-      return this.updateDuplicate(existing, input, compatibilityHash, {
-        persistVerifiedStableScope: existing === legacyScopedMatch,
-      });
-    }
-
-    const exactCompatibilityCandidates = await intakeRepository.find({
-      where: {
-        userId: input.userId,
-        sourcePlatform: input.sourcePlatform,
-        compatibilityHash,
-      },
-      relations: { messages: true },
-      order: { messages: { position: 'ASC' } },
-    });
     const unbackfilledCandidates = await intakeRepository.find({
       where: {
         userId: input.userId,
@@ -414,35 +390,6 @@ export class ConversationIntakeService {
     if (candidatesNeedingBackfill.length > 0) {
       await intakeRepository.save(candidatesNeedingBackfill);
     }
-    const semanticCandidates = [
-      ...exactCompatibilityCandidates,
-      ...candidatesNeedingBackfill,
-    ].filter((candidate) => candidate.compatibilityHash === compatibilityHash);
-    const sameStableConversation = usesStableV2
-      ? semanticCandidates.filter(
-          (candidate) =>
-            candidate.sourceConversationIdentityStable &&
-            candidate.sourceConversationId === input.sourceConversationId
-        )
-      : [];
-    const compatibleCandidates = sameStableConversation.filter(
-      (candidate) => !hasConflictingStableEvidence(candidate, input)
-    );
-    const hasUnscopedSemanticCandidates = semanticCandidates.some(
-      (candidate) => !candidate.sourceConversationIdentityStable
-    );
-    if (
-      sameStableConversation.length === 1 &&
-      compatibleCandidates.length === 1 &&
-      !hasUnscopedSemanticCandidates &&
-      !hasDeferredCompatibilityCandidates
-    ) {
-      const duplicate = compatibleCandidates[0];
-      return this.updateDuplicate(duplicate, input, compatibilityHash, {
-        applyMediaCorrections: true,
-      });
-    }
-
     const compatibilityLockKey = [
       input.userId,
       input.sourcePlatform.toLowerCase(),

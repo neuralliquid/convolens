@@ -43,6 +43,11 @@ describe('CreateConversationIntake migration', () => {
     ).toBe(true);
     expect(intakeTable?.findColumnByName('contentHashVersion')).toBeDefined();
     expect(intakeTable?.findColumnByName('participantEvidence')).toBeDefined();
+    expect(
+      intakeTable?.indices.find(
+        (index) => index.name === 'IDX_conversation_intakes_compatibility_scope'
+      )?.columnNames
+    ).toEqual(['userId', 'sourcePlatform', 'compatibilityHash', 'sourceConversationId']);
     expect(messageTable?.findColumnByName('senderRef')).toBeDefined();
     expect(
       messageTable?.foreignKeys.some(
