@@ -1310,6 +1310,15 @@ function participantIdentityKey(participant: ExtractedParticipant): string {
         participant.ref;
 }
 
+function nextParticipantRef(participants: ExtractedParticipant[]): string {
+  const next =
+    participants.reduce((highest, participant) => {
+      const value = Number(participant.ref.match(/^participant_(\d+)$/)?.[1]);
+      return Number.isInteger(value) ? Math.max(highest, value) : highest;
+    }, 0) + 1;
+  return `participant_${next}`;
+}
+
 function cloneGuidedMessage(
   message: ExtractedMessage,
   senderRef: string | undefined,
@@ -1406,8 +1415,9 @@ function mergeGuidedPayload(
   session: GuidedCaptureSession,
   incoming: ExtractedChat,
 ): CaptureCollectionSummary {
+  const candidateParticipants = [...session.payload.participants];
   const canonicalParticipants = new Map(
-    session.payload.participants.map((participant) => [
+    candidateParticipants.map((participant) => [
       participantIdentityKey(participant),
       participant,
     ]),
@@ -1419,9 +1429,9 @@ function mergeGuidedPayload(
     if (!canonical) {
       canonical = {
         ...participant,
-        ref: `participant_${session.payload.participants.length + 1}`,
+        ref: nextParticipantRef(candidateParticipants),
       };
-      session.payload.participants.push(canonical);
+      candidateParticipants.push(canonical);
       canonicalParticipants.set(key, canonical);
     }
     remappedRefs.set(participant.ref, canonical.ref);
@@ -1457,6 +1467,14 @@ function mergeGuidedPayload(
     incoming.diagnostics.unreadableMessageCount * addedRatio,
   );
   session.payload.messages = session.items.map((item) => item.value);
+  const retainedParticipantRefs = new Set(
+    session.payload.messages
+      .map((message) => message.senderRef)
+      .filter((ref): ref is string => Boolean(ref)),
+  );
+  session.payload.participants = candidateParticipants.filter((participant) =>
+    retainedParticipantRefs.has(participant.ref),
+  );
   session.payload.messageCount = session.payload.messages.length;
   session.payload.extractedAt = new Date().toISOString();
   session.payload.diagnostics = {

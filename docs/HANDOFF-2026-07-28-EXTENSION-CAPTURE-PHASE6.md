@@ -30,13 +30,13 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 
 ## Validation
 
-- Chrome extension Node tests: 83 passed, 0 failed, including deterministic guided-window, repeated-occurrence, single-boundary ambiguity, enforced limit, lifecycle, controls, privacy, and safety-boundary coverage.
+- Chrome extension Node tests: 85 passed, 0 failed, including deterministic guided-window, repeated-occurrence, identical single-window ambiguity, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.17`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `E4A41D796740D426899590EB963978DD27DA2185C70A8EBE93F8386BBB041D4A`.
+- Packaged ZIP SHA-256: `8ABEEEF8E43E106482463CC2B83DDF381C8D50B44A6D13EBAA0B7C55D44284AB`.
 - A local Playwright popup screenshot was attempted, but the installed Playwright package had no local Chromium binary. No browser was downloaded solely for this check, and no visual acceptance is claimed.
 
 ## Boundaries still open

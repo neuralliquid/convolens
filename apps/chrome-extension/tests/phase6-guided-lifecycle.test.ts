@@ -74,3 +74,16 @@ test("uses raw source IDs only as non-enumerable in-tab alignment evidence", () 
   assert.doesNotMatch(captureSource, /captureSourceId/);
   assert.doesNotMatch(backgroundSource, /captureSourceId/);
 });
+
+test("commits only participant identities referenced by the bounded merge", () => {
+  assert.match(
+    contentSource,
+    /const candidateParticipants = \[\.\.\.session\.payload\.participants\]/,
+  );
+  assert.match(contentSource, /const retainedParticipantRefs = new Set/);
+  assert.match(
+    contentSource,
+    /session\.payload\.participants = candidateParticipants\.filter[\s\S]*retainedParticipantRefs\.has/,
+  );
+  assert.match(contentSource, /nextParticipantRef\(candidateParticipants\)/);
+});

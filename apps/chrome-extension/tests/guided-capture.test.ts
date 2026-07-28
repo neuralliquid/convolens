@@ -133,6 +133,18 @@ test("treats a single fallback boundary token as occurrence-ambiguous", () => {
   );
 });
 
+test("does not collapse two identical single-message fallback windows", () => {
+  const existing = [{ alignmentToken: "same", value: "first" }];
+  const incoming = [{ alignmentToken: "same", value: "second" }];
+  const result = mergeGuidedWindow(existing, incoming, "prepend");
+
+  assert.equal(result.ambiguous, true);
+  assert.deepEqual(
+    result.items.map((item) => item.value),
+    ["second", "first"],
+  );
+});
+
 test("caps stable additions before they reach the retained payload", () => {
   const existing = Array.from({ length: 1_990 }, (_, index) =>
     fixtureItem(index + 1),
