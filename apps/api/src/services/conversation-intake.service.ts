@@ -122,7 +122,9 @@ function stableParticipantKeys(participant: ConversationParticipantEvidence | un
   if (!participant) return [];
   if (participant.isSelf) return ['self'];
   return [
-    participant.platformUserId ? `platform:${participant.platformUserId}` : undefined,
+    participant.platformUserId
+      ? `platform:${participant.platformUserId.toLowerCase().replace(/@c\.us$/, '@s.whatsapp.net')}`
+      : undefined,
     participant.normalizedPhone ? `phone:${participant.normalizedPhone}` : undefined,
     participant.rawUsername ? `username:${participant.rawUsername}` : undefined,
   ].filter((value): value is string => Boolean(value));

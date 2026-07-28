@@ -6,7 +6,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Sender metadata, visible names, and message-scoped phone evidence are combined independently and rendered as `Name · phone`, name-only, phone-only, or a numbered unidentified fallback. Mixed labels containing dates or arbitrary numeric identifiers are not promoted to phone evidence.
 - The extension normalizes sampled bubbles to WhatsApp message records and emits a stable source-conversation identity only when a recognized WhatsApp JID, including current `@lid` identifiers, is present in scoped DOM evidence. Equivalent direct-chat `@c.us` and `@s.whatsapp.net` domains canonicalize to one identity. Timestamp-generated capture IDs never enable compatibility matching.
-- Structured participant evidence and every per-message `senderRef` value now survive API persistence and authenticated read projection without collapsing initially referenced evidence rows.
+- Structured participant evidence and every per-message `senderRef` value now survive API persistence and authenticated read projection without collapsing initially referenced evidence rows. Equivalent participant `@c.us` and `@s.whatsapp.net` platform IDs share one stable key.
 - Existing durable hashes remain v1. A scoped v1 intake is reused and permanently records its verified source identity when it upgrades to v2; stable new captures otherwise use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
 - Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation, no conflicting stable participant evidence, no matching unscoped history, and no deferred compatibility-backfill rows.
@@ -37,7 +37,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 33 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 111 passed, 0 failed across 9 suites, including concurrent compatibility, evidence-enrichment, synchronized-index, legacy visual-correction isolation, WhatsApp JID canonicalization, and transaction/deletion-safety regressions.
+- API Jest suite: 112 passed, 0 failed across 9 suites, including concurrent compatibility, evidence-enrichment, synchronized-index, legacy visual-correction isolation, conversation/participant JID canonicalization, and transaction/deletion-safety regressions.
 - Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.

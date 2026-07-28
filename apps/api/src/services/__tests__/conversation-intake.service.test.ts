@@ -218,6 +218,22 @@ describe('ConversationIntakeService', () => {
     );
   });
 
+  it('canonicalizes equivalent WhatsApp participant JID domains', async () => {
+    const legacy = stableInput();
+    delete legacy.participantEvidence![0].normalizedPhone;
+    legacy.participantEvidence![0].platformUserId = '27821234567@c.us';
+    const first = await service.save(legacy);
+    const current = stableInput();
+    delete current.participantEvidence![0].normalizedPhone;
+    current.participantEvidence![0].platformUserId = '27821234567@s.whatsapp.net';
+
+    const second = await service.save(current);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+  });
+
   it('canonicalizes equivalent WhatsApp direct-chat JID domains', async () => {
     const legacyInput = stableInput('whatsapp:27821234567@c.us');
     const first = await service.save(legacyInput);
