@@ -37,7 +37,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 33 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 108 passed, 0 failed across 9 suites, including concurrent compatibility, evidence-enrichment, synchronized-index, captioned-media, and WhatsApp LID regressions.
+- API Jest suite: 109 passed, 0 failed across 9 suites, including concurrent compatibility, evidence-enrichment, synchronized-index, captioned-media, WhatsApp LID, and transaction-failure regressions.
 - Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.

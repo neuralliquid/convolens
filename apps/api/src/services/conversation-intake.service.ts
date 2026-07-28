@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { IsNull, type DataSource, type EntityManager } from 'typeorm';
+import { IsNull, QueryFailedError, type DataSource, type EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
   ConversationIntake,
@@ -313,6 +313,24 @@ function shouldRequireReconciliation(
   return candidate.sourceConversationId === sourceConversationId;
 }
 
+function isContentHashUniqueConstraintError(error: unknown): boolean {
+  if (!(error instanceof QueryFailedError)) return false;
+  const driverError = error.driverError as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+  };
+  if (driverError.code === '23505') {
+    return driverError.constraint === 'UQ_conversation_intakes_user_content_hash';
+  }
+  return Boolean(
+    driverError.code === 'SQLITE_CONSTRAINT' &&
+      /conversation_intakes\.userId.*conversation_intakes\.contentHash/i.test(
+        driverError.message || error.message
+      )
+  );
+}
+
 export class ConversationIntakeService {
   constructor(private readonly dataSource: DataSource = AppDataSource) {}
 
@@ -542,6 +560,7 @@ export class ConversationIntakeService {
       );
     } catch (error) {
       // A concurrent identical intake can win the unique constraint race.
+      if (!isContentHashUniqueConstraintError(error)) throw error;
       const duplicate = await intakeRepository.findOne({
         where: { userId: input.userId, contentHash },
         relations: { messages: true },

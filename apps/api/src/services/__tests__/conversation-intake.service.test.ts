@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource, IsNull } from 'typeorm';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
@@ -130,6 +130,15 @@ describe('ConversationIntakeService', () => {
     expect(second.conversation.id).toBe(first.conversation.id);
     expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
     expect(await dataSource.getRepository(ConversationMessage).count()).toBe(2);
+  });
+
+  it('does not report duplicate success when an existing-intake transaction fails', async () => {
+    await service.save(stableInput());
+    jest
+      .spyOn(dataSource, 'transaction')
+      .mockRejectedValueOnce(new Error('participant evidence update failed'));
+
+    await expect(service.save(stableInput())).rejects.toThrow('participant evidence update failed');
   });
 
   it('allows the same conversation for a different user', async () => {
