@@ -112,6 +112,7 @@ let currentChatId: string | null = null;
 let statusUI: HTMLElement | null = null;
 let chatObserver: MutationObserver | null = null;
 let isInitialized = false;
+let reviewedCapture: ExtractedChat | null = null;
 
 // =============================================================================
 // Initialization
@@ -224,7 +225,7 @@ function injectUI(): void {
     <div id="ws-progress" class="ws-progress ws-hidden">
       <div class="ws-progress-bar"></div>
     </div>
-    <button id="ws-extract-btn" class="ws-fab-btn" title="Send the selected chat to ConvoLens">
+    <button id="ws-extract-btn" class="ws-fab-btn" title="Review the messages currently loaded in this chat">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
         <polyline points="14 2 14 8 20 8"></polyline>
@@ -232,7 +233,7 @@ function injectUI(): void {
         <line x1="16" y1="17" x2="8" y2="17"></line>
         <polyline points="10 9 9 9 8 9"></polyline>
       </svg>
-      <span class="ws-fab-text">Send to ConvoLens</span>
+      <span class="ws-fab-text">Review loaded messages</span>
     </button>
   `;
 
@@ -303,31 +304,44 @@ async function handleExtractClick(): Promise<void> {
   // Check rate limiting
   if (!checkRateLimit()) {
     const waitTime = Math.ceil((state.rateLimitResetTime - Date.now()) / 1000);
-    updateStatus(`Rate limited. Please wait ${waitTime}s`, "error");
+    updateStatus(`Please wait ${waitTime}s before reviewing again`, "error");
+    updateProgress(0);
     return;
   }
 
   // Prevent concurrent extractions
   if (state.isExtracting) {
-    updateStatus("Extraction already in progress...", "info");
+    updateStatus("A loaded-message review is already in progress", "info");
     return;
   }
 
   state.isExtracting = true;
-  updateStatus("Extracting messages...", "loading");
+  updateStatus("Reading loaded messages…", "loading");
   updateProgress(10);
 
   try {
     const chatData = await extractCurrentChatWithRetry();
 
     if (!chatData || chatData.messages.length === 0) {
-      updateStatus("No messages found", "error");
+      updateStatus("No readable loaded messages found", "error");
       return;
     }
 
     updateProgress(60);
+    reviewedCapture = chatData;
+
+    const confirmed = window.confirm(
+      `Send ${chatData.messages.length} loaded message${chatData.messages.length === 1 ? "" : "s"} from “${chatData.chatName}” to ConvoLens?\n\nOlder messages that WhatsApp has not loaded are excluded. Capture as I scroll and automatic older-message loading are coming soon.`,
+    );
+
+    if (!confirmed) {
+      reviewedCapture = null;
+      updateStatus("Upload cancelled. Nothing was sent.", "info");
+      return;
+    }
+
     updateStatus(
-      `Found ${chatData.messages.length} messages. Sending…`,
+      `Sending ${chatData.messages.length} loaded messages…`,
       "loading",
     );
 
@@ -340,28 +354,32 @@ async function handleExtractClick(): Promise<void> {
     updateProgress(100);
 
     if (response.success) {
-      updateStatus(`${chatData.messages.length} messages received`, "success");
+      reviewedCapture = null;
+      updateStatus(
+        `${chatData.messages.length} loaded messages received by ConvoLens`,
+        "success",
+      );
       state.lastExtraction = Date.now();
       state.extractionCount++;
 
       // Optionally open dashboard
       if (response.data?.openDashboard) {
-        chrome.runtime.sendMessage({ action: "OPEN_DASHBOARD" });
+        try {
+          await chrome.runtime.sendMessage({ action: "OPEN_DASHBOARD" });
+        } catch {
+          // The service worker can disappear after the upload has succeeded.
+        }
       }
     } else {
-      // The background worker owns the persistent upload queue.
-      if (
-        response.error?.toLowerCase().includes("saved") ||
-        response.error?.toLowerCase().includes("queued")
-      ) {
-        updateStatus(response.error, "info");
-      } else {
-        updateStatus(response.error || "Failed to send", "error");
-      }
+      updateStatus(
+        response.retryRequired
+          ? "Upload not sent. Review the loaded messages and try again from this tab."
+          : response.error || "Failed to send loaded messages",
+        "error",
+      );
     }
   } catch (error) {
-    console.error("[ConvoLens] Extraction error:", error);
-    updateStatus(`Error: ${(error as Error).message}`, "error");
+    updateStatus(normalizeErrorMessage(error), "error");
   } finally {
     state.isExtracting = false;
     updateProgress(0);
@@ -373,12 +391,13 @@ async function handleExtractClick(): Promise<void> {
  */
 async function extractCurrentChatWithRetry(
   attempts: number = EXTRACTION_CONFIG.retryAttempts,
+  silent: boolean = false,
 ): Promise<ExtractedChat | null> {
   let lastError: Error | null = null;
 
   for (let i = 0; i < attempts; i++) {
     try {
-      return await extractCurrentChat();
+      return await extractCurrentChat(silent);
     } catch (error) {
       lastError = error as Error;
       console.warn(`[ConvoLens] Extraction attempt ${i + 1} failed:`, error);
@@ -396,7 +415,9 @@ async function extractCurrentChatWithRetry(
 /**
  * Extract messages from the current chat
  */
-async function extractCurrentChat(): Promise<ExtractedChat> {
+async function extractCurrentChat(
+  silent: boolean = false,
+): Promise<ExtractedChat> {
   // Get chat name
   const chatHeader = querySelector(
     SELECTORS.primary.contactName,
@@ -436,7 +457,7 @@ async function extractCurrentChat(): Promise<ExtractedChat> {
 
   for (let i = 0; i < messageContainers.length; i++) {
     // Update progress
-    if (i % 10 === 0) {
+    if (!silent && i % 10 === 0) {
       updateProgress(10 + (i / totalMessages) * 50);
     }
 
@@ -893,10 +914,16 @@ function handleMessage(
 ): boolean {
   switch (message.action) {
     case "GET_CURRENT_CHAT":
-      extractCurrentChatWithRetry()
-        .then((data) => sendResponse({ success: true, data }))
+      extractCurrentChatWithRetry(EXTRACTION_CONFIG.retryAttempts, true)
+        .then((data) => {
+          reviewedCapture = data;
+          respondSafely(sendResponse, { success: true, data });
+        })
         .catch((error) =>
-          sendResponse({ success: false, error: error.message }),
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          }),
         );
       return true;
 
@@ -928,9 +955,9 @@ function handleMessage(
         break;
       }
       authToken = typedMessage.token;
-      chrome.storage.local.set({
-        [STORAGE_KEYS.authToken]: typedMessage.token,
-      });
+      chrome.storage.local
+        .set({ [STORAGE_KEYS.authToken]: typedMessage.token })
+        .catch(() => undefined);
       sendResponse({ success: true });
       break;
     }
@@ -940,6 +967,23 @@ function handleMessage(
   }
 
   return false;
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return "The extension could not complete this operation.";
+}
+
+function respondSafely(
+  sendResponse: (response: ExtensionResponse) => void,
+  response: ExtensionResponse,
+): void {
+  try {
+    sendResponse(response);
+  } catch {
+    // The popup or tab can close while extraction is still completing.
+  }
 }
 
 // =============================================================================

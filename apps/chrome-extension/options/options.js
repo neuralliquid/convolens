@@ -48,7 +48,10 @@ const elements = {
   historyList: document.getElementById("historyList"),
 
   // Actions
-  retryPending: document.getElementById("retryPending"),
+  legacyQueueSummary: document.getElementById("legacyQueueSummary"),
+  legacyQueueActions: document.getElementById("legacyQueueActions"),
+  exportPending: document.getElementById("exportPending"),
+  deletePending: document.getElementById("deletePending"),
   clearData: document.getElementById("clearData"),
   statusMessage: document.getElementById("statusMessage"),
 
@@ -57,6 +60,35 @@ const elements = {
   helpLink: document.getElementById("helpLink"),
   privacyLink: document.getElementById("privacyLink"),
 };
+
+function normalizeExtensionError(error) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error?.message || "Extension unavailable";
+  if (
+    /message port closed|receiving end does not exist|context invalidated/i.test(
+      message,
+    )
+  ) {
+    return "The extension channel closed. Reopen settings and try again.";
+  }
+  return message;
+}
+
+async function sendRuntimeMessage(message) {
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (error) {
+    throw new Error(normalizeExtensionError(error));
+  }
+}
+
+function runAction(action) {
+  Promise.resolve()
+    .then(action)
+    .catch((error) => showStatus(normalizeExtensionError(error), "error"));
+}
 
 // =============================================================================
 // Initialization
@@ -83,18 +115,31 @@ async function init() {
 function setupEventListeners() {
   // Auth buttons
   elements.loginBtn.addEventListener("click", handleLogin);
-  elements.logoutBtn.addEventListener("click", handleLogout);
+  elements.logoutBtn.addEventListener("click", () => runAction(handleLogout));
 
   // Settings changes
-  elements.showNotifications.addEventListener("change", saveSettings);
-  elements.extractMediaMetadata.addEventListener("change", saveSettings);
-  elements.theme.addEventListener("change", saveSettings);
-  elements.apiEndpoint.addEventListener("blur", saveSettings);
-  elements.maxStoredExtractions.addEventListener("change", saveSettings);
+  elements.showNotifications.addEventListener("change", () =>
+    runAction(saveSettings),
+  );
+  elements.extractMediaMetadata.addEventListener("change", () =>
+    runAction(saveSettings),
+  );
+  elements.theme.addEventListener("change", () => runAction(saveSettings));
+  elements.apiEndpoint.addEventListener("blur", () => runAction(saveSettings));
+  elements.maxStoredExtractions.addEventListener("change", () =>
+    runAction(saveSettings),
+  );
 
   // Actions
-  elements.retryPending.addEventListener("click", handleRetryPending);
-  elements.clearData.addEventListener("click", handleClearData);
+  elements.exportPending.addEventListener("click", () =>
+    runAction(handleExportPending),
+  );
+  elements.deletePending.addEventListener("click", () =>
+    runAction(handleDeletePending),
+  );
+  elements.clearData.addEventListener("click", () =>
+    runAction(handleClearData),
+  );
 }
 
 // =============================================================================
@@ -102,7 +147,7 @@ function setupEventListeners() {
 // =============================================================================
 
 async function loadAuthStatus() {
-  const response = await chrome.runtime.sendMessage({
+  const response = await sendRuntimeMessage({
     action: "GET_AUTH_STATUS",
   });
 
@@ -121,7 +166,7 @@ function handleLogin() {
 }
 
 async function handleLogout() {
-  await chrome.runtime.sendMessage({ action: "LOGOUT" });
+  await sendRuntimeMessage({ action: "LOGOUT" });
   await loadAuthStatus();
   showStatus("Logged out successfully", "success");
 }
@@ -131,7 +176,7 @@ async function handleLogout() {
 // =============================================================================
 
 async function loadSettings() {
-  const response = await chrome.runtime.sendMessage({ action: "GET_SETTINGS" });
+  const response = await sendRuntimeMessage({ action: "GET_SETTINGS" });
   const settings = response.data || DEFAULT_SETTINGS;
 
   elements.showNotifications.checked = settings.showNotifications;
@@ -151,7 +196,7 @@ async function saveSettings() {
     maxStoredExtractions: parseInt(elements.maxStoredExtractions.value, 10),
   };
 
-  const response = await chrome.runtime.sendMessage({
+  const response = await sendRuntimeMessage({
     action: "UPDATE_SETTINGS",
     settings,
   });
@@ -178,6 +223,21 @@ async function loadStats() {
 
   elements.totalExtractions.textContent = history.length.toString();
   elements.pendingUploads.textContent = pending.length.toString();
+
+  if (pending.length === 0) {
+    elements.legacyQueueSummary.textContent = "No legacy local captures found.";
+    elements.legacyQueueActions.style.display = "none";
+  } else {
+    const queuedTimes = pending
+      .map((item) => Number(item?.queuedAt))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .sort((a, b) => a - b);
+    const timeSummary = queuedTimes.length
+      ? ` Stored between ${new Date(queuedTimes[0]).toLocaleString()} and ${new Date(queuedTimes[queuedTimes.length - 1]).toLocaleString()}.`
+      : " Stored time is unavailable.";
+    elements.legacyQueueSummary.textContent = `${pending.length} unowned legacy local capture${pending.length === 1 ? "" : "s"}.${timeSummary}`;
+    elements.legacyQueueActions.style.display = "flex";
+  }
 
   // Calculate total messages
   const totalMessages = history.reduce(
@@ -256,30 +316,65 @@ function formatDate(isoString) {
 // Actions
 // =============================================================================
 
-async function handleRetryPending() {
-  elements.retryPending.disabled = true;
-  elements.retryPending.textContent = "Retrying...";
+async function handleExportPending() {
+  elements.exportPending.disabled = true;
+  try {
+    const stored = await chrome.storage.local.get([
+      STORAGE_KEYS.pendingUploads,
+    ]);
+    const pending = stored[STORAGE_KEYS.pendingUploads] || [];
+    if (pending.length === 0) {
+      showStatus("No legacy local captures to export", "error");
+      return;
+    }
+
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          { exportedAt: new Date().toISOString(), pendingUploads: pending },
+          null,
+          2,
+        ),
+      ],
+      {
+        type: "application/json",
+      },
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `convolens-legacy-local-captures-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showStatus(
+      "Local queue exported. It remains stored until you delete it.",
+      "success",
+    );
+  } catch (error) {
+    showStatus(normalizeExtensionError(error), "error");
+  } finally {
+    elements.exportPending.disabled = false;
+  }
+}
+
+async function handleDeletePending() {
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.pendingUploads]);
+  const pending = stored[STORAGE_KEYS.pendingUploads] || [];
+  if (pending.length === 0) return;
+  if (
+    !confirm(
+      `Delete ${pending.length} unowned legacy local capture${pending.length === 1 ? "" : "s"}? Export first if you need a backup. This cannot be undone.`,
+    )
+  ) {
+    return;
+  }
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      action: "RETRY_PENDING_UPLOADS",
-    });
-
-    if (response.success) {
-      const { processed, failed, remaining } = response.data;
-      showStatus(
-        `Processed: ${processed}, Failed: ${failed}, Remaining: ${remaining}`,
-        processed > 0 ? "success" : "error",
-      );
-      await loadStats();
-    } else {
-      showStatus(response.error || "Failed to retry uploads", "error");
-    }
+    await chrome.storage.local.remove(STORAGE_KEYS.pendingUploads);
+    showStatus("Legacy local queue deleted", "success");
+    await loadStats();
   } catch (error) {
-    showStatus("Error: " + error.message, "error");
-  } finally {
-    elements.retryPending.disabled = false;
-    elements.retryPending.textContent = "Retry Pending Uploads";
+    showStatus(normalizeExtensionError(error), "error");
   }
 }
 
@@ -298,7 +393,6 @@ async function handleClearData() {
     // Re-initialize default settings
     await chrome.storage.local.set({
       [STORAGE_KEYS.settings]: DEFAULT_SETTINGS,
-      [STORAGE_KEYS.pendingUploads]: [],
       [STORAGE_KEYS.extractionHistory]: [],
     });
 
@@ -328,4 +422,6 @@ function showStatus(message, type) {
 // Initialize
 // =============================================================================
 
-init();
+init().catch((error) => {
+  showStatus(normalizeExtensionError(error), "error");
+});

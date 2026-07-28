@@ -210,10 +210,6 @@ export interface ClearPendingUploadsMessage {
   action: "CLEAR_PENDING_UPLOADS";
 }
 
-export interface RetryPendingUploadsMessage {
-  action: "RETRY_PENDING_UPLOADS";
-}
-
 // Union type of all message types
 export type ExtensionMessage =
   | GetCurrentChatMessage
@@ -227,8 +223,7 @@ export type ExtensionMessage =
   | LogoutMessage
   | GetSettingsMessage
   | UpdateSettingsMessage
-  | ClearPendingUploadsMessage
-  | RetryPendingUploadsMessage;
+  | ClearPendingUploadsMessage;
 
 // Helper type to extract action names
 export type MessageAction = ExtensionMessage["action"];
@@ -242,6 +237,8 @@ export interface SuccessResponse<T = unknown> {
 export interface ErrorResponse {
   success: false;
   error: string;
+  code?: "retry-required" | "channel-closed";
+  retryRequired?: boolean;
 }
 
 export type ExtensionResponse<T = unknown> = SuccessResponse<T> | ErrorResponse;
@@ -260,10 +257,4 @@ export interface CheckStatusData {
   isWhatsAppWeb: boolean;
   isLoggedIn: boolean;
   isExtracting: boolean;
-}
-
-export interface PendingUploadsData {
-  processed: number;
-  failed?: number;
-  remaining?: number;
 }

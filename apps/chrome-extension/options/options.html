@@ -84,6 +84,22 @@
       color: #666;
     }
 
+    .migration-copy {
+      color: #4b5563;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
+    .migration-meta {
+      padding: 12px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      color: #374151;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
     .setting-control {
       margin-left: 16px;
     }
@@ -407,7 +423,7 @@
         </div>
         <div class="stat-item">
           <div class="stat-value" id="pendingUploads">0</div>
-          <div class="stat-label">Pending Uploads</div>
+          <div class="stat-label">Legacy Local Captures</div>
         </div>
         <div class="stat-item">
           <div class="stat-value" id="totalMessages">0</div>
@@ -424,11 +440,25 @@
       </div>
     </div>
 
+    <!-- Legacy queue migration -->
+    <div class="card">
+      <h2>Legacy Local Capture Migration</h2>
+      <p class="migration-copy">
+        Older extension versions may have stored complete captures without a trustworthy account owner.
+        ConvoLens will never upload those entries under the current account. You can export a local backup
+        or delete the local queue after confirmation.
+      </p>
+      <div class="migration-meta" id="legacyQueueSummary">No legacy local captures found.</div>
+      <div class="button-row" id="legacyQueueActions" style="display: none;">
+        <button class="btn btn-secondary" id="exportPending">Export Local Queue</button>
+        <button class="btn btn-danger" id="deletePending">Delete Local Queue</button>
+      </div>
+    </div>
+
     <!-- Data Management -->
     <div class="card">
       <h2>Data Management</h2>
       <div class="button-row">
-        <button class="btn btn-secondary" id="retryPending">Retry Pending Uploads</button>
         <button class="btn btn-danger" id="clearData">Clear All Data</button>
       </div>
       <div class="status" id="statusMessage"></div>

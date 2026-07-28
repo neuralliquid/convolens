@@ -21,6 +21,12 @@ const userAvatar = document.getElementById("userAvatar");
 const actionStatus = document.getElementById("actionStatus");
 const extensionVersion = document.getElementById("extensionVersion");
 const dashboardLink = document.getElementById("dashboardLink");
+const capturePreview = document.getElementById("capturePreview");
+const captureSummary = document.getElementById("captureSummary");
+const confirmCapture = document.getElementById("confirmCapture");
+const cancelCapture = document.getElementById("cancelCapture");
+
+let pendingCapture = null;
 
 extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
 dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
@@ -30,6 +36,43 @@ function setActionStatus(message = "", type = "info") {
   actionStatus.className = message
     ? `action-status show ${type}`
     : "action-status";
+}
+
+function normalizeExtensionError(error) {
+  const message =
+    typeof error === "string"
+      ? error
+      : error?.message || "Extension unavailable";
+  if (
+    /message port closed|receiving end does not exist|context invalidated|tab was closed/i.test(
+      message,
+    )
+  ) {
+    return "The extension channel closed. Reopen the popup and review the loaded messages again.";
+  }
+  return message;
+}
+
+async function sendRuntimeMessage(message) {
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (error) {
+    const normalized = new Error(normalizeExtensionError(error));
+    normalized.code = "channel-closed";
+    throw normalized;
+  }
+}
+
+function openTab(url) {
+  chrome.tabs
+    .create({ url })
+    .catch((error) => setActionStatus(normalizeExtensionError(error), "error"));
+}
+
+function clearCapturePreview() {
+  pendingCapture = null;
+  captureSummary.textContent = "";
+  capturePreview.classList.remove("show");
 }
 
 function isWhatsAppTab(tab) {
@@ -75,7 +118,7 @@ async function sendToWhatsApp(tabId, message) {
 // Initialize popup
 async function init() {
   // Check auth status
-  const authStatus = await chrome.runtime.sendMessage({
+  const authStatus = await sendRuntimeMessage({
     action: "GET_AUTH_STATUS",
   });
 
@@ -143,40 +186,50 @@ loginBtn.addEventListener("click", async () => {
   loginBtn.textContent = "Connecting…";
   loginBtn.disabled = true;
 
-  const result = await chrome.runtime.sendMessage({
-    action: "SYNC_MYSTIRA_AUTH",
-  });
-
-  loginBtn.textContent = "I've signed in — connect";
-  loginBtn.disabled = false;
-
-  if (result.success) {
-    showLoggedIn(result.data?.user);
-    loginError.textContent = "";
-    setActionStatus("Connected. Choose a WhatsApp chat to send.", "success");
-  } else {
-    loginError.textContent =
-      result.error || "Complete sign in, then try again.";
-    chrome.tabs.create({
-      url: `${DASHBOARD_URL}/login?callbackUrl=${encodeURIComponent("/dashboard/import")}`,
-    });
+  try {
+    const result = await sendRuntimeMessage({ action: "SYNC_MYSTIRA_AUTH" });
+    if (result.success) {
+      showLoggedIn(result.data?.user);
+      loginError.textContent = "";
+      setActionStatus(
+        "Connected. Choose a WhatsApp chat and review its loaded messages.",
+        "success",
+      );
+    } else {
+      loginError.textContent =
+        result.error || "Complete sign in, then try again.";
+      openTab(
+        `${DASHBOARD_URL}/login?callbackUrl=${encodeURIComponent("/dashboard/import")}`,
+      );
+    }
+  } catch (error) {
+    loginError.textContent = normalizeExtensionError(error);
+  } finally {
+    loginBtn.textContent = "I've signed in — connect";
+    loginBtn.disabled = false;
   }
 });
 
 signupBtn.addEventListener("click", () => {
-  chrome.tabs.create({
-    url: `${DASHBOARD_URL}/login?callbackUrl=${encodeURIComponent("/dashboard/import")}`,
-  });
+  openTab(
+    `${DASHBOARD_URL}/login?callbackUrl=${encodeURIComponent("/dashboard/import")}`,
+  );
 });
 
 logoutBtn.addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ action: "LOGOUT" });
-  showLoggedOut();
+  try {
+    await sendRuntimeMessage({ action: "LOGOUT" });
+    clearCapturePreview();
+    showLoggedOut();
+  } catch (error) {
+    setActionStatus(normalizeExtensionError(error), "error");
+  }
 });
 
 extractBtn.addEventListener("click", async () => {
-  const defaultLabel = "Send Current Chat";
+  const defaultLabel = "Review loaded messages";
   setActionStatus("");
+  clearCapturePreview();
 
   try {
     const tab = await getWhatsAppTab();
@@ -186,7 +239,7 @@ extractBtn.addEventListener("click", async () => {
       return;
     }
 
-    extractBtn.textContent = "Reading chat…";
+    extractBtn.textContent = "Reading loaded messages…";
     extractBtn.disabled = true;
 
     const response = await sendToWhatsApp(tab.id, {
@@ -194,28 +247,21 @@ extractBtn.addEventListener("click", async () => {
     });
 
     if (response.success) {
-      const sendResult = await chrome.runtime.sendMessage({
-        action: "SEND_CHAT_DATA",
-        data: response.data,
-      });
-
-      if (sendResult.success) {
-        extractBtn.textContent = "Sent";
-        const messageCount = response.data?.messages?.length;
+      const messageCount = response.data?.messages?.length || 0;
+      if (!messageCount) {
         setActionStatus(
-          messageCount
-            ? `${messageCount} messages received by ConvoLens.`
-            : "Chat received by ConvoLens.",
-          "success",
+          "No readable loaded messages were found in the selected chat.",
+          "error",
         );
-      } else {
-        const wasSaved = sendResult.error?.toLowerCase().includes("saved");
-        setActionStatus(
-          sendResult.error ||
-            "ConvoLens could not receive this chat. Please try again.",
-          wasSaved ? "info" : "error",
-        );
+        return;
       }
+      pendingCapture = response.data;
+      captureSummary.textContent = `${messageCount} loaded message${messageCount === 1 ? "" : "s"} from ${response.data.chatName || "the selected chat"}.`;
+      capturePreview.classList.add("show");
+      setActionStatus(
+        "Review the loaded-message scope, then confirm or cancel.",
+        "info",
+      );
     } else {
       setActionStatus(
         response.error ||
@@ -224,16 +270,7 @@ extractBtn.addEventListener("click", async () => {
       );
     }
   } catch (error) {
-    const receiverUnavailable = error?.message?.includes(
-      "Receiving end does not exist",
-    );
-    setActionStatus(
-      receiverUnavailable
-        ? "Refresh WhatsApp Web once, then reopen the chat."
-        : error?.message ||
-            "The extension could not read this chat. Please try again.",
-      "error",
-    );
+    setActionStatus(normalizeExtensionError(error), "error");
   } finally {
     window.setTimeout(() => {
       extractBtn.textContent = defaultLabel;
@@ -242,9 +279,54 @@ extractBtn.addEventListener("click", async () => {
   }
 });
 
+confirmCapture.addEventListener("click", async () => {
+  if (!pendingCapture) return;
+  confirmCapture.disabled = true;
+  cancelCapture.disabled = true;
+  setActionStatus(
+    `Sending ${pendingCapture.messages.length} loaded messages…`,
+    "info",
+  );
+
+  try {
+    const sendResult = await sendRuntimeMessage({
+      action: "SEND_CHAT_DATA",
+      data: pendingCapture,
+    });
+    if (sendResult.success) {
+      const messageCount = pendingCapture.messages.length;
+      clearCapturePreview();
+      setActionStatus(
+        `${messageCount} loaded message${messageCount === 1 ? "" : "s"} received by ConvoLens.`,
+        "success",
+      );
+    } else {
+      setActionStatus(
+        sendResult.retryRequired
+          ? "Upload not sent. Keep this popup open to retry, or recapture and review again."
+          : sendResult.error ||
+              "ConvoLens could not receive these loaded messages.",
+        "error",
+      );
+    }
+  } catch (error) {
+    setActionStatus(normalizeExtensionError(error), "error");
+  } finally {
+    confirmCapture.disabled = false;
+    cancelCapture.disabled = false;
+  }
+});
+
+cancelCapture.addEventListener("click", () => {
+  clearCapturePreview();
+  setActionStatus("Upload cancelled. Nothing was sent.", "info");
+});
+
 openDashboard.addEventListener("click", () => {
-  chrome.tabs.create({ url: `${DASHBOARD_URL}/dashboard` });
+  openTab(`${DASHBOARD_URL}/dashboard`);
 });
 
 // Initialize
-init();
+init().catch((error) => {
+  setActionStatus(normalizeExtensionError(error), "error");
+});
