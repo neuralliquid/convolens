@@ -86,7 +86,10 @@ test("serializes upload, restores popup state, and classifies lifecycle teardown
 });
 
 test("clears reviewed payloads before authentication changes account", () => {
-  assert.match(backgroundSource, /await clearCaptureOperationsForLogout\(\)/);
+  assert.match(
+    backgroundSource,
+    /await clearCaptureStateAndAuthentication\(true\)/,
+  );
   assert.match(
     backgroundSource,
     /await Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)/,
@@ -103,5 +106,28 @@ test("allows a page-owned retry-required operation to confirm again", () => {
   assert.match(
     contentSource,
     /response\.data\.state === "retry-required"[\s\S]*pageConfirmationOperationId = null/,
+  );
+});
+
+test("invalidates collection and upload continuations across auth changes", () => {
+  assert.match(backgroundSource, /let captureLifecycleEpoch = 0/);
+  assert.match(
+    backgroundSource,
+    /const operationEpoch = captureLifecycleEpoch/,
+  );
+  assert.match(
+    backgroundSource,
+    /isCurrentCaptureOperation\(operation, operationEpoch\)/,
+  );
+  assert.match(backgroundSource, /clearCaptureStateAndAuthentication\(false\)/);
+  assert.match(backgroundSource, /captureOperationEpochs\.clear\(\)/);
+  assert.match(backgroundSource, /captureAuthTransitionCount > 0/);
+});
+
+test("counts repeated terminal renders only once", () => {
+  assert.match(contentSource, /lastCountedTerminalOperationId/);
+  assert.match(
+    contentSource,
+    /lastCountedTerminalOperationId !== operation\.operationId/,
   );
 });

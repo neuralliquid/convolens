@@ -132,6 +132,7 @@ interface ActiveCaptureOperation {
 
 let activeCaptureOperation: ActiveCaptureOperation | null = null;
 let pageConfirmationOperationId: string | null = null;
+let lastCountedTerminalOperationId: string | null = null;
 const chatIdentityTokens = new Map<string, string>();
 
 // =============================================================================
@@ -429,8 +430,11 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
             : `${operation.extractedCount} loaded messages received by ConvoLens.`,
         "success",
       );
-      state.lastExtraction = Date.now();
-      state.extractionCount++;
+      if (lastCountedTerminalOperationId !== operation.operationId) {
+        lastCountedTerminalOperationId = operation.operationId;
+        state.lastExtraction = Date.now();
+        state.extractionCount++;
+      }
       break;
     case "retry-required":
       updateProgress(0);

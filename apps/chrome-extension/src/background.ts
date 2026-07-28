@@ -57,11 +57,14 @@ class HttpRequestError extends Error {
 // Storage key for persistent rate limiting
 const RATE_LIMIT_STORAGE_KEY = "ws_rate_limit_state";
 const captureOperations = new Map<number, CaptureOperationSnapshot>();
+const captureOperationEpochs = new Map<string, number>();
 const captureUploadPromises = new Map<
   string,
   Promise<ExtensionResponse<CaptureOperationSnapshot>>
 >();
 let captureOperationsLoadPromise: Promise<void> | null = null;
+let captureLifecycleEpoch = 0;
+let captureAuthTransitionCount = 0;
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const operation = captureOperations.get(tabId);
@@ -234,6 +237,7 @@ async function loadCaptureOperations(): Promise<void> {
           )
         : operation;
       captureOperations.set(tabId, restored);
+      captureOperationEpochs.set(restored.operationId, captureLifecycleEpoch);
       if (restored !== operation) interrupted.push(restored);
     }
     await persistCaptureOperations();
@@ -277,6 +281,13 @@ async function startCaptureOperation(
   message: StartCaptureOperationMessage,
   sender: chrome.runtime.MessageSender,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const operationEpoch = captureLifecycleEpoch;
+  if (captureAuthTransitionCount > 0) {
+    return {
+      success: false,
+      error: "Authentication is changing. Try capture again after it finishes.",
+    };
+  }
   const tabId = resolveCaptureTabId(message.tabId, sender);
   if (tabId === null) {
     return {
@@ -285,13 +296,24 @@ async function startCaptureOperation(
     };
   }
   await loadCaptureOperations();
+  if (operationEpoch !== captureLifecycleEpoch) {
+    return {
+      success: false,
+      error: "Authentication changed while capture was starting. Try again.",
+    };
+  }
 
   const existing = captureOperations.get(tabId);
-  if (existing && isActiveCaptureState(existing.state)) {
+  if (
+    existing &&
+    isActiveCaptureState(existing.state) &&
+    captureOperationEpochs.get(existing.operationId) === captureLifecycleEpoch
+  ) {
     return { success: true, data: existing };
   }
 
   let operation = createCaptureOperation(tabId, message.initiator);
+  captureOperationEpochs.set(operation.operationId, operationEpoch);
   await publishCaptureOperation(operation);
   operation = { ...operation, state: "collecting" };
   await publishCaptureOperation(operation);
@@ -303,6 +325,12 @@ async function startCaptureOperation(
     })) as ExtensionResponse<{
       summary: CaptureCollectionSummary;
     }>;
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed while messages were being read.",
+      );
+    }
     if (!response.success || !response.data?.summary) {
       return await finishCaptureOperation(
         operation,
@@ -343,6 +371,12 @@ async function confirmCaptureOperation(
   message: ConfirmCaptureOperationMessage,
   sender: chrome.runtime.MessageSender,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  if (captureAuthTransitionCount > 0) {
+    return {
+      success: false,
+      error: "Authentication is changing. Recapture after it finishes.",
+    };
+  }
   const tabId = resolveCaptureTabId(message.tabId, sender);
   if (tabId === null) {
     return {
@@ -356,6 +390,15 @@ async function confirmCaptureOperation(
     return {
       success: false,
       error: "This capture operation is no longer current.",
+    };
+  }
+  if (
+    captureOperationEpochs.get(operation.operationId) !== captureLifecycleEpoch
+  ) {
+    return {
+      success: false,
+      error:
+        "Authentication changed. Recapture and review the loaded messages.",
     };
   }
   if (
@@ -378,6 +421,9 @@ async function confirmCaptureOperation(
 async function uploadCaptureOperation(
   initialOperation: CaptureOperationSnapshot,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const operationEpoch =
+    captureOperationEpochs.get(initialOperation.operationId) ??
+    captureLifecycleEpoch;
   let operation: CaptureOperationSnapshot = {
     ...initialOperation,
     state: "uploading",
@@ -390,6 +436,12 @@ async function uploadCaptureOperation(
       action: "GET_CAPTURE_OPERATION_PAYLOAD",
       operationId: operation.operationId,
     })) as ExtensionResponse<SendChatDataMessage["data"]>;
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed before upload.",
+      );
+    }
     if (!payloadResponse.success || !payloadResponse.data) {
       return await finishCaptureOperation(
         operation,
@@ -401,6 +453,12 @@ async function uploadCaptureOperation(
     }
 
     const uploadResult = await sendChatData(payloadResponse.data);
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed during upload.",
+      );
+    }
     if (!uploadResult.success) {
       if (uploadResult.retryRequired) {
         operation = {
@@ -436,12 +494,41 @@ async function uploadCaptureOperation(
     await discardCapturePayload(operation);
     return { success: true, data: operation };
   } catch (error) {
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed during upload.",
+      );
+    }
     return await finishCaptureOperation(
       operation,
       "cancelled",
       normalizeChannelLifecycleReason(error),
     );
   }
+}
+
+function isCurrentCaptureOperation(
+  operation: CaptureOperationSnapshot,
+  operationEpoch: number,
+): boolean {
+  return (
+    operationEpoch === captureLifecycleEpoch &&
+    captureOperationEpochs.get(operation.operationId) === operationEpoch &&
+    captureOperations.get(operation.tabId)?.operationId ===
+      operation.operationId
+  );
+}
+
+async function abandonCaptureOperation(
+  operation: CaptureOperationSnapshot,
+  reason: string,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  await discardCapturePayload(operation);
+  return {
+    success: true,
+    data: completeCaptureOperation(operation, "cancelled", reason),
+  };
 }
 
 async function cancelCaptureOperation(
@@ -641,7 +728,7 @@ async function fetchWithRetry(
         if (response.status === 401 || response.status === 403) {
           // This path can run inside a capture upload, so it must not wait for
           // the upload promise that is currently executing.
-          await clearAuthenticationState();
+          await clearCaptureStateAndAuthentication(false);
           throw new Error("Authentication expired. Please log in again.");
         }
 
@@ -875,8 +962,7 @@ async function handleLogin(
 }
 
 async function handleLogout(): Promise<ExtensionResponse> {
-  await clearCaptureOperationsForLogout();
-  await clearAuthenticationState();
+  await clearCaptureStateAndAuthentication(true);
 
   return { success: true };
 }
@@ -890,27 +976,39 @@ async function clearAuthenticationState(): Promise<void> {
   await notifyContentScripts(null);
 }
 
-async function clearCaptureOperationsForLogout(): Promise<void> {
-  await loadCaptureOperations();
+async function clearCaptureStateAndAuthentication(
+  waitForUploads: boolean,
+): Promise<void> {
+  captureAuthTransitionCount += 1;
+  try {
+    await loadCaptureOperations();
+    captureLifecycleEpoch += 1;
 
-  // An upload already carries the current account's authorization and cannot
-  // be truthfully undone. Let it settle before clearing that account, then
-  // remove every old-account snapshot and in-tab reviewed payload.
-  await Promise.allSettled([...captureUploadPromises.values()]);
-
-  for (const operation of [...captureOperations.values()]) {
-    if (isActiveCaptureState(operation.state)) {
-      await finishCaptureOperation(
-        operation,
-        "cancelled",
-        "Sign-out cancelled the reviewed capture. Nothing new was sent.",
-      );
-    } else {
-      await discardCapturePayload(operation);
+    // An upload already carries the current account's authorization and cannot
+    // be truthfully undone. Let it settle before clearing that account, then
+    // remove every old-account snapshot and in-tab reviewed payload.
+    if (waitForUploads) {
+      await Promise.allSettled([...captureUploadPromises.values()]);
     }
+
+    for (const operation of [...captureOperations.values()]) {
+      if (isActiveCaptureState(operation.state)) {
+        await finishCaptureOperation(
+          operation,
+          "cancelled",
+          "Sign-out cancelled the reviewed capture. Nothing new was sent.",
+        );
+      } else {
+        await discardCapturePayload(operation);
+      }
+    }
+    captureOperations.clear();
+    captureOperationEpochs.clear();
+    await persistCaptureOperations();
+    await clearAuthenticationState();
+  } finally {
+    captureAuthTransitionCount -= 1;
   }
-  captureOperations.clear();
-  await persistCaptureOperations();
 }
 
 // =============================================================================

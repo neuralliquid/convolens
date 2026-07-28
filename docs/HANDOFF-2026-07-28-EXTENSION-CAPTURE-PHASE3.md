@@ -10,7 +10,7 @@ Phase 3 implements the shared capture-operation slice from the phased extension 
 - `chrome.storage.session` retains only bounded operation metadata so reopening the popup can render the active or most recent operation. Chat identity is represented by an opaque, per-tab token; WhatsApp JIDs, contact labels, participants, and messages are not persisted in operation state.
 - Popup closure does not own or cancel an in-flight upload. The background upload promise continues, updates the shared operation, and safely ignores a closed response channel.
 - Concurrent starts reuse the current per-tab operation, and concurrent confirmations reuse one upload promise. Cancellation is refused once an upload has begun because an external request can no longer be truthfully undone.
-- Sign-out waits for any already-authorized upload to settle, then cancels and discards every prior-account operation and reviewed tab payload before clearing authentication. A later account cannot inherit an earlier account's review.
+- Each collection/upload carries the current capture-lifecycle epoch. Sign-out invalidates the epoch, waits for any already-authorized upload to settle, then cancels and discards every prior-account operation and reviewed tab payload before clearing authentication. Authentication expiry invalidates and clears all operations without waiting on the request that detected the expiry. No stale async continuation can republish after either transition, so a later account cannot inherit an earlier account's review.
 - Content-script navigation compares the selected chat's verified JID or scoped header fallback and cancels pre-upload collection/review when the chat changes. Page unload, tab closure, missing receivers, and background restart become explicit cancellation outcomes.
 - Both surfaces render the same operation updates, including duplicate and reconciliation-required outcomes. Loaded-message confirmation remains mandatory, and guided/automatic history capture remains unavailable.
 - Extension runtime and package metadata are synchronized at `1.0.14`.
@@ -25,13 +25,13 @@ Phase 3 implements the shared capture-operation slice from the phased extension 
 
 ## Validation
 
-- Chrome extension Node tests: 40 passed, 0 failed, including shared-state, persistence-boundary, double-activation, navigation, teardown, logout isolation, page retry, and popup-reopen source contracts.
+- Chrome extension Node tests: 42 passed, 0 failed, including shared-state, persistence-boundary, double-activation, navigation, teardown, auth-transition invalidation, terminal-render deduplication, logout isolation, page retry, and popup-reopen source contracts.
 - Chrome extension TypeScript: passed.
 - Popup JavaScript syntax and `git diff --check`: passed.
 - Repository forced Turbo build with a worktree-local cache: 8 of 8 packages passed. The ordinary exact-source rerun encountered a Windows shared-cache log permission error after task replay; the isolated-cache run completed all tasks uncached.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.14`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `FC72B9641241550F77F4BB771B3C7F5B1C00F1AFB31DDE633139430F49D1B8CA`.
+- Packaged ZIP SHA-256: `2CF88BC5AB279C84120A21A20BF61BF364E1C5C3526317F3C893F29891BCE998`.
 
 ## Boundaries still open
 
