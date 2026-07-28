@@ -174,6 +174,19 @@ test("moves focus into the panel and clears cancelled-drag suppression", () => {
   );
 });
 
+test("exposes collapsed badge state through the launcher accessible name", () => {
+  assert.match(
+    contentSource,
+    /function updateLauncherBadge[\s\S]*updateLauncherToggleLabel\(\)/,
+  );
+  assert.match(
+    contentSource,
+    /getLauncherAccessibleStatus\(\)[\s\S]*loaded message[\s\S]*ready for review/,
+  );
+  assert.match(contentSource, /Capture needs attention/);
+  assert.match(contentSource, /legacy local capture/);
+});
+
 test("revalidates authentication and safe legacy state after options changes", () => {
   assert.match(
     backgroundSource,

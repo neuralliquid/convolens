@@ -448,12 +448,7 @@ function setLauncherExpanded(expanded: boolean, restoreFocus = false): void {
   if (!panel || !toggle) return;
   panel.hidden = !expanded;
   toggle.setAttribute("aria-expanded", String(expanded));
-  toggle.setAttribute(
-    "aria-label",
-    expanded
-      ? "Close ConvoLens capture panel. Drag to move."
-      : "Open ConvoLens capture panel. Drag to move.",
-  );
+  updateLauncherToggleLabel();
   if (expanded) {
     panel.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
   }
@@ -836,6 +831,51 @@ function updateLauncherBadge(operation: CaptureOperationSnapshot | null): void {
   }
   badge.textContent = value;
   badge.toggleAttribute("data-visible", value.length > 0);
+  updateLauncherToggleLabel();
+}
+
+function updateLauncherToggleLabel(): void {
+  const toggle = document.getElementById(
+    "ws-launcher-toggle",
+  ) as HTMLButtonElement | null;
+  if (!toggle) return;
+  const action =
+    toggle.getAttribute("aria-expanded") === "true" ? "Close" : "Open";
+  toggle.setAttribute(
+    "aria-label",
+    `${action} ConvoLens capture panel. ${getLauncherAccessibleStatus()} Drag to move.`,
+  );
+}
+
+function getLauncherAccessibleStatus(): string {
+  if (launcherOperation?.state === "ready-for-review") {
+    return `${launcherOperation.extractedCount} loaded message${launcherOperation.extractedCount === 1 ? "" : "s"} ready for review.`;
+  }
+  if (
+    launcherOperation &&
+    ["inspecting", "collecting"].includes(launcherOperation.state)
+  ) {
+    return "Reading loaded messages.";
+  }
+  if (launcherOperation?.state === "uploading") {
+    return "Sending reviewed messages.";
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state)
+  ) {
+    return "Capture received by ConvoLens.";
+  }
+  if (
+    launcherOperation &&
+    ["retry-required", "failed", "cancelled"].includes(launcherOperation.state)
+  ) {
+    return "Capture needs attention.";
+  }
+  if (legacyQueueCount > 0) {
+    return `${legacyQueueCount} legacy local capture${legacyQueueCount === 1 ? "" : "s"} need review.`;
+  }
+  return "Ready.";
 }
 
 function getCurrentChatIdentity(): string {
