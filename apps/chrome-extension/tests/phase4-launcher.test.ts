@@ -20,6 +20,10 @@ const backgroundSource = await readFile(
   new URL("../src/background.ts", import.meta.url),
   "utf8",
 );
+const optionsSource = await readFile(
+  new URL("../options/options.js", import.meta.url),
+  "utf8",
+);
 
 test("normalizes persisted launcher placement without trusting arbitrary data", () => {
   assert.deepEqual(normalizeLauncherPosition(null), {
@@ -101,7 +105,7 @@ test("gets only a safe legacy count from the background", () => {
     contentSource.indexOf("async function refreshLauncherAuthenticationState"),
     contentSource.indexOf("function updateStatus"),
   );
-  assert.match(injection, /refreshLauncherAuthenticationState\(authToken\)/);
+  assert.doesNotMatch(injection, /STORAGE_KEYS\.authToken/);
   assert.match(authenticationRefresh, /GET_LEGACY_QUEUE_SUMMARY/);
   assert.doesNotMatch(injection, /STORAGE_KEYS\.pendingUploads/);
   assert.doesNotMatch(contentSource, /chrome\.storage\.onChanged/);
@@ -113,7 +117,15 @@ test("gets only a safe legacy count from the background", () => {
 test("refreshes account-scoped launcher state on authentication messages", () => {
   assert.match(
     contentSource,
-    /typeof storedToken === "string" && storedToken\.trim\(\)\.length > 0[\s\S]*\? storedToken[\s\S]*: null/,
+    /function normalizeAuthToken[\s\S]*typeof value === "string" && value\.trim\(\)\.length > 0/,
+  );
+  assert.match(
+    contentSource,
+    /async function refreshLauncherFromValidatedAuthentication[\s\S]*GET_AUTH_STATUS[\s\S]*isAuthenticated[\s\S]*normalizeAuthToken/,
+  );
+  assert.match(
+    contentSource,
+    /await refreshLauncherFromValidatedAuthentication\(\)\.catch\(\(\) => undefined\)/,
   );
   assert.match(
     contentSource,
@@ -137,11 +149,7 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     contentSource,
-    /await refreshLauncherAuthenticationState\(authToken\)\.catch\(\(\) => undefined\)/,
-  );
-  assert.match(
-    contentSource,
-    /case "SET_AUTH_TOKEN"[\s\S]*refreshLauncherAuthenticationState\(typedMessage\.token\)/,
+    /case "SET_AUTH_TOKEN"[\s\S]*authToken = normalizeAuthToken\(typedMessage\.token\)[\s\S]*refreshLauncherAuthenticationState\(authToken\)/,
   );
   assert.match(contentSource, /launcherOperation = null/);
 });
@@ -152,5 +160,28 @@ test("moves focus into the panel and clears cancelled-drag suppression", () => {
     /if \(expanded\) \{\s*panel\.querySelector<HTMLButtonElement>\("button:not\(\[disabled\]\)"\)\?\.focus\(\)/,
   );
   assert.match(contentSource, /pointercancel[\s\S]*finishDrag\(event, true\)/);
-  assert.match(contentSource, /if \(cancelled\) launcherSuppressClick = false/);
+  assert.match(
+    contentSource,
+    /if \(cancelled\) \{\s*drag = undefined;\s*launcherSuppressClick = false;\s*applyLauncherPosition\(\);\s*return;/,
+  );
+});
+
+test("revalidates authentication and safe legacy state after options changes", () => {
+  assert.match(
+    backgroundSource,
+    /case "REFRESH_LAUNCHER_STATE"[\s\S]*notifyLauncherStateRefresh/,
+  );
+  assert.match(
+    backgroundSource,
+    /const syncResponse = await syncMystiraSession\(\)[\s\S]*if \(!syncResponse\.success\)[\s\S]*isAuthenticated: false/,
+  );
+  assert.match(
+    optionsSource,
+    /remove\(STORAGE_KEYS\.pendingUploads\)[\s\S]*notifyLauncherStateRefresh\(\)/,
+  );
+  assert.match(
+    optionsSource,
+    /chrome\.storage\.local\.clear\(\)[\s\S]*notifyLauncherStateRefresh\(\)/,
+  );
+  assert.doesNotMatch(contentSource, /chrome\.storage\.onChanged/);
 });

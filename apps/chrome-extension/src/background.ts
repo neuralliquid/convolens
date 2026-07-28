@@ -147,6 +147,10 @@ async function handleMessage(
     case "GET_LEGACY_QUEUE_SUMMARY":
       return await getLegacyQueueSummary();
 
+    case "REFRESH_LAUNCHER_STATE":
+      await notifyLauncherStateRefresh();
+      return { success: true };
+
     case "CONFIRM_CAPTURE_OPERATION":
       return await confirmCaptureOperation(message, _sender);
 
@@ -963,7 +967,13 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
     !stored[STORAGE_KEYS.authToken] ||
     (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
   ) {
-    await syncMystiraSession();
+    const syncResponse = await syncMystiraSession();
+    if (!syncResponse.success) {
+      return {
+        success: true,
+        data: { isAuthenticated: false },
+      };
+    }
     stored = await chrome.storage.local.get([
       STORAGE_KEYS.authToken,
       STORAGE_KEYS.user,
@@ -1068,6 +1078,19 @@ async function notifyContentScripts(token: string | null): Promise<void> {
       tab.id
         ? chrome.tabs
             .sendMessage(tab.id, { action: "SET_AUTH_TOKEN", token })
+            .catch(() => undefined)
+        : Promise.resolve(),
+    ),
+  );
+}
+
+async function notifyLauncherStateRefresh(): Promise<void> {
+  const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+  await Promise.all(
+    tabs.map((tab) =>
+      tab.id
+        ? chrome.tabs
+            .sendMessage(tab.id, { action: "REFRESH_LAUNCHER_STATE" })
             .catch(() => undefined)
         : Promise.resolve(),
     ),

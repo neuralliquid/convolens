@@ -23,6 +23,7 @@ import {
   type ExtensionResponse,
   type SetAuthTokenMessage,
   type CheckStatusData,
+  type AuthStatusData,
 } from "./config";
 import type {
   CaptureCollectionSummary,
@@ -177,20 +178,9 @@ async function init(): Promise<void> {
   // Wait for WhatsApp to fully load
   await waitForWhatsAppReady();
 
-  // Load saved auth token
-  try {
-    const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
-    const storedToken = stored[STORAGE_KEYS.authToken];
-    authToken =
-      typeof storedToken === "string" && storedToken.trim().length > 0
-        ? storedToken
-        : null;
-  } catch (error) {
-    console.warn("[ConvoLens] Failed to load auth token:", error);
-  }
-
   // Inject UI elements
   await injectUI();
+  await refreshLauncherFromValidatedAuthentication().catch(() => undefined);
   window.addEventListener("resize", handleViewportResize);
 
   // Observe chat navigation
@@ -288,13 +278,13 @@ async function injectUI(): Promise<void> {
       </header>
       <div id="ws-status" class="ws-status ws-status-info" role="status" aria-live="polite">
         <div class="ws-status-icon"></div>
-        <span id="ws-status-text">Ready to review loaded messages.</span>
+        <span id="ws-status-text">Sign in to ConvoLens before reviewing loaded messages.</span>
       </div>
       <div id="ws-progress" class="ws-progress ws-hidden" aria-hidden="true">
         <div class="ws-progress-bar"></div>
       </div>
-      <button id="ws-extract-btn" class="ws-capture-btn" type="button">
-        Review loaded messages
+      <button id="ws-extract-btn" class="ws-capture-btn" type="button" disabled>
+        Sign in to capture
       </button>
       <p class="ws-scope-copy">Older messages that WhatsApp has not loaded are excluded. Nothing is sent before review and confirmation.</p>
       <div id="ws-legacy-attention" class="ws-legacy-attention" hidden>
@@ -346,8 +336,6 @@ async function injectUI(): Promise<void> {
       }
     });
   });
-
-  await refreshLauncherAuthenticationState(authToken).catch(() => undefined);
 }
 
 function setupLauncherInteraction(): void {
@@ -409,6 +397,12 @@ function setupLauncherInteraction(): void {
     if (toggle.hasPointerCapture(event.pointerId)) {
       toggle.releasePointerCapture(event.pointerId);
     }
+    if (cancelled) {
+      drag = undefined;
+      launcherSuppressClick = false;
+      applyLauncherPosition();
+      return;
+    }
     if (launcherSuppressClick) {
       const rect = fab.getBoundingClientRect();
       void setLauncherPosition({
@@ -420,7 +414,6 @@ function setupLauncherInteraction(): void {
       });
     }
     drag = undefined;
-    if (cancelled) launcherSuppressClick = false;
   };
   toggle.addEventListener("pointerup", (event) => finishDrag(event));
   toggle.addEventListener("pointercancel", (event) => finishDrag(event, true));
@@ -530,6 +523,23 @@ function resetLauncherAccountState(authenticated: boolean): void {
       ? "Review loaded messages"
       : "Sign in to capture";
   }
+}
+
+function normalizeAuthToken(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+async function refreshLauncherFromValidatedAuthentication(): Promise<void> {
+  authToken = null;
+  resetLauncherAccountState(false);
+  const authResponse = (await chrome.runtime.sendMessage({
+    action: "GET_AUTH_STATUS",
+  })) as ExtensionResponse<AuthStatusData>;
+  if (!authResponse.success || !authResponse.data?.isAuthenticated) return;
+
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
+  authToken = normalizeAuthToken(stored[STORAGE_KEYS.authToken]);
+  await refreshLauncherAuthenticationState(authToken);
 }
 
 async function refreshLauncherAuthenticationState(
@@ -1595,11 +1605,11 @@ function handleMessage(
         });
         break;
       }
-      authToken = typedMessage.token;
+      authToken = normalizeAuthToken(typedMessage.token);
       chrome.storage.local
-        .set({ [STORAGE_KEYS.authToken]: typedMessage.token })
+        .set({ [STORAGE_KEYS.authToken]: authToken })
         .catch(() => undefined);
-      refreshLauncherAuthenticationState(typedMessage.token)
+      refreshLauncherAuthenticationState(authToken)
         .then(() => respondSafely(sendResponse, { success: true }))
         .catch((error) => {
           respondSafely(sendResponse, {
@@ -1609,6 +1619,17 @@ function handleMessage(
         });
       return true;
     }
+
+    case "REFRESH_LAUNCHER_STATE":
+      refreshLauncherFromValidatedAuthentication()
+        .then(() => respondSafely(sendResponse, { success: true }))
+        .catch((error) =>
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          }),
+        );
+      return true;
 
     default:
       sendResponse({ success: false, error: "Unknown action" });

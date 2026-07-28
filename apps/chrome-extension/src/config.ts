@@ -266,6 +266,10 @@ export interface GetLegacyQueueSummaryMessage {
   action: "GET_LEGACY_QUEUE_SUMMARY";
 }
 
+export interface RefreshLauncherStateMessage {
+  action: "REFRESH_LAUNCHER_STATE";
+}
+
 // Union type of all message types
 export type ExtensionMessage =
   | GetCurrentChatMessage
@@ -289,7 +293,8 @@ export type ExtensionMessage =
   | GetSettingsMessage
   | UpdateSettingsMessage
   | ClearPendingUploadsMessage
-  | GetLegacyQueueSummaryMessage;
+  | GetLegacyQueueSummaryMessage
+  | RefreshLauncherStateMessage;
 
 // Helper type to extract action names
 export type MessageAction = ExtensionMessage["action"];

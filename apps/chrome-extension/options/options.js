@@ -84,6 +84,14 @@ async function sendRuntimeMessage(message) {
   }
 }
 
+async function notifyLauncherStateRefresh() {
+  try {
+    await sendRuntimeMessage({ action: "REFRESH_LAUNCHER_STATE" });
+  } catch (error) {
+    console.warn("Launcher state refresh notification failed:", error);
+  }
+}
+
 function runAction(action) {
   Promise.resolve()
     .then(action)
@@ -371,6 +379,7 @@ async function handleDeletePending() {
 
   try {
     await chrome.storage.local.remove(STORAGE_KEYS.pendingUploads);
+    await notifyLauncherStateRefresh();
     showStatus("Legacy local queue deleted", "success");
     await loadStats();
   } catch (error) {
@@ -400,6 +409,7 @@ async function handleClearData() {
     await loadAuthStatus();
     await loadStats();
     await loadHistory();
+    await notifyLauncherStateRefresh();
   } catch (error) {
     showStatus("Error: " + error.message, "error");
   }
