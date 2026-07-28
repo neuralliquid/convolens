@@ -17,6 +17,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Opening the panel moves focus into its first enabled control, while pointer cancellation clears drag click-suppression state.
 - Escape, focus-visible, reduced-motion, forced-colour, dark-mode, and narrow-window behavior are included.
 - The launcher toggle's accessible name mirrors collapsed review count, progress, success, attention, and legacy-review state instead of relying on the hidden panel or visual badge.
+- Reconciliation-required or legacy-review attention takes precedence over a generic terminal-success check in both the visual badge and accessible status.
 - The shared Phase 3 operation state machine, explicit loaded-message review, Phase 2 reconciliation truth, and memory-only new raw capture boundary remain intact.
 - Extension runtime and package metadata are synchronized at `1.0.15`.
 
@@ -36,7 +37,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `1A5F199A0EB75CC8776DA3810933E61651888B8AE3021F03B974DFF990799839`.
+- Packaged ZIP SHA-256: `C7A954056819915E41429709C9CC526A280D43F6537CCDF0617F64DD176DB478`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open

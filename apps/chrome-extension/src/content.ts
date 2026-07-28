@@ -819,13 +819,19 @@ function updateLauncherBadge(operation: CaptureOperationSnapshot | null): void {
     ["inspecting", "collecting", "uploading"].includes(operation.state)
   ) {
     value = "…";
-  } else if (operation && ["received", "duplicate"].includes(operation.state)) {
-    value = "✓";
   } else if (
     operation &&
     ["retry-required", "failed", "cancelled"].includes(operation.state)
   ) {
     value = "!";
+  } else if (
+    operation &&
+    ["received", "duplicate"].includes(operation.state) &&
+    (operation.reconciliationRequired || legacyQueueCount > 0)
+  ) {
+    value = "!";
+  } else if (operation && ["received", "duplicate"].includes(operation.state)) {
+    value = "✓";
   } else if (legacyQueueCount > 0) {
     value = "!";
   }
@@ -862,15 +868,29 @@ function getLauncherAccessibleStatus(): string {
   }
   if (
     launcherOperation &&
-    ["received", "duplicate"].includes(launcherOperation.state)
-  ) {
-    return "Capture received by ConvoLens.";
-  }
-  if (
-    launcherOperation &&
     ["retry-required", "failed", "cancelled"].includes(launcherOperation.state)
   ) {
     return "Capture needs attention.";
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state) &&
+    launcherOperation.reconciliationRequired
+  ) {
+    return "Capture received. Reconciliation review required.";
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state) &&
+    legacyQueueCount > 0
+  ) {
+    return `Capture received. ${legacyQueueCount} legacy local capture${legacyQueueCount === 1 ? "" : "s"} need review.`;
+  }
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state)
+  ) {
+    return "Capture received by ConvoLens.";
   }
   if (legacyQueueCount > 0) {
     return `${legacyQueueCount} legacy local capture${legacyQueueCount === 1 ? "" : "s"} need review.`;

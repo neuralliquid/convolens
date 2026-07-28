@@ -185,6 +185,11 @@ test("exposes collapsed badge state through the launcher accessible name", () =>
   );
   assert.match(contentSource, /Capture needs attention/);
   assert.match(contentSource, /legacy local capture/);
+  assert.match(
+    contentSource,
+    /\["received", "duplicate"\][\s\S]*operation\.reconciliationRequired \|\| legacyQueueCount > 0[\s\S]*value = "!"/,
+  );
+  assert.match(contentSource, /Reconciliation review required/);
 });
 
 test("revalidates authentication and safe legacy state after options changes", () => {
