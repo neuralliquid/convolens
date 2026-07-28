@@ -528,18 +528,20 @@ function normalizeAuthToken(value: unknown): string | null {
 }
 
 async function refreshLauncherFromValidatedAuthentication(): Promise<void> {
-  launcherAuthRefreshGeneration += 1;
+  const refreshGeneration = ++launcherAuthRefreshGeneration;
   authToken = null;
   resetLauncherAccountState(false);
   const authResponse = (await chrome.runtime.sendMessage({
     action: "GET_AUTH_STATUS",
   })) as ExtensionResponse<AuthStatusData>;
+  if (refreshGeneration !== launcherAuthRefreshGeneration) return;
   if (authResponse.success) {
     launcherCaptureAuthGeneration = authResponse.data?.authGeneration || 0;
   }
   if (!authResponse.success || !authResponse.data?.isAuthenticated) return;
 
   const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
+  if (refreshGeneration !== launcherAuthRefreshGeneration) return;
   authToken = normalizeAuthToken(stored[STORAGE_KEYS.authToken]);
   await refreshLauncherAuthenticationState(authToken);
 }

@@ -15,6 +15,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Safe summary refreshes capture a monotonic launcher-render generation and cannot overwrite a newer live capture-operation update.
 - Failed safe-summary refreshes use the same render-generation guard and cannot clear a newer live operation.
 - Starting expiry-aware authentication validation advances the auth refresh generation immediately, invalidating older in-flight summary results even when validation ends signed out.
+- Validated outer authentication refreshes retain and recheck their generation after both async boundaries, so an older auth-status result cannot overwrite a newer token notification.
 - Capture snapshots carry the background authentication epoch; direct responses and operation-update messages render only for the content script's validated current epoch, preventing old-account state from resurfacing after logout or account switch.
 - The authentication epoch is persisted in `chrome.storage.session` and restored before auth status or capture startup, so an MV3 service-worker restart cannot reset the background to an epoch that retained content scripts reject.
 - Cancelled pointer drags restore the last saved launcher placement instead of persisting interrupted coordinates.
@@ -42,7 +43,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `46742F9423C343A251F4E7D5FD6B28BEEDDE6DECCC4402018526E55C88765D11`.
+- Packaged ZIP SHA-256: `17552A155FB839103D67CCB8198C17F190E8C4E8324AD8A31460B905A0C9000E`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open

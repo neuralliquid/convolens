@@ -125,7 +125,7 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     contentSource,
-    /async function refreshLauncherFromValidatedAuthentication[\s\S]*launcherAuthRefreshGeneration \+= 1[\s\S]*resetLauncherAccountState\(false\)/,
+    /async function refreshLauncherFromValidatedAuthentication[\s\S]*const refreshGeneration = \+\+launcherAuthRefreshGeneration[\s\S]*resetLauncherAccountState\(false\)/,
   );
   assert.match(
     contentSource,
@@ -146,6 +146,10 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   assert.match(
     contentSource,
     /const refreshGeneration = \+\+launcherAuthRefreshGeneration/,
+  );
+  assert.match(
+    contentSource,
+    /refreshLauncherFromValidatedAuthentication[\s\S]*const refreshGeneration = \+\+launcherAuthRefreshGeneration[\s\S]*GET_AUTH_STATUS[\s\S]*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;[\s\S]*chrome\.storage\.local\.get[\s\S]*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;[\s\S]*refreshLauncherAuthenticationState/,
   );
   assert.match(
     contentSource,
