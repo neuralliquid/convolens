@@ -328,6 +328,7 @@ export class ConversationIntakeService {
 
     const reconciliationCandidates = semanticCandidates.filter(
       (candidate) =>
+        !usesStableV2 ||
         !candidate.sourceConversationIdentityStable ||
         (usesStableV2 && candidate.sourceConversationId === input.sourceConversationId)
     );

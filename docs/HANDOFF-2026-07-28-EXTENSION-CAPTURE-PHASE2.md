@@ -11,7 +11,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
 - Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation and no conflicting stable participant evidence.
 - Historical unscoped, conflicting, or multiple matches are stored separately with an explicit reconciliation warning; neither intake is silently merged or discarded.
-- Compatibility normalizes legacy captionless and corrected visual-media evidence, compares all overlapping stable participant identifiers, enriches name-only references without duplicating them, and preserves reconciliation warnings on exact repeats.
+- Compatibility normalizes legacy captionless and corrected visual-media evidence, compares all overlapping stable participant identifiers, enriches name-only references without duplicating them, and preserves reconciliation warnings on exact repeats or later loss of stable scope.
 - Video takes precedence over image descendants. The dashboard renders neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges and keeps captions separate without fetching attachments.
 - Extension runtime and package metadata are synchronized at `1.0.13`.
 
@@ -34,8 +34,8 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 32 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 98 passed, 0 failed across 9 suites.
-- Focused migration, route, and compatibility tests: 23 passed, 0 failed.
+- API Jest suite: 99 passed, 0 failed across 9 suites.
+- Focused migration, route, and compatibility tests: 24 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.

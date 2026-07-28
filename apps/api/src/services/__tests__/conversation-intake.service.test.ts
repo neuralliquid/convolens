@@ -218,6 +218,18 @@ describe('ConversationIntakeService', () => {
     expect(captured.conversation.reconciliationCandidateIds).toEqual([historical.conversation.id]);
   });
 
+  it('requires reconciliation when an unscoped recapture matches a stable intake', async () => {
+    const stable = await service.save(stableInput());
+    const unscoped = stableInput();
+    delete unscoped.sourceConversationId;
+    unscoped.sourceConversationIdentityStable = false;
+    const captured = await service.save(unscoped);
+
+    expect(captured.duplicate).toBe(false);
+    expect(captured.reconciliationRequired).toBe(true);
+    expect(captured.conversation.reconciliationCandidateIds).toEqual([stable.conversation.id]);
+  });
+
   it('preserves reconciliation state when the separated capture repeats exactly', async () => {
     await service.save(baseInput);
     const captured = await service.save(stableInput());
