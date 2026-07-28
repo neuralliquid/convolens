@@ -140,7 +140,7 @@ For the initial target:
 - retry after tab reload requires the user to recapture and review;
 - only non-sensitive operation metadata may be retained for popup reopening and support diagnostics.
 
-On upgrade, legacy `pendingUploads` require a one-time migration surface. Automatic retry pauses until the authenticated user chooses **Retry now** or **Delete local queue**. The UI must disclose that these entries contain locally stored conversation data, show only safe counts/timestamps before confirmation, remove successfully sent or deleted entries, and remove the legacy storage key once empty. No legacy entry is silently uploaded, discarded, or copied into a new queue format.
+On upgrade, legacy `pendingUploads` require a one-time migration surface. Automatic retry pauses while the authenticated user reviews the local queue. The UI must disclose that these entries contain locally stored conversation data and show only safe counts/timestamps before confirmation. Existing entries have no trustworthy original-account binding, so they must not be uploaded under the current account; the migration offers **Export local queue** or **Delete local queue** instead. Export does not imply deletion. Confirmed deletion removes entries and removes the legacy storage key once empty. No legacy entry is silently uploaded, discarded, or copied into a new queue format.
 
 Durable offline message queuing remains unavailable until a separate threat model, explicit opt-in, encryption/key-management design, retention/expiry policy, deletion flow, and operator acceptance are approved. A future queue must not be implied by the initial launcher UI.
 
@@ -203,7 +203,8 @@ Deliverables:
 - Stop adding new raw payloads to `pendingUploads`; network/rate failures become user-visible `retry-required` outcomes.
 - Add the one-time legacy-queue migration surface defined in section 4 before claiming the no-raw-local-persistence boundary.
 - Disable every legacy automatic-retry trigger in the same hotfix before exposing migration: update/install lifecycle retry, periodic alarm retry, browser-online retry, and login/authentication retry.
-- Permit legacy payload transmission only from the authenticated migration surface after the user selects **Retry now**; no background trigger may call `retryPendingUploads()` during or after migration.
+- Do not transmit unowned legacy entries. Offer explicit export or confirmed deletion, and ensure no background trigger calls `retryPendingUploads()` during or after migration.
+- Add a minimal capture summary and explicit confirmation before either existing surface uploads; alternatively, do not release an upload-capable Phase 1 build until the Phase 5 review gate is present.
 
 Exit gate:
 
@@ -224,11 +225,12 @@ Deliverables:
 - Preserve message-to-participant references through the API and durable conversation projection.
 - Preserve deduplication across sender-label upgrades with an explicit compatibility contract:
   - keep the existing v1 content hash unchanged for already persisted intakes;
+  - calculate and query the reproducible exact v1 hash before applying v2 or compatibility handling;
   - capture a stable source-conversation identity before enabling automatic sender-label compatibility;
   - add a versioned v2 exact hash for new captures, scoped by owner, source platform, and stable source-conversation identity, that excludes mutable presentation labels and uses stable participant evidence only when available;
   - add a scoped compatibility fingerprint over the ordered semantic message stream (`content`, timestamp, direction, media flag/type), excluding generated source IDs and sender display labels;
   - backfill or lazily derive that compatibility fingerprint for existing durable intakes, but accept it automatically only when the stable source-conversation identity also matches;
-  - look up the exact v2 hash first, then accept a compatibility match only when exactly one owner/platform/source-conversation-scoped intake has the same ordered semantic stream;
+  - after an exact v1 miss, look up the exact v2 hash, then accept a compatibility match only when exactly one owner/platform/source-conversation-scoped intake has the same ordered semantic stream;
   - treat missing stable conversation identity, multiple candidates, or conflicting stable participant evidence as ambiguous and do not silently collapse them;
   - surface historical intakes without stable source-conversation identity as explicit reconciliation candidates rather than deduplicating them from message similarity alone;
   - allow sender evidence to be enriched without rewriting the historical raw label or creating a second conversation.
@@ -419,7 +421,7 @@ Exit gate:
 
 - Retry cannot create unexpected duplicate conversations.
 - Retry-required state survives service-worker restart only as non-sensitive metadata; raw retry after tab loss requires recapture and review.
-- Legacy raw queue entries are sent or deleted only after user confirmation and are removed from local storage afterward.
+- Legacy raw queue entries are exported or deleted only after explicit user action; unowned entries are never transmitted under the current account and are removed from local storage only after confirmed deletion.
 - No new raw-message queue is introduced without the separate durable-queue approval defined in section 4.
 - Result links open the exact persisted conversation.
 - Local export matches the reviewed payload.
@@ -465,8 +467,8 @@ Packaging, CI, health checks, synthetic fixtures, or a popup success message do 
 
 This document is the plan PR. Implementation should remain split into reviewable follow-ups:
 
-1. **PR A:** console attribution ledger, messaging audit, and reproduction fixtures.
-2. **PR B:** truthful loaded-count/progress hotfix, automatic legacy-retry shutdown, and user-confirmed `pendingUploads` migration.
+1. **PR A:** console attribution ledger, messaging audit, legacy raw-queue inventory, and reproduction fixtures.
+2. **PR B:** minimal preview/confirmation, truthful loaded-count/progress hotfix, automatic legacy-retry shutdown, and export-or-delete migration for unowned `pendingUploads`.
 3. **PR C:** sender name/phone preservation, hash compatibility, and neutral media-type rendering.
 4. **PR D:** shared capture operation state.
 5. **PR E:** compact draggable launcher.
