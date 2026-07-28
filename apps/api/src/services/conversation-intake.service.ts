@@ -381,7 +381,14 @@ export class ConversationIntakeService {
       candidate.compatibilityHash = storedCompatibilityHash(candidate);
     }
     if (candidatesNeedingBackfill.length > 0) {
-      await intakeRepository.save(candidatesNeedingBackfill);
+      await Promise.all(
+        candidatesNeedingBackfill.map((candidate) =>
+          intakeRepository.update(
+            { id: candidate.id, compatibilityHash: IsNull() },
+            { compatibilityHash: candidate.compatibilityHash }
+          )
+        )
+      );
     }
     const compatibilityLockKey = [
       input.userId,

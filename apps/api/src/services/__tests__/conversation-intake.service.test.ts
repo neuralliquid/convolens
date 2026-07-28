@@ -226,6 +226,13 @@ describe('ConversationIntakeService', () => {
 
   it('serializes concurrent duplicate evidence enrichment without losing either update', async () => {
     const original = await service.save(stableInput());
+    await dataSource
+      .getRepository(ConversationIntake)
+      .createQueryBuilder()
+      .update()
+      .set({ compatibilityHash: () => 'NULL' })
+      .where('id = :id', { id: original.conversation.id })
+      .execute();
     const named = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
     const identified = stableInput();
     identified.participantEvidence![0].platformUserId = '27821234567@s.whatsapp.net';
