@@ -15,13 +15,17 @@ const manifest = JSON.parse(read("../manifest.json"));
 
 test("requires loaded-message review and confirmation in both upload surfaces", () => {
   assert.match(popupHtml, /Loaded-message review/);
-  assert.match(popupHtml, /Only messages currently loaded by WhatsApp/);
+  assert.match(
+    popupHtml,
+    /Only the loaded messages counted above will be uploaded/,
+  );
   assert.match(popupHtml, /id="confirmCapture"/);
   assert.match(popupSource, /confirmCapture\.addEventListener\("click"/);
-  assert.match(contentSource, /const confirmed = window\.confirm/);
+  assert.match(contentSource, /id="ws-confirm-capture"/);
+  assert.doesNotMatch(contentSource, /window\.confirm/);
   assert.match(
     contentSource,
-    /Older messages that WhatsApp has not loaded are excluded/,
+    /Older messages(?: that)? WhatsApp has not loaded are excluded/,
   );
 });
 

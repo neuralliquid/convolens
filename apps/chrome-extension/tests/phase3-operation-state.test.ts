@@ -128,7 +128,8 @@ test("allows an explicit page click to continue a popup-started review", () => {
     /\["ready-for-review", "retry-required"\]\.includes\(response\.data\.state\)/,
   );
   assert.doesNotMatch(clickHandler, /response\.data\.initiator/);
-  assert.match(clickHandler, /await reviewPageCapture\(response\.data\)/);
+  assert.match(clickHandler, /renderCaptureOperation\(existingOperation\)/);
+  assert.doesNotMatch(clickHandler, /reviewPageCapture\(/);
 });
 
 test("invalidates collection and upload continuations across auth changes", () => {
@@ -203,10 +204,7 @@ test("invalidates retained reviews when authentication writes change owner", () 
     backgroundSource,
     /await replaceAuthenticatedUser\(\s*exchanged\.token/,
   );
-  assert.match(
-    backgroundSource,
-    /replaceAuthenticatedUser\(\s*token,\s*user/,
-  );
+  assert.match(backgroundSource, /replaceAuthenticatedUser\(\s*token,\s*user/);
 });
 
 test("keeps in-flight upload truth across logout and tab closure", () => {

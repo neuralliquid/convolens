@@ -90,6 +90,7 @@ type TimestampMethod = "metadata" | "visible-time" | "fallback";
 interface ExtractionDiagnostics {
   messageContainerCount: number;
   extractedMessageCount: number;
+  unreadableMessageCount: number;
   metadataPathCounts: Record<MetadataPath, number>;
   senderMethodCounts: Record<ExtractedParticipant["extractionMethod"], number>;
   timestampMethodCounts: Record<TimestampMethod, number>;
@@ -108,6 +109,17 @@ interface ExtractedChat {
   payloadVersion: 2;
   participants: ExtractedParticipant[];
   diagnostics: ExtractionDiagnostics;
+}
+
+interface CapturePreviewSummary {
+  chatName: string;
+  loadedMessageCount: number;
+  oldestTimestamp?: string;
+  newestTimestamp?: string;
+  participantLabelCount: number;
+  mediaCount: number;
+  skippedCount: number;
+  unreadableCount: number;
 }
 
 interface ExtractionState {
@@ -285,10 +297,44 @@ async function injectUI(): Promise<void> {
       <div id="ws-progress" class="ws-progress ws-hidden" aria-hidden="true">
         <div class="ws-progress-bar"></div>
       </div>
+      <fieldset class="ws-capture-modes">
+        <legend>Capture mode</legend>
+        <label class="ws-capture-mode ws-capture-mode-selected">
+          <input type="radio" name="ws-capture-mode" value="loaded" checked>
+          <span><strong>Loaded messages</strong><small>Review what WhatsApp has loaded now</small></span>
+          <em>Selected</em>
+        </label>
+        <label class="ws-capture-mode ws-capture-mode-disabled">
+          <input type="radio" name="ws-capture-mode" value="scroll" disabled>
+          <span><strong>Capture as I scroll</strong><small>Guided collection while you scroll</small></span>
+          <em>Soon · Phase 6</em>
+        </label>
+        <label class="ws-capture-mode ws-capture-mode-disabled">
+          <input type="radio" name="ws-capture-mode" value="automatic" disabled>
+          <span><strong>Load older messages for me</strong><small>Automatic older-history loading</small></span>
+          <em>Soon · Phase 7</em>
+        </label>
+      </fieldset>
       <button id="ws-extract-btn" class="ws-capture-btn" type="button" disabled>
         Sign in to capture
       </button>
-      <p class="ws-scope-copy">Older messages that WhatsApp has not loaded are excluded. Nothing is sent before review and confirmation.</p>
+      <section id="ws-capture-review" class="ws-capture-review" aria-labelledby="ws-capture-review-title" hidden>
+        <h3 id="ws-capture-review-title">Review before upload</h3>
+        <strong id="ws-preview-chat-name" class="ws-preview-chat-name"></strong>
+        <dl class="ws-preview-grid">
+          <div><dt>Loaded messages</dt><dd id="ws-preview-loaded">0</dd></div>
+          <div><dt>Participant labels</dt><dd id="ws-preview-participants">0</dd></div>
+          <div><dt>Media</dt><dd id="ws-preview-media">0</dd></div>
+          <div><dt>Skipped</dt><dd id="ws-preview-skipped">0</dd></div>
+          <div><dt>Unreadable</dt><dd id="ws-preview-unreadable">0</dd></div>
+        </dl>
+        <p id="ws-preview-range" class="ws-preview-range"></p>
+        <p class="ws-scope-copy">Only the loaded messages counted above will be uploaded. Older messages WhatsApp has not loaded are excluded. Nothing is sent until you confirm.</p>
+        <div class="ws-preview-actions">
+          <button id="ws-confirm-capture" class="ws-capture-btn" type="button">Confirm upload</button>
+          <button id="ws-cancel-capture" class="ws-secondary-btn" type="button">Cancel</button>
+        </div>
+      </section>
       <div id="ws-legacy-attention" class="ws-legacy-attention" hidden>
         <strong>Legacy local captures need review</strong>
         <span id="ws-legacy-count"></span>
@@ -323,6 +369,21 @@ async function injectUI(): Promise<void> {
   document
     .getElementById("ws-extract-btn")
     ?.addEventListener("click", handleExtractClick);
+  document
+    .getElementById("ws-confirm-capture")
+    ?.addEventListener("click", () => {
+      if (launcherOperation) void reviewPageCapture(launcherOperation, true);
+    });
+  document
+    .getElementById("ws-cancel-capture")
+    ?.addEventListener("click", () => {
+      if (launcherOperation) void reviewPageCapture(launcherOperation, false);
+    });
+  fab
+    .querySelectorAll<HTMLInputElement>('input[name="ws-capture-mode"]')
+    .forEach((input) =>
+      input.addEventListener("change", handleCaptureModeChange),
+    );
   document
     .getElementById("ws-launcher-close")
     ?.addEventListener("click", () => {
@@ -504,6 +565,8 @@ function resetLauncherAccountState(authenticated: boolean): void {
   launcherOperationRenderGeneration += 1;
   launcherOperation = null;
   pageConfirmationOperationId = null;
+  const review = document.getElementById("ws-capture-review");
+  if (review) review.hidden = true;
   updateLegacyQueueState(0);
   updateProgress(0);
   updateStatus(
@@ -630,6 +693,94 @@ function updateProgress(percent: number): void {
 // Extraction Logic
 // =============================================================================
 
+function getCapturePreviewSummary(
+  operationId: string,
+): CapturePreviewSummary | null {
+  const operation = activeCaptureOperation;
+  const payload = operation?.payload;
+  if (!operation || operation.operationId !== operationId || !payload) {
+    return null;
+  }
+  const timestamps = payload.messages
+    .map((message) => message.timestamp)
+    .filter(Boolean)
+    .sort();
+  const unreadableCount = payload.diagnostics.unreadableMessageCount;
+  return {
+    chatName: payload.chatName,
+    loadedMessageCount: payload.messages.length,
+    oldestTimestamp: timestamps[0],
+    newestTimestamp: timestamps[timestamps.length - 1],
+    participantLabelCount: payload.participants.filter(
+      (participant) =>
+        participant.isSelf ||
+        Boolean(
+          participant.rawDisplayName ||
+            participant.rawUsername ||
+            participant.normalizedPhone ||
+            participant.platformUserId,
+        ),
+    ).length,
+    mediaCount: payload.messages.filter((message) => message.isMedia).length,
+    skippedCount: Math.max(
+      0,
+      payload.diagnostics.messageContainerCount -
+        payload.messages.length -
+        unreadableCount,
+    ),
+    unreadableCount,
+  };
+}
+
+function formatPreviewTimestamp(value?: string): string {
+  if (!value) return "Not detected";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not detected" : date.toLocaleString();
+}
+
+function renderPageCapturePreview(operation: CaptureOperationSnapshot): void {
+  const review = document.getElementById("ws-capture-review");
+  if (!review) return;
+  if (!["ready-for-review", "retry-required"].includes(operation.state)) {
+    review.hidden = true;
+    return;
+  }
+  const preview = getCapturePreviewSummary(operation.operationId);
+  if (!preview || preview.loadedMessageCount !== operation.extractedCount) {
+    review.hidden = true;
+    updateStatus(
+      "The preview no longer matches the reviewed payload. Recapture before uploading.",
+      "error",
+    );
+    return;
+  }
+  const values: Record<string, string> = {
+    "ws-preview-chat-name": preview.chatName,
+    "ws-preview-loaded": String(preview.loadedMessageCount),
+    "ws-preview-participants": String(preview.participantLabelCount),
+    "ws-preview-media": String(preview.mediaCount),
+    "ws-preview-skipped": String(preview.skippedCount),
+    "ws-preview-unreadable": String(preview.unreadableCount),
+    "ws-preview-range": `Oldest: ${formatPreviewTimestamp(preview.oldestTimestamp)} · Newest: ${formatPreviewTimestamp(preview.newestTimestamp)}`,
+  };
+  for (const [id, value] of Object.entries(values)) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  }
+  review.hidden = false;
+}
+
+function handleCaptureModeChange(event: Event): void {
+  const selectedMode = (event.target as HTMLInputElement).value;
+  if (
+    selectedMode !== "loaded" &&
+    launcherOperation &&
+    ["ready-for-review", "retry-required"].includes(launcherOperation.state)
+  ) {
+    void reviewPageCapture(launcherOperation, false);
+  }
+}
+
 async function handleExtractClick(): Promise<void> {
   try {
     const existingResponse = (await chrome.runtime.sendMessage({
@@ -648,7 +799,6 @@ async function handleExtractClick(): Promise<void> {
       if (existingOperation.state === "retry-required") {
         pageConfirmationOperationId = null;
       }
-      await reviewPageCapture(existingOperation);
       return;
     }
     if (
@@ -690,7 +840,6 @@ async function handleExtractClick(): Promise<void> {
       if (response.data.state === "retry-required") {
         pageConfirmationOperationId = null;
       }
-      await reviewPageCapture(response.data);
     }
   } catch (error) {
     updateStatus(normalizeErrorMessage(error), "error");
@@ -699,13 +848,21 @@ async function handleExtractClick(): Promise<void> {
 
 async function reviewPageCapture(
   operation: CaptureOperationSnapshot,
+  confirmed: boolean,
 ): Promise<void> {
   if (operation.authGeneration !== launcherCaptureAuthGeneration) return;
   if (pageConfirmationOperationId === operation.operationId) return;
+  if (confirmed) {
+    const preview = getCapturePreviewSummary(operation.operationId);
+    if (!preview || preview.loadedMessageCount !== operation.extractedCount) {
+      updateStatus(
+        "The preview no longer matches the reviewed payload. Recapture before uploading.",
+        "error",
+      );
+      return;
+    }
+  }
   pageConfirmationOperationId = operation.operationId;
-  const confirmed = window.confirm(
-    `Send ${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} from the selected chat to ConvoLens?\n\nOlder messages that WhatsApp has not loaded are excluded. Capture as I scroll and automatic older-message loading are coming soon.`,
-  );
   const action = confirmed
     ? "CONFIRM_CAPTURE_OPERATION"
     : "CANCEL_CAPTURE_OPERATION";
@@ -716,6 +873,9 @@ async function reviewPageCapture(
       reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
     })) as ExtensionResponse<CaptureOperationSnapshot>;
     if (response.success && response.data) {
+      if (response.data.state === "retry-required") {
+        pageConfirmationOperationId = null;
+      }
       if (!renderCaptureOperation(response.data)) {
         pageConfirmationOperationId = null;
       }
@@ -737,6 +897,7 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   launcherOperationRenderGeneration += 1;
   launcherOperation = operation;
   updateLauncherBadge(operation);
+  renderPageCapturePreview(operation);
   if (activeCaptureOperation?.operationId === operation.operationId) {
     activeCaptureOperation.state = operation.state;
   }
@@ -1022,8 +1183,21 @@ async function collectCaptureOperation(
       extractedCount: payload.messages.length,
       skippedCount: Math.max(
         0,
-        payload.diagnostics.messageContainerCount - payload.messages.length,
+        payload.diagnostics.messageContainerCount -
+          payload.messages.length -
+          payload.diagnostics.unreadableMessageCount,
       ),
+      unreadableCount: payload.diagnostics.unreadableMessageCount,
+      participantLabelCount: payload.participants.filter(
+        (participant) =>
+          participant.isSelf ||
+          Boolean(
+            participant.rawDisplayName ||
+              participant.rawUsername ||
+              participant.normalizedPhone ||
+              participant.platformUserId,
+          ),
+      ).length,
       mediaCount: payload.messages.filter((message) => message.isMedia).length,
       oldestTimestamp: timestamps[0],
       newestTimestamp: timestamps[timestamps.length - 1],
@@ -1148,8 +1322,11 @@ async function extractCurrentChat(
       );
       if (message) {
         messages.push(message);
+      } else {
+        diagnostics.unreadableMessageCount += 1;
       }
     } catch (error) {
+      diagnostics.unreadableMessageCount += 1;
       console.warn("[ConvoLens] Failed to extract message:", error);
     }
 
@@ -1483,6 +1660,7 @@ function createExtractionDiagnostics(
   return {
     messageContainerCount,
     extractedMessageCount: 0,
+    unreadableMessageCount: 0,
     metadataPathCounts: { container: 0, ancestor: 0, descendant: 0, none: 0 },
     senderMethodCounts: {
       metadata: 0,
@@ -1617,6 +1795,19 @@ function handleMessage(
           }),
         );
       return true;
+
+    case "GET_CAPTURE_PREVIEW": {
+      const preview = getCapturePreviewSummary(message.operationId);
+      if (!preview) {
+        sendResponse({
+          success: false,
+          error: "The reviewed preview is no longer available in this tab.",
+        });
+      } else {
+        sendResponse({ success: true, data: preview });
+      }
+      break;
+    }
 
     case "GET_CAPTURE_OPERATION_PAYLOAD":
       if (

@@ -145,6 +145,11 @@ export interface GetCurrentChatMessage {
   action: "GET_CURRENT_CHAT";
 }
 
+export interface GetCapturePreviewMessage {
+  action: "GET_CAPTURE_PREVIEW";
+  operationId: string;
+}
+
 export interface CheckStatusMessage {
   action: "CHECK_STATUS";
 }
@@ -275,6 +280,7 @@ export interface RefreshLauncherStateMessage {
 // Union type of all message types
 export type ExtensionMessage =
   | GetCurrentChatMessage
+  | GetCapturePreviewMessage
   | CheckStatusMessage
   | SetAuthTokenMessage
   | SendChatDataMessage
