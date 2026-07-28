@@ -205,7 +205,7 @@ test("invalidates retained reviews when authentication writes change owner", () 
   );
   assert.match(
     backgroundSource,
-    /await replaceAuthenticatedUser\(token, user\)/,
+    /replaceAuthenticatedUser\(\s*token,\s*user/,
   );
 });
 

@@ -188,6 +188,18 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
     backgroundSource,
     /async function getAuthStatus[\s\S]*await loadCaptureOperations\(\)[\s\S]*authGeneration: captureLifecycleEpoch/,
   );
+  assert.match(
+    backgroundSource,
+    /syncMystiraSession[\s\S]*const authenticationIntent = authenticationIntentGeneration[\s\S]*replaceAuthenticatedUser\([\s\S]*authenticationIntent[\s\S]*if \(!replaced\)/,
+  );
+  assert.match(
+    backgroundSource,
+    /clearCaptureStateAndAuthentication[\s\S]*authenticationIntentGeneration \+= 1[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
+  );
+  assert.match(
+    backgroundSource,
+    /expectedAuthenticationIntent !== authenticationIntentGeneration[\s\S]*return false/,
+  );
 });
 
 test("moves focus into the panel and clears cancelled-drag suppression", () => {

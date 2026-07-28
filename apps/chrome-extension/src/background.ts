@@ -68,6 +68,7 @@ let captureOperationsLoadPromise: Promise<void> | null = null;
 let captureLifecycleEpoch = 0;
 let captureAuthTransitionCount = 0;
 let authenticationWriteTail: Promise<void> = Promise.resolve();
+let authenticationIntentGeneration = 0;
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const operation = captureOperations.get(tabId);
@@ -1011,6 +1012,7 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
 }
 
 async function syncMystiraSession(): Promise<ExtensionResponse> {
+  const authenticationIntent = authenticationIntentGeneration;
   try {
     const config = getConfig();
     const sessionResponse = await fetch(
@@ -1069,11 +1071,18 @@ async function syncMystiraSession(): Promise<ExtensionResponse> {
       };
     }
 
-    await replaceAuthenticatedUser(
+    const replaced = await replaceAuthenticatedUser(
       exchanged.token,
       exchanged.user,
       Date.now() + exchanged.expiresIn * 1000,
+      authenticationIntent,
     );
+    if (!replaced) {
+      return {
+        success: false,
+        error: "Authentication changed while the session was refreshing.",
+      };
+    }
 
     return {
       success: true,
@@ -1126,6 +1135,7 @@ async function handleLogin(
   email: string,
   password: string,
 ): Promise<ExtensionResponse> {
+  const authenticationIntent = ++authenticationIntentGeneration;
   try {
     const config = await getApiConfig();
 
@@ -1144,7 +1154,18 @@ async function handleLogin(
 
     const { token, user } = await response.json();
 
-    await replaceAuthenticatedUser(token, user);
+    const replaced = await replaceAuthenticatedUser(
+      token,
+      user,
+      undefined,
+      authenticationIntent,
+    );
+    if (!replaced) {
+      return {
+        success: false,
+        error: "Authentication changed before sign-in completed.",
+      };
+    }
 
     return { success: true, data: { user } };
   } catch (error) {
@@ -1156,7 +1177,8 @@ async function replaceAuthenticatedUser(
   token: string,
   user: { id?: string },
   expiresAt?: number,
-): Promise<void> {
+  expectedAuthenticationIntent?: number,
+): Promise<boolean> {
   await loadCaptureOperations();
   let releaseWrite: () => void = () => undefined;
   const previousWrite = authenticationWriteTail;
@@ -1164,6 +1186,13 @@ async function replaceAuthenticatedUser(
     releaseWrite = resolve;
   });
   await previousWrite;
+  if (
+    typeof expectedAuthenticationIntent === "number" &&
+    expectedAuthenticationIntent !== authenticationIntentGeneration
+  ) {
+    releaseWrite();
+    return false;
+  }
   captureAuthTransitionCount += 1;
 
   try {
@@ -1194,6 +1223,7 @@ async function replaceAuthenticatedUser(
     }
 
     await notifyContentScripts(token);
+    return true;
   } finally {
     captureAuthTransitionCount -= 1;
     releaseWrite();
@@ -1218,6 +1248,13 @@ async function clearAuthenticationState(): Promise<void> {
 async function clearCaptureStateAndAuthentication(
   waitForUploads: boolean,
 ): Promise<void> {
+  authenticationIntentGeneration += 1;
+  let releaseWrite: () => void = () => undefined;
+  const previousWrite = authenticationWriteTail;
+  authenticationWriteTail = new Promise<void>((resolve) => {
+    releaseWrite = resolve;
+  });
+  await previousWrite;
   captureAuthTransitionCount += 1;
   try {
     await loadCaptureOperations();
@@ -1233,6 +1270,7 @@ async function clearCaptureStateAndAuthentication(
     await clearAuthenticationState();
   } finally {
     captureAuthTransitionCount -= 1;
+    releaseWrite();
   }
 }
 
