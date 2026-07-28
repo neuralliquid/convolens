@@ -148,6 +148,7 @@ let launcherOperation: CaptureOperationSnapshot | null = null;
 let legacyQueueCount = 0;
 let launcherSuppressClick = false;
 let launcherAuthRefreshGeneration = 0;
+let launcherOperationRenderGeneration = 0;
 
 // =============================================================================
 // Initialization
@@ -504,6 +505,7 @@ function updateLegacyQueueState(count: number): void {
 }
 
 function resetLauncherAccountState(authenticated: boolean): void {
+  launcherOperationRenderGeneration += 1;
   launcherOperation = null;
   pageConfirmationOperationId = null;
   updateLegacyQueueState(0);
@@ -548,6 +550,7 @@ async function refreshLauncherAuthenticationState(
   const refreshGeneration = ++launcherAuthRefreshGeneration;
   resetLauncherAccountState(token !== null);
   if (token === null) return;
+  const operationRenderGeneration = launcherOperationRenderGeneration;
 
   try {
     const [operationResponse, legacyResponse] = (await Promise.all([
@@ -558,7 +561,11 @@ async function refreshLauncherAuthenticationState(
       ExtensionResponse<{ count: number }>,
     ];
     if (refreshGeneration !== launcherAuthRefreshGeneration) return;
-    if (operationResponse.success && operationResponse.data) {
+    if (
+      operationRenderGeneration === launcherOperationRenderGeneration &&
+      operationResponse.success &&
+      operationResponse.data
+    ) {
       renderCaptureOperation(operationResponse.data);
     }
     updateLegacyQueueState(
@@ -718,6 +725,7 @@ async function reviewPageCapture(
 }
 
 function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
+  launcherOperationRenderGeneration += 1;
   launcherOperation = operation;
   updateLauncherBadge(operation);
   if (activeCaptureOperation?.operationId === operation.operationId) {

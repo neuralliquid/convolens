@@ -145,6 +145,14 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     contentSource,
+    /const operationRenderGeneration = launcherOperationRenderGeneration[\s\S]*operationRenderGeneration === launcherOperationRenderGeneration[\s\S]*renderCaptureOperation\(operationResponse\.data\)/,
+  );
+  assert.match(
+    contentSource,
+    /function renderCaptureOperation[\s\S]*launcherOperationRenderGeneration \+= 1/,
+  );
+  assert.match(
+    contentSource,
     /catch \(error\) \{\s*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;\s*resetLauncherAccountState\(token !== null\)/,
   );
   assert.match(

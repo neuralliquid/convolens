@@ -12,6 +12,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - The legacy attention state receives only an authenticated, background-derived count. The WhatsApp content script does not read or subscribe to raw legacy `pendingUploads` values.
 - Cold start uses the background's expiry-aware authentication check and defaults the launcher to signed out. Authenticated sessions refetch both safe summaries through a generation-guarded path so stale successes or failures cannot overwrite a newer account transition.
 - Confirmed legacy deletion and clear-all actions send a payload-free refresh signal through the background, keeping the launcher current without exposing raw legacy entries to the WhatsApp content script.
+- Safe summary refreshes capture a monotonic launcher-render generation and cannot overwrite a newer live capture-operation update.
 - Cancelled pointer drags restore the last saved launcher placement instead of persisting interrupted coordinates.
 - Opening the panel moves focus into its first enabled control, while pointer cancellation clears drag click-suppression state.
 - Escape, focus-visible, reduced-motion, forced-colour, dark-mode, and narrow-window behavior are included.
@@ -34,7 +35,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `07AE6E3AF007E3EAC888F0B9088B6F1B20BD84EE7CAEF05ABBA2744355667C81`.
+- Packaged ZIP SHA-256: `406B7BFDAD120113570D4E8A864E499D570B2DBA7B1F28FFAA55BCC20E319653`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open
