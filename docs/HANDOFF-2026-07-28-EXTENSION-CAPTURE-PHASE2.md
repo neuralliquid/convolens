@@ -6,7 +6,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Sender metadata, visible names, and message-scoped phone evidence are combined independently and rendered as `Name · phone`, name-only, phone-only, or a numbered unidentified fallback.
 - The extension normalizes sampled bubbles to WhatsApp message records and emits a stable source-conversation identity only when a JID is present in scoped DOM evidence. Timestamp-generated capture IDs never enable compatibility matching.
-- Structured participant evidence and per-message `senderRef` values now survive API persistence and authenticated read projection.
+- Structured participant evidence and every per-message `senderRef` value now survive API persistence and authenticated read projection without collapsing initially referenced evidence rows.
 - Existing durable hashes remain v1. Stable new captures use an owner/platform/source-conversation-scoped v2 hash that excludes mutable labels.
 - A separate ordered semantic compatibility hash excludes generated message IDs and sender presentation labels while retaining timestamp, direction, content, and media semantics.
 - Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation and no conflicting stable participant evidence.
@@ -34,8 +34,8 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 32 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 99 passed, 0 failed across 9 suites.
-- Focused migration, route, and compatibility tests: 24 passed, 0 failed.
+- API Jest suite: 100 passed, 0 failed across 9 suites.
+- Focused migration, route, and compatibility tests: 25 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.

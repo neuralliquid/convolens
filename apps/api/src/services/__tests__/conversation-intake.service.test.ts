@@ -209,6 +209,32 @@ describe('ConversationIntakeService', () => {
     expect(second.conversation.participantEvidence?.[0].normalizedPhone).toBe('+27821234567');
   });
 
+  it('preserves every initially referenced participant evidence row', async () => {
+    const input = stableInput();
+    input.participantEvidence!.push({
+      ...input.participantEvidence![0],
+      ref: 'participant_2',
+      rawDisplayName: 'Greg Wright',
+      platformUserId: '27821234567@s.whatsapp.net',
+    });
+    input.messages[1] = {
+      ...input.messages[1],
+      senderRef: 'participant_2',
+      senderName: 'Greg Wright · +27821234567',
+    };
+
+    const saved = await service.save(input);
+
+    expect(saved.conversation.participantEvidence?.map((participant) => participant.ref)).toEqual([
+      'participant_1',
+      'participant_2',
+    ]);
+    expect(saved.conversation.messages.map((message) => message.senderRef)).toEqual([
+      'participant_1',
+      'participant_2',
+    ]);
+  });
+
   it('requires reconciliation when a historical unscoped intake matches semantically', async () => {
     const historical = await service.save(baseInput);
     const captured = await service.save(stableInput());

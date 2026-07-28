@@ -241,6 +241,26 @@ function mergeParticipantEvidence(
   return merged;
 }
 
+function initializeParticipantEvidence(
+  observations: ConversationParticipantEvidence[] = []
+): ConversationParticipantEvidence[] {
+  return observations.map((observation) => ({
+    ...observation,
+    preferredDisplayName: observation.rawDisplayName,
+    rawLabels: observation.rawDisplayName ? [observation.rawDisplayName] : [],
+  }));
+}
+
+function shouldRequireReconciliation(
+  candidate: ConversationIntake,
+  usesStableV2: boolean,
+  sourceConversationId: string | undefined
+): boolean {
+  if (!usesStableV2) return true;
+  if (!candidate.sourceConversationIdentityStable) return true;
+  return candidate.sourceConversationId === sourceConversationId;
+}
+
 export class ConversationIntakeService {
   constructor(private readonly dataSource: DataSource = AppDataSource) {}
 
@@ -326,11 +346,8 @@ export class ConversationIntakeService {
       };
     }
 
-    const reconciliationCandidates = semanticCandidates.filter(
-      (candidate) =>
-        !usesStableV2 ||
-        !candidate.sourceConversationIdentityStable ||
-        (usesStableV2 && candidate.sourceConversationId === input.sourceConversationId)
+    const reconciliationCandidates = semanticCandidates.filter((candidate) =>
+      shouldRequireReconciliation(candidate, usesStableV2, input.sourceConversationId)
     );
     const reconciliationRequired = reconciliationCandidates.length > 0;
 
@@ -347,7 +364,7 @@ export class ConversationIntakeService {
           participants: [
             ...new Set(input.participants.map((value) => value.trim()).filter(Boolean)),
           ].sort((a, b) => a.localeCompare(b)),
-          participantEvidence: mergeParticipantEvidence([], input.participantEvidence),
+          participantEvidence: initializeParticipantEvidence(input.participantEvidence),
           contentHash,
           contentHashVersion: usesStableV2 ? 2 : 1,
           compatibilityHash,
