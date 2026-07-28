@@ -25,7 +25,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 - Base: `origin/main` at `0945495ee1a115c24fec96c4b92a87701e83e54d` (merged PR #153).
 - Branch: `agent/extension-capture-phase6`.
 - Worktree: `C:/tmp/convolens-extension-phase6`.
-- Pull request: pending.
+- Pull request: [#154](https://github.com/neuralliquid/convolens/pull/154).
 - The primary checkout and its pre-existing untracked handoff remain untouched.
 
 ## Validation
