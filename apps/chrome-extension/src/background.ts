@@ -639,7 +639,9 @@ async function fetchWithRetry(
 
         // Don't retry on auth errors
         if (response.status === 401 || response.status === 403) {
-          await handleLogout();
+          // This path can run inside a capture upload, so it must not wait for
+          // the upload promise that is currently executing.
+          await clearAuthenticationState();
           throw new Error("Authentication expired. Please log in again.");
         }
 
@@ -873,14 +875,42 @@ async function handleLogin(
 }
 
 async function handleLogout(): Promise<ExtensionResponse> {
+  await clearCaptureOperationsForLogout();
+  await clearAuthenticationState();
+
+  return { success: true };
+}
+
+async function clearAuthenticationState(): Promise<void> {
   await chrome.storage.local.remove([
     STORAGE_KEYS.authToken,
     STORAGE_KEYS.authTokenExpiresAt,
     STORAGE_KEYS.user,
   ]);
   await notifyContentScripts(null);
+}
 
-  return { success: true };
+async function clearCaptureOperationsForLogout(): Promise<void> {
+  await loadCaptureOperations();
+
+  // An upload already carries the current account's authorization and cannot
+  // be truthfully undone. Let it settle before clearing that account, then
+  // remove every old-account snapshot and in-tab reviewed payload.
+  await Promise.allSettled([...captureUploadPromises.values()]);
+
+  for (const operation of [...captureOperations.values()]) {
+    if (isActiveCaptureState(operation.state)) {
+      await finishCaptureOperation(
+        operation,
+        "cancelled",
+        "Sign-out cancelled the reviewed capture. Nothing new was sent.",
+      );
+    } else {
+      await discardCapturePayload(operation);
+    }
+  }
+  captureOperations.clear();
+  await persistCaptureOperations();
 }
 
 // =============================================================================

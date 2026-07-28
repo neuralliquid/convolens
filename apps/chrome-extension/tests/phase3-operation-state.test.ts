@@ -61,16 +61,17 @@ test("routes popup and page through one background-owned per-tab operation", () 
 });
 
 test("persists only operation snapshots and keeps raw capture in tab memory", () => {
-  assert.match(backgroundSource, /chrome\.storage\.session\.set/);
-  assert.match(backgroundSource, /Object\.fromEntries\(captureOperations\)/);
+  const persistenceFunction = backgroundSource.slice(
+    backgroundSource.indexOf("async function persistCaptureOperations"),
+    backgroundSource.indexOf("async function publishCaptureOperation"),
+  );
+  assert.match(persistenceFunction, /chrome\.storage\.session\.set/);
+  assert.match(persistenceFunction, /Object\.fromEntries\(captureOperations\)/);
   assert.match(contentSource, /payload: ExtractedChat \| null/);
   assert.match(contentSource, /activeCaptureOperation/);
   assert.match(contentSource, /getOpaqueChatKey/);
   assert.match(backgroundSource, /chatKey: summary\.chatKey/);
-  assert.doesNotMatch(
-    backgroundSource,
-    /storage\.local\.set\([\s\S]*captureOperations/,
-  );
+  assert.doesNotMatch(persistenceFunction, /storage\.local/);
 });
 
 test("serializes upload, restores popup state, and classifies lifecycle teardown", () => {
@@ -82,4 +83,25 @@ test("serializes upload, restores popup state, and classifies lifecycle teardown
   assert.match(popupSource, /CAPTURE_OPERATION_UPDATED/);
   assert.match(contentSource, /The selected chat changed\. Nothing was sent/);
   assert.match(contentSource, /operation\.state !== "uploading"/);
+});
+
+test("clears reviewed payloads before authentication changes account", () => {
+  assert.match(backgroundSource, /await clearCaptureOperationsForLogout\(\)/);
+  assert.match(
+    backgroundSource,
+    /await Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)/,
+  );
+  assert.match(backgroundSource, /captureOperations\.clear\(\)/);
+  assert.match(backgroundSource, /await discardCapturePayload\(operation\)/);
+});
+
+test("allows a page-owned retry-required operation to confirm again", () => {
+  assert.match(
+    contentSource,
+    /\["ready-for-review", "retry-required"\]\.includes\(response\.data\.state\)/,
+  );
+  assert.match(
+    contentSource,
+    /response\.data\.state === "retry-required"[\s\S]*pageConfirmationOperationId = null/,
+  );
 });
