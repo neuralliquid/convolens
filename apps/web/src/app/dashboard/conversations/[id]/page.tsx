@@ -221,10 +221,11 @@ export default function ConversationPage() {
                   </span>
                 ) : null}
                 {message.content &&
-                !isLegacyMediaPlaceholder(
-                  message.content,
-                  mediaLabel(message),
-                ) ? (
+                (!message.isMedia ||
+                  !isLegacyMediaPlaceholder(
+                    message.content,
+                    mediaLabel(message),
+                  )) ? (
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
                     {message.content}
                   </p>

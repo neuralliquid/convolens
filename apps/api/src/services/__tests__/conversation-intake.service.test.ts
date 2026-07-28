@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import {
@@ -309,6 +309,47 @@ describe('ConversationIntakeService', () => {
     expect(third.duplicate).toBe(false);
     expect(third.reconciliationRequired).toBe(true);
     expect(third.conversation.reconciliationCandidateIds).toHaveLength(2);
+  });
+
+  it('bounds compatibility backfill and warns while older candidates remain', async () => {
+    const intakeRepository = dataSource.getRepository(ConversationIntake);
+    const messageRepository = dataSource.getRepository(ConversationMessage);
+    const historical = Array.from({ length: 101 }, (_, index) =>
+      intakeRepository.create({
+        userId: baseInput.userId,
+        sourcePlatform: baseInput.sourcePlatform,
+        sourceKind: baseInput.sourceKind,
+        displayName: `Historical ${index}`,
+        isGroup: false,
+        participants: [],
+        contentHash: index.toString(16).padStart(64, '0'),
+        contentHashVersion: 1,
+        reconciliationStatus: 'none',
+        status: 'received',
+      })
+    );
+    await intakeRepository.save(historical, { chunk: 100 });
+    await messageRepository.save(
+      historical.map((intake, index) =>
+        messageRepository.create({
+          intakeId: intake.id,
+          position: 0,
+          senderName: 'Historical sender',
+          content: `Historical message ${index}`,
+          sentAt: new Date(`2026-07-24T08:${String(index % 60).padStart(2, '0')}:00.000Z`),
+          isOutgoing: false,
+          isMedia: false,
+        })
+      ),
+      { chunk: 100 }
+    );
+
+    const captured = await service.save(stableInput('whatsapp:bounded-backfill@g.us'));
+
+    expect(captured.duplicate).toBe(false);
+    expect(captured.reconciliationRequired).toBe(true);
+    expect(captured.conversation.reconciliationCandidateIds).toEqual([]);
+    expect(await intakeRepository.countBy({ compatibilityHash: IsNull() })).toBeGreaterThan(0);
   });
 
   it('creates deterministic v2 and compatibility hashes without mutable labels', () => {

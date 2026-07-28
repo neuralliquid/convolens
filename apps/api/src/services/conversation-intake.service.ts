@@ -9,6 +9,8 @@ import {
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 
+const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
+
 export interface ConversationMessageInput {
   sourceMessageId?: string;
   senderName: string;
@@ -351,24 +353,30 @@ export class ConversationIntakeService {
       return this.updateDuplicate(existing, input, compatibilityHash);
     }
 
-    const scopeCandidates = await intakeRepository.find({
-      where: [
-        {
-          userId: input.userId,
-          sourcePlatform: input.sourcePlatform,
-          compatibilityHash,
-        },
-        {
-          userId: input.userId,
-          sourcePlatform: input.sourcePlatform,
-          compatibilityHash: IsNull(),
-        },
-      ],
+    const exactCompatibilityCandidates = await intakeRepository.find({
+      where: {
+        userId: input.userId,
+        sourcePlatform: input.sourcePlatform,
+        compatibilityHash,
+      },
       relations: { messages: true },
       order: { messages: { position: 'ASC' } },
     });
-    const candidatesNeedingBackfill = scopeCandidates.filter(
-      (candidate) => !candidate.compatibilityHash
+    const unbackfilledCandidates = await intakeRepository.find({
+      where: {
+        userId: input.userId,
+        sourcePlatform: input.sourcePlatform,
+        compatibilityHash: IsNull(),
+      },
+      relations: { messages: true },
+      order: { receivedAt: 'ASC', messages: { position: 'ASC' } },
+      take: COMPATIBILITY_BACKFILL_BATCH_SIZE + 1,
+    });
+    const hasDeferredCompatibilityCandidates =
+      unbackfilledCandidates.length > COMPATIBILITY_BACKFILL_BATCH_SIZE;
+    const candidatesNeedingBackfill = unbackfilledCandidates.slice(
+      0,
+      COMPATIBILITY_BACKFILL_BATCH_SIZE
     );
     for (const candidate of candidatesNeedingBackfill) {
       candidate.compatibilityHash = storedCompatibilityHash(candidate);
@@ -376,9 +384,10 @@ export class ConversationIntakeService {
     if (candidatesNeedingBackfill.length > 0) {
       await intakeRepository.save(candidatesNeedingBackfill);
     }
-    const semanticCandidates = scopeCandidates.filter(
-      (candidate) => candidate.compatibilityHash === compatibilityHash
-    );
+    const semanticCandidates = [
+      ...exactCompatibilityCandidates,
+      ...candidatesNeedingBackfill,
+    ].filter((candidate) => candidate.compatibilityHash === compatibilityHash);
     const sameStableConversation = usesStableV2
       ? semanticCandidates.filter(
           (candidate) =>
@@ -397,7 +406,8 @@ export class ConversationIntakeService {
     const reconciliationCandidates = semanticCandidates.filter((candidate) =>
       shouldRequireReconciliation(candidate, usesStableV2, input.sourceConversationId)
     );
-    const reconciliationRequired = reconciliationCandidates.length > 0;
+    const reconciliationRequired =
+      reconciliationCandidates.length > 0 || hasDeferredCompatibilityCandidates;
 
     try {
       const conversation = await this.dataSource.transaction(async (manager) => {
