@@ -292,33 +292,63 @@ function shouldRequireReconciliation(
 export class ConversationIntakeService {
   constructor(private readonly dataSource: DataSource = AppDataSource) {}
 
+  private async updateDuplicate(
+    conversation: ConversationIntake,
+    input: ConversationIntakeInput,
+    compatibilityHash: string,
+    applyMediaCorrections = false
+  ): Promise<SaveConversationResult> {
+    conversation.participantEvidence = mergeParticipantEvidence(
+      conversation.participantEvidence,
+      input.participantEvidence
+    );
+    conversation.compatibilityHash = conversation.compatibilityHash || compatibilityHash;
+    if (applyMediaCorrections) {
+      const correctedMessages = applyCorrectedVisualMediaEvidence(conversation, input);
+      if (correctedMessages.length > 0) {
+        await this.dataSource.getRepository(ConversationMessage).save(correctedMessages);
+      }
+    }
+    await this.dataSource.getRepository(ConversationIntake).save(conversation);
+    return {
+      conversation,
+      duplicate: true,
+      reconciliationRequired: conversation.reconciliationStatus === 'required',
+    };
+  }
+
   async save(input: ConversationIntakeInput): Promise<SaveConversationResult> {
     const usesStableV2 = Boolean(
       input.sourceConversationIdentityStable && input.sourceConversationId
     );
-    const contentHash = usesStableV2
-      ? createConversationContentHashV2(input)
-      : createConversationContentHash(input);
+    const legacyContentHash = createConversationContentHash(input);
+    const contentHash = usesStableV2 ? createConversationContentHashV2(input) : legacyContentHash;
     const compatibilityHash = createConversationCompatibilityHash(input);
     const intakeRepository = this.dataSource.getRepository(ConversationIntake);
-    const existing = await intakeRepository.findOne({
-      where: { userId: input.userId, contentHash },
+    const exactLookupOptions = {
       relations: { messages: true },
-      order: { messages: { position: 'ASC' } },
-    });
+      order: { messages: { position: 'ASC' as const } },
+    };
+    const legacyScopedMatch = usesStableV2
+      ? await intakeRepository.findOne({
+          where: {
+            userId: input.userId,
+            sourcePlatform: input.sourcePlatform,
+            sourceConversationId: input.sourceConversationId,
+            contentHash: legacyContentHash,
+          },
+          ...exactLookupOptions,
+        })
+      : null;
+    const existing =
+      legacyScopedMatch ||
+      (await intakeRepository.findOne({
+        where: { userId: input.userId, contentHash },
+        ...exactLookupOptions,
+      }));
 
     if (existing) {
-      existing.participantEvidence = mergeParticipantEvidence(
-        existing.participantEvidence,
-        input.participantEvidence
-      );
-      existing.compatibilityHash = existing.compatibilityHash || compatibilityHash;
-      await intakeRepository.save(existing);
-      return {
-        conversation: existing,
-        duplicate: true,
-        reconciliationRequired: existing.reconciliationStatus === 'required',
-      };
+      return this.updateDuplicate(existing, input, compatibilityHash);
     }
 
     const scopeCandidates = await intakeRepository.find({
@@ -361,21 +391,7 @@ export class ConversationIntakeService {
     );
     if (sameStableConversation.length === 1 && compatibleCandidates.length === 1) {
       const duplicate = compatibleCandidates[0];
-      duplicate.compatibilityHash = duplicate.compatibilityHash || compatibilityHash;
-      duplicate.participantEvidence = mergeParticipantEvidence(
-        duplicate.participantEvidence,
-        input.participantEvidence
-      );
-      const correctedMessages = applyCorrectedVisualMediaEvidence(duplicate, input);
-      if (correctedMessages.length > 0) {
-        await this.dataSource.getRepository(ConversationMessage).save(correctedMessages);
-      }
-      await intakeRepository.save(duplicate);
-      return {
-        conversation: duplicate,
-        duplicate: true,
-        reconciliationRequired: duplicate.reconciliationStatus === 'required',
-      };
+      return this.updateDuplicate(duplicate, input, compatibilityHash, true);
     }
 
     const reconciliationCandidates = semanticCandidates.filter((candidate) =>

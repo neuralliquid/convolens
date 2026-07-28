@@ -266,6 +266,18 @@ describe('ConversationIntakeService', () => {
     expect(repeated.reconciliationRequired).toBe(true);
   });
 
+  it('reuses a scoped v1 intake when the same source identity upgrades to v2', async () => {
+    const legacy = stableInput();
+    legacy.sourceConversationIdentityStable = false;
+    const first = await service.save(legacy);
+
+    const upgraded = await service.save(stableInput());
+
+    expect(first.conversation.contentHashVersion).toBe(1);
+    expect(upgraded.duplicate).toBe(true);
+    expect(upgraded.conversation.id).toBe(first.conversation.id);
+  });
+
   it('keeps identical ordered messages in distinct stable conversations separate', async () => {
     const first = await service.save(stableInput('whatsapp:120363111111111@g.us'));
     const second = await service.save(stableInput('whatsapp:120363222222222@g.us'));
