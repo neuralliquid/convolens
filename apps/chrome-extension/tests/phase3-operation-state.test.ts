@@ -152,6 +152,21 @@ test("revalidates the owner with the exact upload credential", () => {
   );
 });
 
+test("invalidates retained reviews when authentication writes change owner", () => {
+  assert.match(backgroundSource, /authenticationWriteTail/);
+  assert.match(backgroundSource, /async function replaceAuthenticatedUser/);
+  assert.match(backgroundSource, /nextOwnerId !== previousOwnerId/);
+  assert.match(backgroundSource, /await invalidateLoadedCaptureOperations\(\)/);
+  assert.match(
+    backgroundSource,
+    /await replaceAuthenticatedUser\(\s*exchanged\.token/,
+  );
+  assert.match(
+    backgroundSource,
+    /await replaceAuthenticatedUser\(token, user\)/,
+  );
+});
+
 test("keeps in-flight upload truth across logout and tab closure", () => {
   const logoutCleanup = backgroundSource.slice(
     backgroundSource.indexOf(

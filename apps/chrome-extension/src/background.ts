@@ -66,6 +66,7 @@ const captureUploadPromises = new Map<
 let captureOperationsLoadPromise: Promise<void> | null = null;
 let captureLifecycleEpoch = 0;
 let captureAuthTransitionCount = 0;
+let authenticationWriteTail: Promise<void> = Promise.resolve();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const operation = captureOperations.get(tabId);
@@ -976,13 +977,11 @@ async function syncMystiraSession(): Promise<ExtensionResponse> {
       };
     }
 
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.authToken]: exchanged.token,
-      [STORAGE_KEYS.authTokenExpiresAt]:
-        Date.now() + exchanged.expiresIn * 1000,
-      [STORAGE_KEYS.user]: exchanged.user,
-    });
-    await notifyContentScripts(exchanged.token);
+    await replaceAuthenticatedUser(
+      exchanged.token,
+      exchanged.user,
+      Date.now() + exchanged.expiresIn * 1000,
+    );
 
     return {
       success: true,
@@ -1036,16 +1035,58 @@ async function handleLogin(
 
     const { token, user } = await response.json();
 
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.authToken]: token,
-      [STORAGE_KEYS.user]: user,
-    });
-
-    await notifyContentScripts(token);
+    await replaceAuthenticatedUser(token, user);
 
     return { success: true, data: { user } };
   } catch (error) {
     return { success: false, error: (error as Error).message };
+  }
+}
+
+async function replaceAuthenticatedUser(
+  token: string,
+  user: { id?: string },
+  expiresAt?: number,
+): Promise<void> {
+  let releaseWrite: () => void = () => undefined;
+  const previousWrite = authenticationWriteTail;
+  authenticationWriteTail = new Promise<void>((resolve) => {
+    releaseWrite = resolve;
+  });
+  await previousWrite;
+  captureAuthTransitionCount += 1;
+
+  try {
+    const previousState = await chrome.storage.local.get([STORAGE_KEYS.user]);
+    const previousOwnerId = previousState[STORAGE_KEYS.user]?.id;
+    const nextOwnerId = user?.id;
+
+    if (typeof expiresAt === "number") {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.authToken]: token,
+        [STORAGE_KEYS.authTokenExpiresAt]: expiresAt,
+        [STORAGE_KEYS.user]: user,
+      });
+    } else {
+      await chrome.storage.local.remove([STORAGE_KEYS.authTokenExpiresAt]);
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.authToken]: token,
+        [STORAGE_KEYS.user]: user,
+      });
+    }
+
+    if (
+      typeof previousOwnerId === "string" &&
+      (typeof nextOwnerId !== "string" || nextOwnerId !== previousOwnerId)
+    ) {
+      await loadCaptureOperations();
+      await invalidateLoadedCaptureOperations();
+    }
+
+    await notifyContentScripts(token);
+  } finally {
+    captureAuthTransitionCount -= 1;
+    releaseWrite();
   }
 }
 
