@@ -153,7 +153,11 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     contentSource,
-    /catch \(error\) \{\s*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;\s*resetLauncherAccountState\(token !== null\)/,
+    /catch \(error\) \{\s*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;/,
+  );
+  assert.match(
+    contentSource,
+    /catch \(error\)[\s\S]*operationRenderGeneration !== launcherOperationRenderGeneration[\s\S]*resetLauncherAccountState/,
   );
   assert.match(
     contentSource,
@@ -190,6 +194,10 @@ test("exposes collapsed badge state through the launcher accessible name", () =>
     /\["received", "duplicate"\][\s\S]*operation\.reconciliationRequired \|\| legacyQueueCount > 0[\s\S]*value = "!"/,
   );
   assert.match(contentSource, /Reconciliation review required/);
+  assert.match(
+    contentSource,
+    /const terminalAttention =[\s\S]*operation\.reconciliationRequired \|\| legacyQueueCount > 0[\s\S]*\? "attention"/,
+  );
 });
 
 test("revalidates authentication and safe legacy state after options changes", () => {

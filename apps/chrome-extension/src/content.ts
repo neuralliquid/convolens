@@ -568,6 +568,7 @@ async function refreshLauncherAuthenticationState(
     );
   } catch (error) {
     if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+    if (operationRenderGeneration !== launcherOperationRenderGeneration) return;
     resetLauncherAccountState(token !== null);
     throw error;
   }
@@ -808,8 +809,13 @@ function updateLauncherBadge(operation: CaptureOperationSnapshot | null): void {
   const fab = document.getElementById("convolens-fab");
   const badge = document.getElementById("ws-launcher-badge");
   if (!fab || !badge) return;
-  const state =
-    operation?.state || (legacyQueueCount > 0 ? "attention" : "ready");
+  const terminalAttention =
+    operation !== null &&
+    ["received", "duplicate"].includes(operation.state) &&
+    (operation.reconciliationRequired || legacyQueueCount > 0);
+  const state = terminalAttention
+    ? "attention"
+    : operation?.state || (legacyQueueCount > 0 ? "attention" : "ready");
   fab.dataset.state = state;
   let value = "";
   if (operation?.state === "ready-for-review") {
