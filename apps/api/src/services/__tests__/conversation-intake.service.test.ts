@@ -196,6 +196,19 @@ describe('ConversationIntakeService', () => {
     );
   });
 
+  it('enriches a name-only participant by ref without duplicating the evidence row', async () => {
+    const nameOnly = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright');
+    delete nameOnly.participantEvidence![0].normalizedPhone;
+    const first = await service.save(nameOnly);
+    const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    const second = await service.save(enriched);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.participantEvidence).toHaveLength(1);
+    expect(second.conversation.participantEvidence?.[0].normalizedPhone).toBe('+27821234567');
+  });
+
   it('requires reconciliation when a historical unscoped intake matches semantically', async () => {
     const historical = await service.save(baseInput);
     const captured = await service.save(stableInput());
@@ -281,6 +294,27 @@ describe('ConversationIntakeService', () => {
     };
 
     expect(createConversationCompatibilityHash(current)).toBe(
+      createConversationCompatibilityHash(legacy)
+    );
+  });
+
+  it('normalizes corrected image and video detection for captionless legacy media', () => {
+    const legacy = stableInput();
+    legacy.messages[0] = {
+      ...legacy.messages[0],
+      content: '[image]',
+      isMedia: true,
+      mediaType: 'image',
+    };
+    const corrected = stableInput();
+    corrected.messages[0] = {
+      ...corrected.messages[0],
+      content: '',
+      isMedia: true,
+      mediaType: 'video',
+    };
+
+    expect(createConversationCompatibilityHash(corrected)).toBe(
       createConversationCompatibilityHash(legacy)
     );
   });

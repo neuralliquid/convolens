@@ -137,9 +137,21 @@ export function createConversationCompatibilityHash(
     sentAt: message.sentAt.toISOString(),
     isOutgoing: Boolean(message.isOutgoing),
     isMedia: Boolean(message.isMedia),
-    mediaType: message.mediaType || null,
+    mediaType: normalizeCompatibilityMediaType(message),
   }));
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function normalizeCompatibilityMediaType(message: ConversationMessageInput): string | null {
+  const content = normalizeCompatibilityContent(message);
+  if (
+    message.isMedia &&
+    content === '' &&
+    (message.mediaType === 'image' || message.mediaType === 'video')
+  ) {
+    return 'visual';
+  }
+  return message.mediaType || null;
 }
 
 function normalizeCompatibilityContent(message: ConversationMessageInput): string {
@@ -197,11 +209,14 @@ function mergeParticipantEvidence(
   const merged = existing.map((participant) => ({ ...participant }));
   for (const observation of incoming) {
     const stableKeys = stableParticipantKeys(observation);
-    const match = merged.find(
-      (participant) =>
+    const match = merged.find((participant) => {
+      const existingKeys = stableParticipantKeys(participant);
+      return (
         (stableKeys.length > 0 && participantsShareStableEvidence(participant, observation)) ||
-        (stableKeys.length === 0 && participant.ref === observation.ref)
-    );
+        (participant.ref === observation.ref &&
+          (stableKeys.length === 0 || existingKeys.length === 0))
+      );
+    });
     if (!match) {
       merged.push({
         ...observation,
