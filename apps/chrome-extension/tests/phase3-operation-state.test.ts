@@ -131,3 +131,31 @@ test("counts repeated terminal renders only once", () => {
     /lastCountedTerminalOperationId !== operation\.operationId/,
   );
 });
+
+test("binds retained reviews to their authenticated owner", () => {
+  assert.match(backgroundSource, /captureOperationOwnerIds/);
+  assert.match(backgroundSource, /boundOwnerId/);
+  assert.match(backgroundSource, /refreshedOwnerId !== expectedOwnerId/);
+  assert.match(backgroundSource, /clearCaptureStateForAccountChange\(\)/);
+});
+
+test("keeps in-flight upload truth across logout and tab closure", () => {
+  const logoutCleanup = backgroundSource.slice(
+    backgroundSource.indexOf(
+      "async function clearCaptureStateAndAuthentication",
+    ),
+    backgroundSource.indexOf(
+      "async function clearCaptureStateForAccountChange",
+    ),
+  );
+  assert.ok(
+    logoutCleanup.indexOf("Promise.allSettled") <
+      logoutCleanup.indexOf("invalidateLoadedCaptureOperations"),
+  );
+  const tabRemoval = backgroundSource.slice(
+    backgroundSource.indexOf("chrome.tabs.onRemoved.addListener"),
+    backgroundSource.indexOf("// Message Handler"),
+  );
+  assert.doesNotMatch(tabRemoval, /isActiveCaptureState/);
+  assert.doesNotMatch(tabRemoval, /"uploading"/);
+});
