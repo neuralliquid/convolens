@@ -480,7 +480,7 @@ describe('ConversationIntakeService', () => {
     );
   });
 
-  it('normalizes corrected image and video detection when the media has a caption', () => {
+  it('keeps current image and video evidence distinct when the media has a caption', () => {
     const legacy = stableInput();
     legacy.messages[0] = {
       ...legacy.messages[0],
@@ -496,13 +496,18 @@ describe('ConversationIntakeService', () => {
       mediaType: 'video',
     };
 
-    expect(createConversationCompatibilityHash(corrected)).toBe(
+    expect(createConversationCompatibilityHash(corrected)).not.toBe(
       createConversationCompatibilityHash(legacy)
     );
   });
 
   it('persists a corrected video type for compatibility-deduplicated captioned media', async () => {
     const legacy = stableInput();
+    legacy.provenance = {
+      connectorVersion: '1.0.12',
+      captureInitiatedBy: 'user',
+      consentBasis: 'user-selected-conversation',
+    };
     legacy.messages[0] = {
       ...legacy.messages[0],
       content: 'Project clip',
@@ -511,6 +516,11 @@ describe('ConversationIntakeService', () => {
     };
     const first = await service.save(legacy);
     const corrected = stableInput();
+    corrected.provenance = {
+      connectorVersion: '1.0.13',
+      captureInitiatedBy: 'user',
+      consentBasis: 'user-selected-conversation',
+    };
     corrected.messages[0] = {
       ...corrected.messages[0],
       content: 'Project clip',
@@ -524,5 +534,31 @@ describe('ConversationIntakeService', () => {
     expect(second.conversation.id).toBe(first.conversation.id);
     expect(second.conversation.messages[0].mediaType).toBe('video');
     expect(second.conversation.messages[0].content).toBe('Project clip');
+  });
+
+  it('does not collapse a current image and current video with otherwise identical tuples', async () => {
+    const image = stableInput();
+    image.provenance = {
+      connectorVersion: '1.0.13',
+      captureInitiatedBy: 'user',
+      consentBasis: 'user-selected-conversation',
+    };
+    image.messages[0] = {
+      ...image.messages[0],
+      content: 'Project asset',
+      isMedia: true,
+      mediaType: 'image',
+    };
+    const first = await service.save(image);
+    const video = stableInput();
+    video.provenance = image.provenance;
+    video.messages[0] = { ...image.messages[0], mediaType: 'video' };
+
+    const second = await service.save(video);
+
+    expect(second.duplicate).toBe(false);
+    expect(second.reconciliationRequired).toBe(true);
+    expect(second.conversation.id).not.toBe(first.conversation.id);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(2);
   });
 });

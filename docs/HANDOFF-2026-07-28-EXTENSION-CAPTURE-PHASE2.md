@@ -14,7 +14,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Historical unscoped, conflicting, or multiple matches are stored separately with an explicit reconciliation warning; neither intake is silently merged or discarded.
 - Historical compatibility hashes are backfilled in batches of 100 using conditional hash-only updates, so stale legacy rows cannot overwrite concurrent evidence enrichment. A capture remains conservatively marked for reconciliation while additional unprocessed history exists.
 - Runtime startup and the documented TypeORM CLI commands share the same ordered migration registry, including the additive fidelity migration.
-- Compatibility normalizes legacy captionless placeholders and corrected visual-media evidence with or without captions, persists the known image-to-video correction, compares all overlapping stable participant identifiers, enriches name-only references without duplicating them, and preserves reconciliation warnings on exact repeats or later loss of stable scope.
+- Compatibility normalizes legacy captionless placeholders and scopes image-to-video correction to captures whose provenance proves they came from a pre-1.0.13 connector. Current image and video evidence remains distinct even when all other tuples match. The service also compares all overlapping stable participant identifiers, enriches name-only references without duplicating them, and preserves reconciliation warnings on exact repeats or later loss of stable scope.
 - Video takes precedence over image descendants. The dashboard renders neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges and keeps captions separate without fetching attachments.
 - Extension runtime and package metadata are synchronized at `1.0.13`.
 
@@ -37,7 +37,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 
 - Chrome extension Node tests: 33 passed, 0 failed.
 - Chrome extension TypeScript: passed.
-- API Jest suite: 109 passed, 0 failed across 9 suites, including concurrent compatibility, evidence-enrichment, synchronized-index, captioned-media, WhatsApp LID, and transaction-failure regressions.
+- API Jest suite: 110 passed, 0 failed across 9 suites, including concurrent compatibility, evidence-enrichment, synchronized-index, legacy visual-correction isolation, WhatsApp LID, and transaction/deletion-safety regressions.
 - Focused migration, route, and compatibility tests: 29 passed, 0 failed.
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.

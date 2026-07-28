@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { IsNull, QueryFailedError, type DataSource, type EntityManager } from 'typeorm';
+import { In, IsNull, QueryFailedError, type DataSource, type EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
   ConversationIntake,
@@ -10,6 +10,7 @@ import {
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
+const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
 const compatibilityQueues = new Map<string, Promise<void>>();
 
 async function withLocalCompatibilityLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -154,21 +155,30 @@ export function createConversationContentHashV2(input: ConversationIntakeInput):
 export function createConversationCompatibilityHash(
   input: Pick<ConversationIntakeInput, 'messages'>
 ): string {
+  return createCompatibilityHash(input, false);
+}
+
+function createLegacyVisualCompatibilityHash(
+  input: Pick<ConversationIntakeInput, 'messages'>
+): string {
+  return createCompatibilityHash(input, true);
+}
+
+function createCompatibilityHash(
+  input: Pick<ConversationIntakeInput, 'messages'>,
+  mapVideoToLegacyImage: boolean
+): string {
   const canonical = input.messages.map((message) => ({
     content: normalizeCompatibilityContent(message),
     sentAt: message.sentAt.toISOString(),
     isOutgoing: Boolean(message.isOutgoing),
     isMedia: Boolean(message.isMedia),
-    mediaType: normalizeCompatibilityMediaType(message),
+    mediaType:
+      mapVideoToLegacyImage && message.isMedia && message.mediaType === 'video'
+        ? 'image'
+        : message.mediaType || null,
   }));
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-}
-
-function normalizeCompatibilityMediaType(message: ConversationMessageInput): string | null {
-  if (message.isMedia && (message.mediaType === 'image' || message.mediaType === 'video')) {
-    return 'visual';
-  }
-  return message.mediaType || null;
 }
 
 function normalizeCompatibilityContent(message: ConversationMessageInput): string {
@@ -313,6 +323,44 @@ function shouldRequireReconciliation(
   return candidate.sourceConversationId === sourceConversationId;
 }
 
+function parseConnectorVersion(value: string | undefined): number[] | null {
+  const match = value?.match(/^(\d+)\.(\d+)\.(\d+)/);
+  return match ? match.slice(1).map(Number) : null;
+}
+
+function compareConnectorVersions(first: number[], second: number[]): number {
+  for (let index = 0; index < 3; index++) {
+    if (first[index] !== second[index]) return first[index] - second[index];
+  }
+  return 0;
+}
+
+function isLegacyVisualCorrectionCandidate(
+  candidate: ConversationIntake,
+  input: ConversationIntakeInput,
+  legacyVisualCompatibilityHash: string
+): boolean {
+  if (candidate.compatibilityHash !== legacyVisualCompatibilityHash) return false;
+  const candidateVersion = parseConnectorVersion(candidate.provenance?.connectorVersion);
+  const incomingVersion = parseConnectorVersion(input.provenance?.connectorVersion);
+  const fixVersion = parseConnectorVersion(VISUAL_MEDIA_FIX_VERSION)!;
+  if (
+    !candidateVersion ||
+    !incomingVersion ||
+    compareConnectorVersions(candidateVersion, fixVersion) >= 0 ||
+    compareConnectorVersions(incomingVersion, fixVersion) < 0
+  ) {
+    return false;
+  }
+  return candidate.messages.some(
+    (message, position) =>
+      message.isMedia &&
+      message.mediaType === 'image' &&
+      input.messages[position]?.isMedia &&
+      input.messages[position]?.mediaType === 'video'
+  );
+}
+
 function isContentHashUniqueConstraintError(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
   const driverError = error.driverError as {
@@ -353,13 +401,33 @@ export class ConversationIntakeService {
       conversation.sourceConversationId = input.sourceConversationId;
       conversation.sourceConversationIdentityStable = true;
     }
-    if (options.applyMediaCorrections) {
-      const correctedMessages = applyCorrectedVisualMediaEvidence(conversation, input);
-      if (correctedMessages.length > 0) {
-        await repositoryProvider.getRepository(ConversationMessage).save(correctedMessages);
-      }
+    const correctedMessages = options.applyMediaCorrections
+      ? applyCorrectedVisualMediaEvidence(conversation, input)
+      : [];
+    if (correctedMessages.length > 0) {
+      conversation.compatibilityHash = compatibilityHash;
     }
-    await repositoryProvider.getRepository(ConversationIntake).save(conversation);
+    const intakeUpdate = await repositoryProvider.getRepository(ConversationIntake).update(
+      { id: conversation.id, userId: conversation.userId },
+      {
+        participantEvidence: conversation.participantEvidence,
+        compatibilityHash: conversation.compatibilityHash,
+        sourceConversationId: conversation.sourceConversationId,
+        sourceConversationIdentityStable: conversation.sourceConversationIdentityStable,
+      }
+    );
+    if (intakeUpdate.affected !== 1) {
+      throw new Error('The conversation intake was deleted before it could be updated.');
+    }
+    if (correctedMessages.length > 0) {
+      await Promise.all(
+        correctedMessages.map((message) =>
+          repositoryProvider
+            .getRepository(ConversationMessage)
+            .update({ id: message.id, intakeId: conversation.id }, { mediaType: 'video' })
+        )
+      );
+    }
     return {
       conversation,
       duplicate: true,
@@ -374,6 +442,7 @@ export class ConversationIntakeService {
     const legacyContentHash = createConversationContentHash(input);
     const contentHash = usesStableV2 ? createConversationContentHashV2(input) : legacyContentHash;
     const compatibilityHash = createConversationCompatibilityHash(input);
+    const legacyVisualCompatibilityHash = createLegacyVisualCompatibilityHash(input);
     const intakeRepository = this.dataSource.getRepository(ConversationIntake);
     const exactLookupOptions = {
       relations: { messages: true },
@@ -411,7 +480,7 @@ export class ConversationIntakeService {
     const compatibilityLockKey = [
       input.userId,
       input.sourcePlatform.toLowerCase(),
-      compatibilityHash,
+      legacyVisualCompatibilityHash,
     ]
       .map((value) => normalizeHashValue(value))
       .join('\u0000');
@@ -459,7 +528,7 @@ export class ConversationIntakeService {
             where: {
               userId: input.userId,
               sourcePlatform: input.sourcePlatform,
-              compatibilityHash,
+              compatibilityHash: In([compatibilityHash, legacyVisualCompatibilityHash]),
             },
             relations: { messages: true },
             order: { messages: { position: 'ASC' } },
@@ -469,7 +538,8 @@ export class ConversationIntakeService {
             ...candidatesNeedingBackfill,
           ].filter(
             (candidate, index, candidates) =>
-              candidate.compatibilityHash === compatibilityHash &&
+              (candidate.compatibilityHash === compatibilityHash ||
+                candidate.compatibilityHash === legacyVisualCompatibilityHash) &&
               candidates.findIndex((other) => other.id === candidate.id) === index
           );
           const lockedSameStableConversation = usesStableV2
@@ -480,7 +550,10 @@ export class ConversationIntakeService {
               )
             : [];
           const lockedCompatibleCandidates = lockedSameStableConversation.filter(
-            (candidate) => !hasConflictingStableEvidence(candidate, input)
+            (candidate) =>
+              !hasConflictingStableEvidence(candidate, input) &&
+              (candidate.compatibilityHash === compatibilityHash ||
+                isLegacyVisualCorrectionCandidate(candidate, input, legacyVisualCompatibilityHash))
           );
           const lockedHasUnscopedSemanticCandidates = lockedSemanticCandidates.some(
             (candidate) => !candidate.sourceConversationIdentityStable
@@ -495,7 +568,10 @@ export class ConversationIntakeService {
               lockedCompatibleCandidates[0],
               input,
               compatibilityHash,
-              { applyMediaCorrections: true },
+              {
+                applyMediaCorrections:
+                  lockedCompatibleCandidates[0].compatibilityHash !== compatibilityHash,
+              },
               manager
             );
           }
