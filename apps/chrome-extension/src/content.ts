@@ -146,6 +146,7 @@ let launcherPosition: LauncherPosition = DEFAULT_LAUNCHER_POSITION;
 let launcherOperation: CaptureOperationSnapshot | null = null;
 let legacyQueueCount = 0;
 let launcherSuppressClick = false;
+let launcherAuthRefreshGeneration = 0;
 
 // =============================================================================
 // Initialization
@@ -342,24 +343,7 @@ async function injectUI(): Promise<void> {
     });
   });
 
-  try {
-    const [operationResponse, legacyResponse] = (await Promise.all([
-      chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
-      chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
-    ])) as [
-      ExtensionResponse<CaptureOperationSnapshot>,
-      ExtensionResponse<{ count: number }>,
-    ];
-    if (operationResponse.success && operationResponse.data) {
-      renderCaptureOperation(operationResponse.data);
-    }
-    updateLegacyQueueState(
-      legacyResponse.success ? legacyResponse.data?.count || 0 : 0,
-    );
-  } catch {
-    updateLegacyQueueState(0);
-    // Operation state will arrive through CAPTURE_OPERATION_UPDATED when available.
-  }
+  await refreshLauncherAuthenticationState(authToken).catch(() => undefined);
 }
 
 function setupLauncherInteraction(): void {
@@ -547,23 +531,30 @@ function resetLauncherAccountState(authenticated: boolean): void {
 async function refreshLauncherAuthenticationState(
   token: string | null,
 ): Promise<void> {
+  const refreshGeneration = ++launcherAuthRefreshGeneration;
   resetLauncherAccountState(token !== null);
   if (token === null) return;
 
-  const [operationResponse, legacyResponse] = (await Promise.all([
-    chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
-    chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
-  ])) as [
-    ExtensionResponse<CaptureOperationSnapshot>,
-    ExtensionResponse<{ count: number }>,
-  ];
-  if (authToken !== token) return;
-  if (operationResponse.success && operationResponse.data) {
-    renderCaptureOperation(operationResponse.data);
+  try {
+    const [operationResponse, legacyResponse] = (await Promise.all([
+      chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
+      chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
+    ])) as [
+      ExtensionResponse<CaptureOperationSnapshot>,
+      ExtensionResponse<{ count: number }>,
+    ];
+    if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+    if (operationResponse.success && operationResponse.data) {
+      renderCaptureOperation(operationResponse.data);
+    }
+    updateLegacyQueueState(
+      legacyResponse.success ? legacyResponse.data?.count || 0 : 0,
+    );
+  } catch (error) {
+    if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+    resetLauncherAccountState(token !== null);
+    throw error;
   }
-  updateLegacyQueueState(
-    legacyResponse.success ? legacyResponse.data?.count || 0 : 0,
-  );
 }
 
 function updateStatus(
@@ -1607,7 +1598,6 @@ function handleMessage(
       refreshLauncherAuthenticationState(typedMessage.token)
         .then(() => respondSafely(sendResponse, { success: true }))
         .catch((error) => {
-          resetLauncherAccountState(typedMessage.token !== null);
           respondSafely(sendResponse, {
             success: false,
             error: normalizeErrorMessage(error),

@@ -97,7 +97,12 @@ test("gets only a safe legacy count from the background", () => {
     contentSource.indexOf("async function injectUI"),
     contentSource.indexOf("function setupLauncherInteraction"),
   );
-  assert.match(injection, /GET_LEGACY_QUEUE_SUMMARY/);
+  const authenticationRefresh = contentSource.slice(
+    contentSource.indexOf("async function refreshLauncherAuthenticationState"),
+    contentSource.indexOf("function updateStatus"),
+  );
+  assert.match(injection, /refreshLauncherAuthenticationState\(authToken\)/);
+  assert.match(authenticationRefresh, /GET_LEGACY_QUEUE_SUMMARY/);
   assert.doesNotMatch(injection, /STORAGE_KEYS\.pendingUploads/);
   assert.doesNotMatch(contentSource, /chrome\.storage\.onChanged/);
   assert.match(backgroundSource, /async function getLegacyQueueSummary/);
@@ -118,7 +123,18 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
     contentSource,
     /GET_CAPTURE_OPERATION[\s\S]*GET_LEGACY_QUEUE_SUMMARY/,
   );
-  assert.match(contentSource, /if \(authToken !== token\) return/);
+  assert.match(
+    contentSource,
+    /const refreshGeneration = \+\+launcherAuthRefreshGeneration/,
+  );
+  assert.match(
+    contentSource,
+    /catch \(error\) \{\s*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;\s*resetLauncherAccountState\(token !== null\)/,
+  );
+  assert.match(
+    contentSource,
+    /await refreshLauncherAuthenticationState\(authToken\)\.catch\(\(\) => undefined\)/,
+  );
   assert.match(
     contentSource,
     /case "SET_AUTH_TOKEN"[\s\S]*refreshLauncherAuthenticationState\(typedMessage\.token\)/,
