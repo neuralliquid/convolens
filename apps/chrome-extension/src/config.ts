@@ -92,6 +92,7 @@ export const STORAGE_KEYS = {
   extractionHistory: "extractionHistory",
   pendingUploads: "pendingUploads",
   captureOperations: "captureOperations",
+  launcherPosition: "launcherPosition",
 };
 
 // =============================================================================
@@ -261,6 +262,10 @@ export interface ClearPendingUploadsMessage {
   action: "CLEAR_PENDING_UPLOADS";
 }
 
+export interface GetLegacyQueueSummaryMessage {
+  action: "GET_LEGACY_QUEUE_SUMMARY";
+}
+
 // Union type of all message types
 export type ExtensionMessage =
   | GetCurrentChatMessage
@@ -283,7 +288,8 @@ export type ExtensionMessage =
   | LogoutMessage
   | GetSettingsMessage
   | UpdateSettingsMessage
-  | ClearPendingUploadsMessage;
+  | ClearPendingUploadsMessage
+  | GetLegacyQueueSummaryMessage;
 
 // Helper type to extract action names
 export type MessageAction = ExtensionMessage["action"];

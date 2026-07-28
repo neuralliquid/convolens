@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ConvoLens - WhatsApp Intake",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Send the WhatsApp Web conversation you choose into your ConvoLens workspace.",
 
   "icons": {

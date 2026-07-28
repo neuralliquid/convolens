@@ -144,6 +144,9 @@ async function handleMessage(
       return { success: true, data: captureOperations.get(tabId) };
     }
 
+    case "GET_LEGACY_QUEUE_SUMMARY":
+      return await getLegacyQueueSummary();
+
     case "CONFIRM_CAPTURE_OPERATION":
       return await confirmCaptureOperation(message, _sender);
 
@@ -789,10 +792,7 @@ async function sendChatData(
       STORAGE_KEYS.user,
     ]);
     const finalOwnerId = finalCredentialState[STORAGE_KEYS.user]?.id;
-    if (
-      typeof finalOwnerId !== "string" ||
-      finalOwnerId !== expectedOwnerId
-    ) {
+    if (typeof finalOwnerId !== "string" || finalOwnerId !== expectedOwnerId) {
       await clearCaptureStateForAccountChange();
       return {
         success: false,
@@ -1260,6 +1260,26 @@ async function getApiConfig() {
 async function clearPendingUploads(): Promise<ExtensionResponse> {
   await chrome.storage.local.remove(STORAGE_KEYS.pendingUploads);
   return { success: true };
+}
+
+async function getLegacyQueueSummary(): Promise<
+  ExtensionResponse<{ count: number }>
+> {
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEYS.pendingUploads,
+    STORAGE_KEYS.user,
+  ]);
+  const pending = stored[STORAGE_KEYS.pendingUploads];
+  const authenticatedOwnerId = stored[STORAGE_KEYS.user]?.id;
+  return {
+    success: true,
+    data: {
+      count:
+        typeof authenticatedOwnerId === "string" && Array.isArray(pending)
+          ? pending.length
+          : 0,
+    },
+  };
 }
 
 // =============================================================================
