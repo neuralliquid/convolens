@@ -79,11 +79,25 @@ export function createConversationContentHash(
 function stableParticipantKey(
   participant: ConversationParticipantEvidence | undefined
 ): string | null {
-  if (!participant) return null;
-  if (participant.isSelf) return 'self';
-  return (
-    participant.platformUserId || participant.normalizedPhone || participant.rawUsername || null
-  );
+  return stableParticipantKeys(participant)[0] || null;
+}
+
+function stableParticipantKeys(participant: ConversationParticipantEvidence | undefined): string[] {
+  if (!participant) return [];
+  if (participant.isSelf) return ['self'];
+  return [
+    participant.platformUserId ? `platform:${participant.platformUserId}` : undefined,
+    participant.normalizedPhone ? `phone:${participant.normalizedPhone}` : undefined,
+    participant.rawUsername ? `username:${participant.rawUsername}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+}
+
+function participantsShareStableEvidence(
+  first: ConversationParticipantEvidence,
+  second: ConversationParticipantEvidence
+): boolean {
+  const secondKeys = new Set(stableParticipantKeys(second));
+  return stableParticipantKeys(first).some((key) => secondKeys.has(key));
 }
 
 function participantMap(input: Pick<ConversationIntakeInput, 'participantEvidence'>) {
@@ -119,13 +133,20 @@ export function createConversationCompatibilityHash(
   input: Pick<ConversationIntakeInput, 'messages'>
 ): string {
   const canonical = input.messages.map((message) => ({
-    content: normalizeHashValue(message.content),
+    content: normalizeCompatibilityContent(message),
     sentAt: message.sentAt.toISOString(),
     isOutgoing: Boolean(message.isOutgoing),
     isMedia: Boolean(message.isMedia),
     mediaType: message.mediaType || null,
   }));
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function normalizeCompatibilityContent(message: ConversationMessageInput): string {
+  const normalized = normalizeHashValue(message.content);
+  return message.isMedia && /^\[(?:image|video|audio|document|sticker|media)\]$/i.test(normalized)
+    ? ''
+    : normalized;
 }
 
 function storedCompatibilityHash(conversation: ConversationIntake): string {
@@ -152,13 +173,20 @@ function hasConflictingStableEvidence(
   const incomingParticipants = participantMap(input);
   return input.messages.some((message, position) => {
     const existingMessage = candidate.messages[position];
-    const existingKey = stableParticipantKey(
-      existingMessage?.senderRef ? existingParticipants.get(existingMessage.senderRef) : undefined
+    const existingParticipant = existingMessage?.senderRef
+      ? existingParticipants.get(existingMessage.senderRef)
+      : undefined;
+    const incomingParticipant = message.senderRef
+      ? incomingParticipants.get(message.senderRef)
+      : undefined;
+    if (!existingParticipant || !incomingParticipant) return false;
+    const existingKeys = stableParticipantKeys(existingParticipant);
+    const incomingKeys = stableParticipantKeys(incomingParticipant);
+    return Boolean(
+      existingKeys.length > 0 &&
+        incomingKeys.length > 0 &&
+        !participantsShareStableEvidence(existingParticipant, incomingParticipant)
     );
-    const incomingKey = stableParticipantKey(
-      message.senderRef ? incomingParticipants.get(message.senderRef) : undefined
-    );
-    return Boolean(existingKey && incomingKey && existingKey !== incomingKey);
   });
 }
 
@@ -168,11 +196,11 @@ function mergeParticipantEvidence(
 ): ConversationParticipantEvidence[] {
   const merged = existing.map((participant) => ({ ...participant }));
   for (const observation of incoming) {
-    const stableKey = stableParticipantKey(observation);
+    const stableKeys = stableParticipantKeys(observation);
     const match = merged.find(
       (participant) =>
-        (stableKey && stableParticipantKey(participant) === stableKey) ||
-        (!stableKey && participant.ref === observation.ref)
+        (stableKeys.length > 0 && participantsShareStableEvidence(participant, observation)) ||
+        (stableKeys.length === 0 && participant.ref === observation.ref)
     );
     if (!match) {
       merged.push({
@@ -223,7 +251,11 @@ export class ConversationIntakeService {
       );
       existing.compatibilityHash = existing.compatibilityHash || compatibilityHash;
       await intakeRepository.save(existing);
-      return { conversation: existing, duplicate: true, reconciliationRequired: false };
+      return {
+        conversation: existing,
+        duplicate: true,
+        reconciliationRequired: existing.reconciliationStatus === 'required',
+      };
     }
 
     const scopeCandidates = await intakeRepository.find({
@@ -272,7 +304,11 @@ export class ConversationIntakeService {
         input.participantEvidence
       );
       await intakeRepository.save(duplicate);
-      return { conversation: duplicate, duplicate: true, reconciliationRequired: false };
+      return {
+        conversation: duplicate,
+        duplicate: true,
+        reconciliationRequired: duplicate.reconciliationStatus === 'required',
+      };
     }
 
     const reconciliationCandidates = semanticCandidates.filter(
@@ -341,7 +377,11 @@ export class ConversationIntakeService {
         order: { messages: { position: 'ASC' } },
       });
       if (duplicate) {
-        return { conversation: duplicate, duplicate: true, reconciliationRequired: false };
+        return {
+          conversation: duplicate,
+          duplicate: true,
+          reconciliationRequired: duplicate.reconciliationStatus === 'required',
+        };
       }
       throw error;
     }

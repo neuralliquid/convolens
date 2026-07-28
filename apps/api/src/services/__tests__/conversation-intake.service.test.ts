@@ -182,6 +182,20 @@ describe('ConversationIntakeService', () => {
     );
   });
 
+  it('matches an enriched platform id when the stable phone still overlaps', async () => {
+    const first = await service.save(stableInput());
+    const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
+    enriched.participantEvidence![0].platformUserId = '27821234567@s.whatsapp.net';
+    const second = await service.save(enriched);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.reconciliationRequired).toBe(false);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.participantEvidence?.[0].platformUserId).toBe(
+      '27821234567@s.whatsapp.net'
+    );
+  });
+
   it('requires reconciliation when a historical unscoped intake matches semantically', async () => {
     const historical = await service.save(baseInput);
     const captured = await service.save(stableInput());
@@ -189,6 +203,16 @@ describe('ConversationIntakeService', () => {
     expect(captured.duplicate).toBe(false);
     expect(captured.reconciliationRequired).toBe(true);
     expect(captured.conversation.reconciliationCandidateIds).toEqual([historical.conversation.id]);
+  });
+
+  it('preserves reconciliation state when the separated capture repeats exactly', async () => {
+    await service.save(baseInput);
+    const captured = await service.save(stableInput());
+    const repeated = await service.save(stableInput());
+
+    expect(repeated.duplicate).toBe(true);
+    expect(repeated.conversation.id).toBe(captured.conversation.id);
+    expect(repeated.reconciliationRequired).toBe(true);
   });
 
   it('keeps identical ordered messages in distinct stable conversations separate', async () => {
@@ -238,5 +262,26 @@ describe('ConversationIntakeService', () => {
         stableInput('whatsapp:120363987654321@g.us', 'Greg Wright', '+27821234567')
       )
     ).not.toBe(createConversationContentHashV2(enriched));
+  });
+
+  it('normalizes legacy captionless media placeholders for compatibility', () => {
+    const legacy = stableInput();
+    legacy.messages[0] = {
+      ...legacy.messages[0],
+      content: '[image]',
+      isMedia: true,
+      mediaType: 'image',
+    };
+    const current = stableInput();
+    current.messages[0] = {
+      ...current.messages[0],
+      content: '',
+      isMedia: true,
+      mediaType: 'image',
+    };
+
+    expect(createConversationCompatibilityHash(current)).toBe(
+      createConversationCompatibilityHash(legacy)
+    );
   });
 });
