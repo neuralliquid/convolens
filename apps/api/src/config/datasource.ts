@@ -4,8 +4,8 @@ import { Group } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
-import { CreateConversationIntake1753400000000 } from '../db/migrations/1753400000000-CreateConversationIntake';
 import { postgresNativeUuidOptions } from './postgres-uuid';
+import { CONVERSATION_MIGRATIONS } from './migrations';
 import { logger } from '../utils/logger';
 
 // Load environment variables
@@ -27,7 +27,7 @@ const commonOptions = {
       : ['error', 'warn'],
   logger: isProduction ? 'file' : 'debug',
   entities: [User, Group, Message, ConversationIntake, ConversationMessage],
-  migrations: [CreateConversationIntake1753400000000],
+  migrations: CONVERSATION_MIGRATIONS,
   migrationsRun,
   migrationsTableName: 'migrations',
   cache: {

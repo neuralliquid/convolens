@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { DataSource } from 'typeorm';
 import { CreateConversationIntake1753400000000 } from '../1753400000000-CreateConversationIntake';
 import { AddConversationFidelity1753660000000 } from '../1753660000000-AddConversationFidelity';
+import { CONVERSATION_MIGRATIONS } from '../../../config/migrations';
 
 describe('CreateConversationIntake migration', () => {
   let dataSource: DataSource;
@@ -24,6 +25,10 @@ describe('CreateConversationIntake migration', () => {
   });
 
   it('creates durable intake and message tables with the idempotency index', async () => {
+    expect(CONVERSATION_MIGRATIONS).toEqual([
+      CreateConversationIntake1753400000000,
+      AddConversationFidelity1753660000000,
+    ]);
     const queryRunner = dataSource.createQueryRunner();
     const intakeTable = await queryRunner.getTable('conversation_intakes');
     const messageTable = await queryRunner.getTable('conversation_messages');

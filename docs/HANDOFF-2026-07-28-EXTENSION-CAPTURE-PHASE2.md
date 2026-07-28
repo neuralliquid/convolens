@@ -12,6 +12,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Exact v2 matches are checked first. Compatibility deduplication requires exactly one candidate in the same stable conversation, no conflicting stable participant evidence, no matching unscoped history, and no deferred compatibility-backfill rows.
 - Historical unscoped, conflicting, or multiple matches are stored separately with an explicit reconciliation warning; neither intake is silently merged or discarded.
 - Historical compatibility hashes are backfilled in batches of 100. A capture remains conservatively marked for reconciliation while additional unprocessed history exists.
+- Runtime startup and the documented TypeORM CLI commands share the same ordered migration registry, including the additive fidelity migration.
 - Compatibility normalizes legacy captionless and corrected visual-media evidence, persists the known image-to-video correction, compares all overlapping stable participant identifiers, enriches name-only references without duplicating them, and preserves reconciliation warnings on exact repeats or later loss of stable scope.
 - Video takes precedence over image descendants. The dashboard renders neutral `Image`, `Video`, `Audio`, `Document`, `Sticker`, or `Media` badges and keeps captions separate without fetching attachments.
 - Extension runtime and package metadata are synchronized at `1.0.13`.
@@ -40,7 +41,7 @@ Phase 2 implements the remaining sender, deduplication, and media-fidelity slice
 - Repository `pnpm run build`: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.13`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `BFB9B1DBD07AF8D4589BF4878FAC980CB849D0A9D2CEBCF4CBD8B7E98BE154C9`.
+- Packaged ZIP SHA-256: `401CDB36F4AE6FAA36CED796CE439DFB00E4B20C4C3C5AFE46631642B2386FED`.
 - Prettier and `git diff --check`: passed for the changed surfaces.
 
 ## Boundaries still open

@@ -28,13 +28,11 @@ function isPhoneOnly(value?: string): boolean {
   );
 }
 
-function withoutPhone(value: string): string {
+function displayNameFromCombinedLabel(value: string): string {
   const suffix = value.trim().match(PHONE_SUFFIX_PATTERN);
   if (!suffix || !normalizePhone(suffix[1])) return value.trim();
-  return value
-    .slice(0, suffix.index)
-    .replace(/^[\s·|,:;-]+|[\s·|,:;-]+$/g, "")
-    .trim();
+  const label = value.slice(0, suffix.index).trim();
+  return label.replace(/^[\s·|,:;-]+|[\s·|,:;-]+$/g, "");
 }
 
 export function combineSenderEvidence(input: SenderEvidenceInput): {
@@ -49,7 +47,7 @@ export function combineSenderEvidence(input: SenderEvidenceInput): {
   ].filter((value): value is string => Boolean(value?.trim()));
   const displayCandidate = candidates.find((value) => !isPhoneOnly(value));
   const rawDisplayName = displayCandidate
-    ? withoutPhone(displayCandidate) || displayCandidate.trim()
+    ? displayNameFromCombinedLabel(displayCandidate) || displayCandidate.trim()
     : undefined;
   const normalizedPhone = [...candidates, ...(input.scopedPhoneEvidence || [])]
     .map(normalizePhone)
