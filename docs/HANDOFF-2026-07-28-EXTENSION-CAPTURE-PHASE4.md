@@ -19,7 +19,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Base: `origin/main` at `373e76dc3bf54ac9c116fce82550f1b6ea1c89f6` (merged PR #151).
 - Branch: `agent/extension-capture-phase4`.
 - Worktree: `C:/tmp/convolens-extension-phase4`.
-- Pull request: to be opened.
+- Pull request: [#152](https://github.com/neuralliquid/convolens/pull/152).
 - The primary checkout and its pre-existing untracked handoff remain untouched.
 
 ## Validation
