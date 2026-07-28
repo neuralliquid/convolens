@@ -207,6 +207,60 @@
         background: #fef2f2;
       }
 
+      .capture-preview {
+        display: none;
+        padding: 12px;
+        border: 1px solid #bbf7d0;
+        border-radius: 10px;
+        background: #f0fdf4;
+        font-size: 12px;
+        color: #374151;
+      }
+
+      .capture-preview.show {
+        display: block;
+      }
+
+      .capture-preview h4 {
+        margin-bottom: 6px;
+        color: #14532d;
+        font-size: 13px;
+      }
+
+      .capture-scope {
+        margin: 8px 0;
+        color: #4b5563;
+        line-height: 1.4;
+      }
+
+      .capture-modes {
+        display: grid;
+        gap: 5px;
+        margin: 8px 0 10px;
+      }
+
+      .capture-mode {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .capture-mode span:last-child {
+        color: #6b7280;
+        font-weight: 600;
+      }
+
+      .preview-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .preview-actions button {
+        padding: 9px 10px;
+        font-size: 12px;
+      }
+
       .user-info {
         display: flex;
         align-items: center;
@@ -331,8 +385,33 @@
               Open Dashboard
             </button>
             <button class="btn-secondary" id="extractBtn">
-              Send Current Chat
+              Review loaded messages
             </button>
+            <div class="capture-preview" id="capturePreview">
+              <h4>Loaded-message review</h4>
+              <div id="captureSummary"></div>
+              <p class="capture-scope">
+                Only messages currently loaded by WhatsApp will be uploaded.
+                Unloaded older messages are excluded.
+              </p>
+              <div class="capture-modes" aria-label="Capture modes">
+                <div class="capture-mode">
+                  <span>Loaded messages</span><span>Selected</span>
+                </div>
+                <div class="capture-mode">
+                  <span>Capture as I scroll</span><span>Soon</span>
+                </div>
+                <div class="capture-mode">
+                  <span>Load older messages for me</span><span>Soon</span>
+                </div>
+              </div>
+              <div class="preview-actions">
+                <button class="btn-primary" id="confirmCapture">
+                  Confirm upload
+                </button>
+                <button class="btn-secondary" id="cancelCapture">Cancel</button>
+              </div>
+            </div>
             <button class="btn-secondary" id="logoutBtn">Sign Out</button>
             <div
               class="action-status"

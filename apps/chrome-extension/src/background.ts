@@ -4,7 +4,7 @@
  * Handles all background operations for the extension:
  * - API communication with retry logic
  * - Authentication state management
- * - Offline queue processing
+ * - Explicit retry-required responses without persisting new raw captures
  * - Settings management
  * - Error tracking
  */
@@ -28,15 +28,19 @@ import {
 // Types
 // =============================================================================
 
-interface PendingUpload {
-  data: any;
-  queuedAt: number;
-  attempts: number;
-}
-
 interface RateLimitState {
   apiCallCount: number;
   resetTime: number;
+}
+
+class HttpRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "HttpRequestError";
+  }
 }
 
 // Storage key for persistent rate limiting
@@ -53,11 +57,33 @@ chrome.runtime.onMessage.addListener(
     sendResponse: (response: ExtensionResponse) => void,
   ) => {
     handleMessage(message, sender)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ success: false, error: error.message }));
+      .then((response) => respondSafely(sendResponse, response))
+      .catch((error) =>
+        respondSafely(sendResponse, {
+          success: false,
+          error: normalizeErrorMessage(error),
+        }),
+      );
     return true; // Indicates async response
   },
 );
+
+function normalizeErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return "The extension operation could not be completed.";
+}
+
+function respondSafely(
+  sendResponse: (response: ExtensionResponse) => void,
+  response: ExtensionResponse,
+): void {
+  try {
+    sendResponse(response);
+  } catch {
+    // The popup, tab, or frame can close while an async response is pending.
+  }
+}
 
 async function handleMessage(
   message: ExtensionMessage,
@@ -105,9 +131,6 @@ async function handleMessage(
       return await updateSettings(typedMessage.settings);
     }
 
-    case "RETRY_PENDING_UPLOADS":
-      return await retryPendingUploads();
-
     case "CLEAR_PENDING_UPLOADS":
       return await clearPendingUploads();
 
@@ -150,9 +173,13 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
     // Check rate limiting (persistent across service worker restarts)
     const canProceed = await checkApiRateLimit();
     if (!canProceed) {
-      // Queue for later
-      await queuePendingUpload(chatData);
-      return { success: false, error: "Rate limited. Queued for later." };
+      return {
+        success: false,
+        code: "retry-required",
+        retryRequired: true,
+        error:
+          "Upload not sent because the extension is rate limited. Retry from this WhatsApp tab after reviewing the loaded messages again.",
+      };
     }
 
     // Send with retry (include tracing headers for distributed tracing)
@@ -175,21 +202,19 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
 
     return { success: true, data: result };
   } catch (error) {
-    console.error("[Background] Send error:", error);
+    console.error("[Background] Send failed; recapture is required");
 
-    // Queue for offline sync if network error
-    if (isNetworkError(error)) {
-      await queuePendingUpload(chatData);
+    if (isNetworkError(error) || isRateLimitError(error)) {
       return {
         success: false,
+        code: "retry-required",
+        retryRequired: true,
         error:
-          (error as Error).name === "TimeoutError"
-            ? "ConvoLens took too long to respond. This chat was saved for automatic retry."
-            : "Connection lost. This chat was saved for automatic retry.",
+          "Upload not sent. Retry from this WhatsApp tab after reviewing the loaded messages again.",
       };
     }
 
-    return { success: false, error: (error as Error).message };
+    return { success: false, error: normalizeErrorMessage(error) };
   }
 }
 
@@ -237,13 +262,15 @@ async function fetchWithRetry(
           response.status < 500 &&
           response.status !== 429
         ) {
-          throw new Error(
+          throw new HttpRequestError(
             errorData.message || `Request failed: ${response.status}`,
+            response.status,
           );
         }
 
-        throw new Error(
+        throw new HttpRequestError(
           errorData.message || `Request failed: ${response.status}`,
+          response.status,
         );
       }
 
@@ -252,7 +279,7 @@ async function fetchWithRetry(
       const normalizedError = didTimeout
         ? Object.assign(
             new Error(
-              "ConvoLens took too long to respond. The chat was saved for automatic retry.",
+              "ConvoLens took too long to respond. The upload was not sent.",
             ),
             { name: "TimeoutError" },
           )
@@ -289,6 +316,10 @@ function isNetworkError(error: any): boolean {
     error.message?.includes("network") ||
     error.message?.includes("offline")
   );
+}
+
+function isRateLimitError(error: unknown): boolean {
+  return error instanceof HttpRequestError && error.status === 429;
 }
 
 // =============================================================================
@@ -448,9 +479,6 @@ async function handleLogin(
 
     await notifyContentScripts(token);
 
-    // Process any pending uploads
-    retryPendingUploads().catch(console.error);
-
     return { success: true, data: { user } };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -505,91 +533,11 @@ async function getApiConfig() {
 }
 
 // =============================================================================
-// Pending Uploads (Offline Queue)
+// Legacy Pending Upload Migration
 // =============================================================================
 
-async function queuePendingUpload(data: any): Promise<void> {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.pendingUploads]);
-  const pending: PendingUpload[] = stored[STORAGE_KEYS.pendingUploads] || [];
-
-  pending.push({
-    data,
-    queuedAt: Date.now(),
-    attempts: 0,
-  });
-
-  // Keep only last 20 pending uploads, warn if dropping
-  let dropped = 0;
-  while (pending.length > 20) {
-    pending.shift();
-    dropped++;
-  }
-
-  if (dropped > 0) {
-    console.warn(
-      `[Background] Queue full. Dropped ${dropped} oldest upload(s) to make room.`,
-    );
-  }
-
-  await chrome.storage.local.set({ [STORAGE_KEYS.pendingUploads]: pending });
-  console.log("[Background] Queued pending upload. Total:", pending.length);
-}
-
-async function retryPendingUploads(): Promise<ExtensionResponse> {
-  const stored = await chrome.storage.local.get([
-    STORAGE_KEYS.pendingUploads,
-    STORAGE_KEYS.authToken,
-  ]);
-
-  if (!stored[STORAGE_KEYS.authToken]) {
-    return { success: false, error: "Not authenticated" };
-  }
-
-  const pending: PendingUpload[] = stored[STORAGE_KEYS.pendingUploads] || [];
-  if (pending.length === 0) {
-    return { success: true, data: { processed: 0 } };
-  }
-
-  let processed = 0;
-  let failed = 0;
-  const remaining: PendingUpload[] = [];
-
-  for (const upload of pending) {
-    // Skip if too many attempts
-    if (upload.attempts >= 5) {
-      console.warn("[Background] Dropping upload after max attempts");
-      continue;
-    }
-
-    try {
-      const result = await sendChatData(upload.data);
-      if (result.success) {
-        processed++;
-      } else {
-        upload.attempts++;
-        remaining.push(upload);
-        failed++;
-      }
-    } catch (error) {
-      upload.attempts++;
-      remaining.push(upload);
-      failed++;
-    }
-
-    // Small delay between retries
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-
-  await chrome.storage.local.set({ [STORAGE_KEYS.pendingUploads]: remaining });
-
-  return {
-    success: true,
-    data: { processed, failed, remaining: remaining.length },
-  };
-}
-
 async function clearPendingUploads(): Promise<ExtensionResponse> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.pendingUploads]: [] });
+  await chrome.storage.local.remove(STORAGE_KEYS.pendingUploads);
   return { success: true };
 }
 
@@ -697,26 +645,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       url: `${config.dashboardUrl}/extension-welcome`,
     });
   }
-
-  if (details.reason === "update") {
-    // Process any pending uploads after update
-    setTimeout(() => retryPendingUploads().catch(console.error), 5000);
-  }
-});
-
-// Periodic sync of pending uploads
-chrome.alarms.create("syncPendingUploads", { periodInMinutes: 5 });
-
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "syncPendingUploads") {
-    retryPendingUploads().catch(console.error);
-  }
-});
-
-// Listen for network status changes
-self.addEventListener("online", () => {
-  console.log("[Background] Back online, syncing pending uploads");
-  retryPendingUploads().catch(console.error);
 });
 
 console.log("[Background] Service worker initialized");
