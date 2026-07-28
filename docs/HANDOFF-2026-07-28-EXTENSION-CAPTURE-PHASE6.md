@@ -12,10 +12,10 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 - Concurrent stop requests share one in-flight finalization promise, preventing timeout, safety, popup, and launcher stops from racing the retained buffer.
 - Stable WhatsApp message-scoped `data-id` values are preferred for overlap identity. Generated connector message IDs are never used for overlap deduplication.
 - When stable IDs are absent, maximal ordered suffix/prefix alignment uses sender, text, timestamp/metadata, direction, and media evidence. Exact repeated windows are idempotent.
-- Ambiguous fallback overlaps retain all candidate occurrences, increment a review warning, and ask the user to use smaller upward scroll steps rather than silently deleting a possible message.
+- A single-message fallback overlap is always treated as occurrence-ambiguous. Longer fallback overlaps must also be sequence-unique; ambiguous overlaps retain all candidate occurrences, increment a review warning, and ask the user to use smaller upward scroll steps rather than silently deleting a possible message.
 - The merge direction detects both older prepended windows and newly appended live-message windows.
 - Running unique count, oldest detected timestamp, overlap warning, `Stop and review`, and `Cancel` are visible on both surfaces.
-- Stop reasons distinguish user stop, 2,000-message guided safety limit, ten-minute timeout, and three consecutive DOM read failures. Chat changes and tab teardown cancel without sending.
+- Stop reasons distinguish user stop, an enforced 2,000-message guided safety limit, ten-minute timeout, and three consecutive DOM read failures. Stable additions are capped before the payload is updated; an over-limit ambiguous window is rejected intact rather than partially dropping candidates. Chat changes and tab teardown cancel without sending.
 - Final review preserves the exact-count confirmation gate and identifies the guided stop reason. Cancel discards the tab-memory buffer and sends nothing.
 - A deterministic 200-message fixture collected through overlapping 16-node windows retains all messages in order, preserves two same-sender/same-text/same-minute occurrences, avoids duplicate copies when a window repeats, and covers appended live messages.
 - Extension runtime and package metadata are synchronized at `1.0.17`.
@@ -30,13 +30,13 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 
 ## Validation
 
-- Chrome extension Node tests: 80 passed, 0 failed, including deterministic guided-window, repeated-occurrence, ambiguity, lifecycle, controls, privacy, and safety-boundary coverage.
+- Chrome extension Node tests: 83 passed, 0 failed, including deterministic guided-window, repeated-occurrence, single-boundary ambiguity, enforced limit, lifecycle, controls, privacy, and safety-boundary coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.17`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `B4374EB280B4960CA0B130B95C71632B269B5709E48EEF1AF93C68691508A379`.
+- Packaged ZIP SHA-256: `E4A41D796740D426899590EB963978DD27DA2185C70A8EBE93F8386BBB041D4A`.
 - A local Playwright popup screenshot was attempted, but the installed Playwright package had no local Chromium binary. No browser was downloaded solely for this check, and no visual acceptance is claimed.
 
 ## Boundaries still open

@@ -101,17 +101,66 @@ test("fallback sequence alignment merges an unambiguous overlap", () => {
     value: token,
   });
   const result = mergeGuidedWindow(
-    [item("c"), item("d"), item("e")],
-    [item("a"), item("b"), item("c")],
+    [item("c"), item("d"), item("e"), item("f")],
+    [item("a"), item("b"), item("c"), item("d")],
     "prepend",
   );
 
   assert.deepEqual(
     result.items.map((entry) => entry.value),
-    ["a", "b", "c", "d", "e"],
+    ["a", "b", "c", "d", "e", "f"],
   );
-  assert.equal(result.overlapCount, 1);
+  assert.equal(result.overlapCount, 2);
   assert.equal(result.ambiguous, false);
+});
+
+test("treats a single fallback boundary token as occurrence-ambiguous", () => {
+  const item = (
+    token: string,
+    occurrence: string,
+  ): GuidedWindowItem<string> => ({
+    alignmentToken: token,
+    value: occurrence,
+  });
+  const existing = [item("same", "second occurrence"), item("later", "later")];
+  const incoming = [item("older", "older"), item("same", "first occurrence")];
+  const result = mergeGuidedWindow(existing, incoming, "prepend");
+
+  assert.equal(result.ambiguous, true);
+  assert.deepEqual(
+    result.items.map((entry) => entry.value),
+    ["older", "first occurrence", "second occurrence", "later"],
+  );
+});
+
+test("caps stable additions before they reach the retained payload", () => {
+  const existing = Array.from({ length: 1_990 }, (_, index) =>
+    fixtureItem(index + 1),
+  );
+  const incoming = Array.from({ length: 30 }, (_, index) =>
+    fixtureItem(index + 1_981),
+  );
+  const result = mergeGuidedWindow(existing, incoming, "append", 2_000);
+
+  assert.equal(result.items.length, 2_000);
+  assert.equal(result.items.at(-1)?.value.id, 2_000);
+  assert.equal(result.addedCount, 10);
+  assert.equal(result.limitReached, true);
+});
+
+test("rejects an over-limit ambiguous window instead of dropping candidates", () => {
+  const item = (token: string): GuidedWindowItem<string> => ({
+    alignmentToken: token,
+    value: token,
+  });
+  const existing = [item("same"), item("later")];
+  const incoming = [item("older"), item("same")];
+  const result = mergeGuidedWindow(existing, incoming, "prepend", 3);
+
+  assert.equal(result.limitReached, true);
+  assert.equal(result.ambiguous, true);
+  assert.deepEqual(result.items, existing);
+  assert.equal(result.addedCount, 0);
 });
 
 test("ambiguous fallback overlap retains candidates and raises a warning", () => {

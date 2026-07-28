@@ -171,6 +171,7 @@ interface GuidedCaptureSession {
   unreadableCount: number;
   reading: boolean;
   pendingRead: boolean;
+  limitReached: boolean;
 }
 
 const GUIDED_CAPTURE_LIMIT = 2_000;
@@ -1436,9 +1437,11 @@ function mergeGuidedPayload(
     session.items,
     incomingItems,
     guidedMergeEdge(session.items, incomingItems),
+    GUIDED_CAPTURE_LIMIT,
   );
   session.items = merge.items;
   if (merge.ambiguous) session.alignmentWarningCount += 1;
+  if (merge.limitReached) session.limitReached = true;
   const incomingSkipped = Math.max(
     0,
     incoming.diagnostics.messageContainerCount -
@@ -1532,7 +1535,7 @@ async function collectNextGuidedWindow(
       operationId: session.operationId,
       summary,
     });
-    if (summary.extractedCount >= GUIDED_CAPTURE_LIMIT) {
+    if (session.limitReached) {
       await chrome.runtime.sendMessage({
         action: "STOP_GUIDED_CAPTURE_OPERATION",
         operationId: session.operationId,
@@ -1589,6 +1592,7 @@ async function startGuidedCaptureOperation(
     unreadableCount,
     reading: false,
     pendingRead: false,
+    limitReached: false,
   };
   guidedCaptureSession = session;
   return summarizeCapturePayload(
