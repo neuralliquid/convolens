@@ -22,6 +22,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Logout rechecks its intent after acquiring the final-clear lock. A later explicit password sign-in or external Mystira session validation wins; an upload-internal refresh remains part of the older operation and cannot supersede logout.
 - That final check uses the latest successfully committed authentication intent rather than a merely started attempt, so a failed later validation cannot cause logout to report success while leaving old credentials behind.
 - Upload-internal session refresh receives the committed authentication intent captured when that upload began; it cannot inherit a newer failed sign-in attempt from global state or supersede a pending logout.
+- Authentication writes reject only a newer successfully committed credential or a newer active clear intent. Merely started or failed external validation cannot poison a later upload refresh.
 - Cancelled pointer drags restore the last saved launcher placement instead of persisting interrupted coordinates.
 - Opening the panel moves focus into its first enabled control, while pointer cancellation clears drag click-suppression state.
 - Escape, focus-visible, reduced-motion, forced-colour, dark-mode, and narrow-window behavior are included.
@@ -47,7 +48,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `3FFA99EAA1BD0BC7906D979673358F9AAF136ADB8F6EDA445780E73BEAA88C20`.
+- Packaged ZIP SHA-256: `BDB2EB7C776C222735043458C5F07CDCB429A8289C90992640CC4832CA14759D`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open
