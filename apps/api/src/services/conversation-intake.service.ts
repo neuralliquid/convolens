@@ -386,6 +386,7 @@ export class ConversationIntakeService {
     conversation: ConversationIntake,
     input: ConversationIntakeInput,
     compatibilityHash: string,
+    contentHash: string,
     options: {
       applyMediaCorrections?: boolean;
       persistVerifiedStableScope?: boolean;
@@ -406,12 +407,14 @@ export class ConversationIntakeService {
       : [];
     if (correctedMessages.length > 0) {
       conversation.compatibilityHash = compatibilityHash;
+      conversation.contentHash = contentHash;
     }
     const intakeUpdate = await repositoryProvider.getRepository(ConversationIntake).update(
       { id: conversation.id, userId: conversation.userId },
       {
         participantEvidence: conversation.participantEvidence,
         compatibilityHash: conversation.compatibilityHash,
+        contentHash: conversation.contentHash,
         sourceConversationId: conversation.sourceConversationId,
         sourceConversationIdentityStable: conversation.sourceConversationIdentityStable,
       }
@@ -519,6 +522,7 @@ export class ConversationIntakeService {
               lockedExisting,
               input,
               compatibilityHash,
+              contentHash,
               { persistVerifiedStableScope: lockedExisting === lockedLegacyScopedMatch },
               manager
             );
@@ -568,6 +572,7 @@ export class ConversationIntakeService {
               lockedCompatibleCandidates[0],
               input,
               compatibilityHash,
+              contentHash,
               {
                 applyMediaCorrections:
                   lockedCompatibleCandidates[0].compatibilityHash !== compatibilityHash,

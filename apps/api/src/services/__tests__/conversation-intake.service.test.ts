@@ -534,6 +534,19 @@ describe('ConversationIntakeService', () => {
     expect(second.conversation.id).toBe(first.conversation.id);
     expect(second.conversation.messages[0].mediaType).toBe('video');
     expect(second.conversation.messages[0].content).toBe('Project clip');
+
+    const currentImage = stableInput();
+    currentImage.provenance = {
+      connectorVersion: '1.0.13',
+      captureInitiatedBy: 'user',
+      consentBasis: 'user-selected-conversation',
+    };
+    currentImage.messages[0] = { ...legacy.messages[0] };
+    const third = await service.save(currentImage);
+
+    expect(third.duplicate).toBe(false);
+    expect(third.conversation.id).not.toBe(first.conversation.id);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(2);
   });
 
   it('does not collapse a current image and current video with otherwise identical tuples', async () => {
