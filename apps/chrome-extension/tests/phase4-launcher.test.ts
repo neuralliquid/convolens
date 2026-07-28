@@ -104,3 +104,33 @@ test("gets only a safe legacy count from the background", () => {
   assert.match(backgroundSource, /typeof authenticatedOwnerId === "string"/);
   assert.match(backgroundSource, /Array\.isArray\(pending\)/);
 });
+
+test("refreshes account-scoped launcher state on authentication messages", () => {
+  assert.match(
+    contentSource,
+    /async function refreshLauncherAuthenticationState/,
+  );
+  assert.match(
+    contentSource,
+    /resetLauncherAccountState\(token !== null\)[\s\S]*if \(token === null\) return/,
+  );
+  assert.match(
+    contentSource,
+    /GET_CAPTURE_OPERATION[\s\S]*GET_LEGACY_QUEUE_SUMMARY/,
+  );
+  assert.match(contentSource, /if \(authToken !== token\) return/);
+  assert.match(
+    contentSource,
+    /case "SET_AUTH_TOKEN"[\s\S]*refreshLauncherAuthenticationState\(typedMessage\.token\)/,
+  );
+  assert.match(contentSource, /launcherOperation = null/);
+});
+
+test("moves focus into the panel and clears cancelled-drag suppression", () => {
+  assert.match(
+    contentSource,
+    /if \(expanded\) \{\s*panel\.querySelector<HTMLButtonElement>\("button:not\(\[disabled\]\)"\)\?\.focus\(\)/,
+  );
+  assert.match(contentSource, /pointercancel[\s\S]*finishDrag\(event, true\)/);
+  assert.match(contentSource, /if \(cancelled\) launcherSuppressClick = false/);
+});

@@ -416,9 +416,11 @@ function setupLauncherInteraction(): void {
       event.clientX >= window.innerWidth / 2,
     );
   });
-  const finishDrag = (event: PointerEvent) => {
+  const finishDrag = (event: PointerEvent, cancelled = false) => {
     if (!drag || drag.pointerId !== event.pointerId) return;
-    toggle.releasePointerCapture(event.pointerId);
+    if (toggle.hasPointerCapture(event.pointerId)) {
+      toggle.releasePointerCapture(event.pointerId);
+    }
     if (launcherSuppressClick) {
       const rect = fab.getBoundingClientRect();
       void setLauncherPosition({
@@ -430,9 +432,10 @@ function setupLauncherInteraction(): void {
       });
     }
     drag = undefined;
+    if (cancelled) launcherSuppressClick = false;
   };
-  toggle.addEventListener("pointerup", finishDrag);
-  toggle.addEventListener("pointercancel", finishDrag);
+  toggle.addEventListener("pointerup", (event) => finishDrag(event));
+  toggle.addEventListener("pointercancel", (event) => finishDrag(event, true));
 
   fab
     .querySelectorAll<HTMLButtonElement>("[data-launcher-preset]")
@@ -469,6 +472,9 @@ function setLauncherExpanded(expanded: boolean, restoreFocus = false): void {
       ? "Close ConvoLens capture panel. Drag to move."
       : "Open ConvoLens capture panel. Drag to move.",
   );
+  if (expanded) {
+    panel.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+  }
   if (restoreFocus) toggle.focus();
 }
 
@@ -514,6 +520,50 @@ function updateLegacyQueueState(count: number): void {
     label.textContent = `${count} unowned local capture${count === 1 ? "" : "s"}. Export or confirmed deletion only.`;
   }
   updateLauncherBadge(launcherOperation);
+}
+
+function resetLauncherAccountState(authenticated: boolean): void {
+  launcherOperation = null;
+  pageConfirmationOperationId = null;
+  updateLegacyQueueState(0);
+  updateProgress(0);
+  updateStatus(
+    authenticated
+      ? "Ready to review loaded messages."
+      : "Sign in to ConvoLens before reviewing loaded messages.",
+    "info",
+  );
+  const button = document.getElementById(
+    "ws-extract-btn",
+  ) as HTMLButtonElement | null;
+  if (button) {
+    button.disabled = !authenticated;
+    button.textContent = authenticated
+      ? "Review loaded messages"
+      : "Sign in to capture";
+  }
+}
+
+async function refreshLauncherAuthenticationState(
+  token: string | null,
+): Promise<void> {
+  resetLauncherAccountState(token !== null);
+  if (token === null) return;
+
+  const [operationResponse, legacyResponse] = (await Promise.all([
+    chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
+    chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
+  ])) as [
+    ExtensionResponse<CaptureOperationSnapshot>,
+    ExtensionResponse<{ count: number }>,
+  ];
+  if (authToken !== token) return;
+  if (operationResponse.success && operationResponse.data) {
+    renderCaptureOperation(operationResponse.data);
+  }
+  updateLegacyQueueState(
+    legacyResponse.success ? legacyResponse.data?.count || 0 : 0,
+  );
 }
 
 function updateStatus(
@@ -1554,8 +1604,16 @@ function handleMessage(
       chrome.storage.local
         .set({ [STORAGE_KEYS.authToken]: typedMessage.token })
         .catch(() => undefined);
-      sendResponse({ success: true });
-      break;
+      refreshLauncherAuthenticationState(typedMessage.token)
+        .then(() => respondSafely(sendResponse, { success: true }))
+        .catch((error) => {
+          resetLauncherAccountState(typedMessage.token !== null);
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          });
+        });
+      return true;
     }
 
     default:
