@@ -139,6 +139,26 @@ test("binds retained reviews to their authenticated owner", () => {
   assert.match(backgroundSource, /clearCaptureStateForAccountChange\(\)/);
 });
 
+test("requires an authenticated owner before retaining a capture", () => {
+  const startBlock = backgroundSource.slice(
+    backgroundSource.indexOf("async function startCaptureOperation"),
+    backgroundSource.indexOf("async function confirmCaptureOperation"),
+  );
+  assert.match(startBlock, /typeof authenticatedOwnerId !== "string"/);
+  assert.match(
+    startBlock,
+    /captureOperationOwnerIds\.set\(operation\.operationId, authenticatedOwnerId\)/,
+  );
+  assert.match(
+    backgroundSource,
+    /typeof boundOwnerId !== "string"[\s\S]*currentOwnerId !== boundOwnerId/,
+  );
+  assert.doesNotMatch(
+    backgroundSource,
+    /expectedOwnerId &&[\s\S]{0,120}(refreshedOwnerId|finalOwnerId)/,
+  );
+});
+
 test("revalidates the owner with the exact upload credential", () => {
   assert.match(backgroundSource, /const finalCredentialState = await/);
   assert.match(backgroundSource, /finalOwnerId !== expectedOwnerId/);

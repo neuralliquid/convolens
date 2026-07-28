@@ -59,7 +59,7 @@ class HttpRequestError extends Error {
 const RATE_LIMIT_STORAGE_KEY = "ws_rate_limit_state";
 const captureOperations = new Map<number, CaptureOperationSnapshot>();
 const captureOperationEpochs = new Map<string, number>();
-const captureOperationOwnerIds = new Map<string, string | undefined>();
+const captureOperationOwnerIds = new Map<string, string>();
 const captureUploadPromises = new Map<
   string,
   Promise<ExtensionResponse<CaptureOperationSnapshot>>
@@ -327,6 +327,14 @@ async function startCaptureOperation(
       error: "Authentication changed while capture was starting. Try again.",
     };
   }
+  const authenticatedOwnerId = authState[STORAGE_KEYS.user]?.id;
+  if (typeof authenticatedOwnerId !== "string") {
+    return {
+      success: false,
+      error:
+        "Authentication is required. Sign in before reviewing loaded messages.",
+    };
+  }
 
   const existing = captureOperations.get(tabId);
   if (
@@ -339,12 +347,7 @@ async function startCaptureOperation(
 
   let operation = createCaptureOperation(tabId, message.initiator);
   captureOperationEpochs.set(operation.operationId, operationEpoch);
-  captureOperationOwnerIds.set(
-    operation.operationId,
-    typeof authState[STORAGE_KEYS.user]?.id === "string"
-      ? authState[STORAGE_KEYS.user].id
-      : undefined,
-  );
+  captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
   await publishCaptureOperation(operation);
   operation = { ...operation, state: "collecting" };
   await publishCaptureOperation(operation);
@@ -442,8 +445,9 @@ async function confirmCaptureOperation(
   const boundOwnerId = captureOperationOwnerIds.get(operation.operationId);
   const currentOwnerId = currentAuthState[STORAGE_KEYS.user]?.id;
   if (
-    boundOwnerId &&
-    (typeof currentOwnerId !== "string" || currentOwnerId !== boundOwnerId)
+    typeof boundOwnerId !== "string" ||
+    typeof currentOwnerId !== "string" ||
+    currentOwnerId !== boundOwnerId
   ) {
     await clearCaptureStateForAccountChange();
     return {
@@ -472,6 +476,16 @@ async function confirmCaptureOperation(
 async function uploadCaptureOperation(
   initialOperation: CaptureOperationSnapshot,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const expectedOwnerId = captureOperationOwnerIds.get(
+    initialOperation.operationId,
+  );
+  if (typeof expectedOwnerId !== "string") {
+    return await finishCaptureOperation(
+      initialOperation,
+      "cancelled",
+      "Authentication changed. Recapture and review the loaded messages.",
+    );
+  }
   const operationEpoch =
     captureOperationEpochs.get(initialOperation.operationId) ??
     captureLifecycleEpoch;
@@ -505,7 +519,7 @@ async function uploadCaptureOperation(
 
     const uploadResult = await sendChatData(
       payloadResponse.data,
-      captureOperationOwnerIds.get(operation.operationId),
+      expectedOwnerId,
     );
     if (!isCurrentCaptureOperation(operation, operationEpoch)) {
       return await abandonCaptureOperation(
@@ -706,7 +720,7 @@ function normalizeChannelLifecycleReason(error: unknown): string {
  */
 async function sendChatData(
   chatData: any,
-  expectedOwnerId?: string,
+  expectedOwnerId: string,
 ): Promise<ExtensionResponse> {
   try {
     let stored = await chrome.storage.local.get([
@@ -726,10 +740,7 @@ async function sendChatData(
       const refreshedOwnerId = (
         syncResult.data as { user?: { id?: string } } | undefined
       )?.user?.id;
-      if (
-        expectedOwnerId &&
-        (!refreshedOwnerId || refreshedOwnerId !== expectedOwnerId)
-      ) {
+      if (!refreshedOwnerId || refreshedOwnerId !== expectedOwnerId) {
         await clearCaptureStateForAccountChange();
         return {
           success: false,
@@ -767,8 +778,8 @@ async function sendChatData(
     ]);
     const finalOwnerId = finalCredentialState[STORAGE_KEYS.user]?.id;
     if (
-      expectedOwnerId &&
-      (typeof finalOwnerId !== "string" || finalOwnerId !== expectedOwnerId)
+      typeof finalOwnerId !== "string" ||
+      finalOwnerId !== expectedOwnerId
     ) {
       await clearCaptureStateForAccountChange();
       return {
