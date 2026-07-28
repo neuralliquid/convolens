@@ -56,6 +56,15 @@ describe('extension chat payload validation', () => {
     ).toBe(false);
   });
 
+  it('accepts a WhatsApp LID as stable conversation identity', () => {
+    expect(
+      isValidExtensionChatData({
+        ...v1Payload,
+        sourceConversationId: 'whatsapp:123456789012345@lid',
+      })
+    ).toBe(true);
+  });
+
   it('accepts aggregate-only extraction diagnostics', () => {
     expect(
       isValidExtensionChatData({

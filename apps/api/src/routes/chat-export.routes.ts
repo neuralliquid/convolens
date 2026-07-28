@@ -89,7 +89,9 @@ export function isValidExtensionChatData(data: unknown): data is ExtensionChatDa
     obj.sourceConversationId !== undefined &&
     (typeof obj.sourceConversationId !== 'string' ||
       obj.sourceConversationId.length > 500 ||
-      !/^whatsapp:[0-9][0-9a-z.-]*@(g\.us|c\.us|s\.whatsapp\.net)$/i.test(obj.sourceConversationId))
+      !/^whatsapp:[0-9][0-9a-z.-]*@(g\.us|c\.us|s\.whatsapp\.net|lid)$/i.test(
+        obj.sourceConversationId
+      ))
   )
     return false;
   if (typeof obj.extractedAt !== 'string') return false;

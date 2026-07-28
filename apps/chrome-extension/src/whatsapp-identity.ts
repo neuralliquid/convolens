@@ -8,7 +8,7 @@ export interface SenderEvidenceInput {
 const PHONE_VALUE_PATTERN = /^\+?[0-9][0-9\s().-]*$/;
 const PHONE_SUFFIX_PATTERN = /\s[·|]\s*(\+?[0-9][0-9\s().-]*)$/;
 const WHATSAPP_JID_PATTERN =
-  /([0-9][0-9A-Za-z.-]*@(?:g\.us|c\.us|s\.whatsapp\.net))/i;
+  /([0-9][0-9A-Za-z.-]*@(?:g\.us|c\.us|s\.whatsapp\.net|lid))/i;
 
 export function normalizePhone(value?: string): string | undefined {
   const trimmed = value?.trim();
