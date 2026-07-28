@@ -205,6 +205,7 @@ async function handleMessage(
       return await clearPendingUploads();
 
     case "GET_CURRENT_CHAT":
+    case "GET_CAPTURE_PREVIEW":
     case "CHECK_STATUS":
     case "SET_AUTH_TOKEN":
     case "COLLECT_CAPTURE_OPERATION":
@@ -257,6 +258,16 @@ async function loadCaptureOperations(): Promise<void> {
       const operation = {
         ...(value as CaptureOperationSnapshot),
         authGeneration: captureLifecycleEpoch,
+        unreadableCount: Number.isInteger(
+          (value as CaptureOperationSnapshot).unreadableCount,
+        )
+          ? (value as CaptureOperationSnapshot).unreadableCount
+          : 0,
+        participantLabelCount: Number.isInteger(
+          (value as CaptureOperationSnapshot).participantLabelCount,
+        )
+          ? (value as CaptureOperationSnapshot).participantLabelCount
+          : 0,
       };
       const restored = isActiveCaptureState(operation.state)
         ? completeCaptureOperation(
@@ -422,6 +433,8 @@ async function startCaptureOperation(
       collectedCount: summary.extractedCount,
       extractedCount: summary.extractedCount,
       skippedCount: summary.skippedCount,
+      unreadableCount: summary.unreadableCount,
+      participantLabelCount: summary.participantLabelCount,
       mediaCount: summary.mediaCount,
       oldestTimestamp: summary.oldestTimestamp,
       newestTimestamp: summary.newestTimestamp,
@@ -1285,9 +1298,7 @@ async function clearCaptureStateAndAuthentication(
     });
     await previousWrite;
     try {
-      if (
-        committedAuthenticationIntentGeneration > clearAuthenticationIntent
-      ) {
+      if (committedAuthenticationIntentGeneration > clearAuthenticationIntent) {
         return;
       }
       await invalidateLoadedCaptureOperations();

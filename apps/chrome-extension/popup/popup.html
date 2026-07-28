@@ -233,20 +233,83 @@
         line-height: 1.4;
       }
 
+      #captureChatName {
+        display: block;
+        overflow: hidden;
+        margin-top: 4px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .capture-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 5px;
+        margin: 8px 0;
+      }
+
+      .capture-summary-grid div {
+        padding: 6px;
+        border-radius: 7px;
+        background: #ffffff;
+      }
+
+      .capture-summary-grid dt,
+      .capture-range {
+        color: #6b7280;
+        font-size: 10px;
+      }
+
+      .capture-summary-grid dd {
+        margin: 2px 0 0;
+        color: #14532d;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .capture-range {
+        margin: 0;
+        line-height: 1.4;
+      }
+
       .capture-modes {
         display: grid;
         gap: 5px;
         margin: 8px 0 10px;
+        padding: 0;
+        border: 0;
+      }
+
+      .capture-modes legend {
+        margin-bottom: 4px;
+        color: #6b7280;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
       }
 
       .capture-mode {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
         gap: 8px;
+        padding: 6px;
+        border: 1px solid #d1d5db;
+        border-radius: 7px;
       }
 
-      .capture-mode span:last-child {
+      .capture-mode.selected {
+        border-color: #25d366;
+      }
+
+      .capture-mode.disabled {
+        opacity: 0.68;
+      }
+
+      .capture-mode em {
         color: #6b7280;
+        font-size: 10px;
+        font-style: normal;
         font-weight: 600;
       }
 
@@ -389,22 +452,65 @@
             </button>
             <div class="capture-preview" id="capturePreview">
               <h4>Loaded-message review</h4>
-              <div id="captureSummary"></div>
+              <strong id="captureChatName"></strong>
+              <dl class="capture-summary-grid" id="captureSummary">
+                <div>
+                  <dt>Loaded messages</dt>
+                  <dd id="previewLoaded">0</dd>
+                </div>
+                <div>
+                  <dt>Participant labels</dt>
+                  <dd id="previewParticipants">0</dd>
+                </div>
+                <div>
+                  <dt>Media</dt>
+                  <dd id="previewMedia">0</dd>
+                </div>
+                <div>
+                  <dt>Skipped</dt>
+                  <dd id="previewSkipped">0</dd>
+                </div>
+                <div>
+                  <dt>Unreadable</dt>
+                  <dd id="previewUnreadable">0</dd>
+                </div>
+              </dl>
+              <p class="capture-range" id="captureRange"></p>
               <p class="capture-scope">
-                Only messages currently loaded by WhatsApp will be uploaded.
-                Unloaded older messages are excluded.
+                Only the loaded messages counted above will be uploaded.
+                Unloaded older messages are excluded. Nothing is sent until you
+                confirm.
               </p>
-              <div class="capture-modes" aria-label="Capture modes">
-                <div class="capture-mode">
-                  <span>Loaded messages</span><span>Selected</span>
-                </div>
-                <div class="capture-mode">
-                  <span>Capture as I scroll</span><span>Soon</span>
-                </div>
-                <div class="capture-mode">
-                  <span>Load older messages for me</span><span>Soon</span>
-                </div>
-              </div>
+              <fieldset class="capture-modes">
+                <legend>Capture mode</legend>
+                <label class="capture-mode selected">
+                  <input
+                    type="radio"
+                    name="captureMode"
+                    value="loaded"
+                    checked
+                  />
+                  <span>Loaded messages</span><em>Selected</em>
+                </label>
+                <label class="capture-mode disabled">
+                  <input
+                    type="radio"
+                    name="captureMode"
+                    value="scroll"
+                    disabled
+                  />
+                  <span>Capture as I scroll</span><em>Soon · Phase 6</em>
+                </label>
+                <label class="capture-mode disabled">
+                  <input
+                    type="radio"
+                    name="captureMode"
+                    value="automatic"
+                    disabled
+                  />
+                  <span>Load older messages for me</span><em>Soon · Phase 7</em>
+                </label>
+              </fieldset>
               <div class="preview-actions">
                 <button class="btn-primary" id="confirmCapture">
                   Confirm upload

@@ -24,6 +24,8 @@ export interface CaptureOperationSnapshot {
   collectedCount: number;
   extractedCount: number;
   skippedCount: number;
+  unreadableCount: number;
+  participantLabelCount: number;
   mediaCount: number;
   oldestTimestamp?: string;
   newestTimestamp?: string;
@@ -40,6 +42,8 @@ export interface CaptureCollectionSummary {
   renderedCount: number;
   extractedCount: number;
   skippedCount: number;
+  unreadableCount: number;
+  participantLabelCount: number;
   mediaCount: number;
   oldestTimestamp?: string;
   newestTimestamp?: string;
@@ -77,6 +81,8 @@ export function createCaptureOperation(
     collectedCount: 0,
     extractedCount: 0,
     skippedCount: 0,
+    unreadableCount: 0,
+    participantLabelCount: 0,
     mediaCount: 0,
     startedAt: now.toISOString(),
   };

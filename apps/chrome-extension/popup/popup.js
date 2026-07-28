@@ -22,7 +22,13 @@ const actionStatus = document.getElementById("actionStatus");
 const extensionVersion = document.getElementById("extensionVersion");
 const dashboardLink = document.getElementById("dashboardLink");
 const capturePreview = document.getElementById("capturePreview");
-const captureSummary = document.getElementById("captureSummary");
+const captureChatName = document.getElementById("captureChatName");
+const captureRange = document.getElementById("captureRange");
+const previewLoaded = document.getElementById("previewLoaded");
+const previewParticipants = document.getElementById("previewParticipants");
+const previewMedia = document.getElementById("previewMedia");
+const previewSkipped = document.getElementById("previewSkipped");
+const previewUnreadable = document.getElementById("previewUnreadable");
 const confirmCapture = document.getElementById("confirmCapture");
 const cancelCapture = document.getElementById("cancelCapture");
 
@@ -71,8 +77,62 @@ function openTab(url) {
 }
 
 function clearCapturePreview() {
-  captureSummary.textContent = "";
+  captureChatName.textContent = "";
+  captureRange.textContent = "";
+  for (const field of [
+    previewLoaded,
+    previewParticipants,
+    previewMedia,
+    previewSkipped,
+    previewUnreadable,
+  ]) {
+    field.textContent = "0";
+  }
   capturePreview.classList.remove("show");
+}
+
+function formatPreviewTimestamp(value) {
+  if (!value) return "Not detected";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not detected" : date.toLocaleString();
+}
+
+async function renderCapturePreview(operation) {
+  if (!activeWhatsAppTabId) return;
+  const operationId = operation.operationId;
+  capturePreview.classList.add("show");
+  confirmCapture.disabled = true;
+  captureChatName.textContent = "Reading preview…";
+  const response = await sendToWhatsApp(activeWhatsAppTabId, {
+    action: "GET_CAPTURE_PREVIEW",
+    operationId,
+  });
+  if (currentOperation?.operationId !== operationId) return;
+  if (!response.success || !response.data) {
+    confirmCapture.disabled = true;
+    setActionStatus(
+      response.error || "The reviewed preview is no longer available.",
+      "error",
+    );
+    return;
+  }
+  const preview = response.data;
+  if (preview.loadedMessageCount !== operation.extractedCount) {
+    confirmCapture.disabled = true;
+    setActionStatus(
+      "The preview no longer matches the reviewed payload. Recapture before uploading.",
+      "error",
+    );
+    return;
+  }
+  captureChatName.textContent = preview.chatName;
+  previewLoaded.textContent = String(preview.loadedMessageCount);
+  previewParticipants.textContent = String(preview.participantLabelCount);
+  previewMedia.textContent = String(preview.mediaCount);
+  previewSkipped.textContent = String(preview.skippedCount);
+  previewUnreadable.textContent = String(preview.unreadableCount);
+  captureRange.textContent = `Oldest: ${formatPreviewTimestamp(preview.oldestTimestamp)} · Newest: ${formatPreviewTimestamp(preview.newestTimestamp)}`;
+  confirmCapture.disabled = false;
 }
 
 function renderCaptureOperation(operation) {
@@ -87,8 +147,11 @@ function renderCaptureOperation(operation) {
   cancelCapture.disabled = operation.state === "uploading";
 
   if (["ready-for-review", "retry-required"].includes(operation.state)) {
-    captureSummary.textContent = `${count} loaded message${count === 1 ? "" : "s"} from the selected chat.`;
     capturePreview.classList.add("show");
+    void renderCapturePreview(operation).catch((error) => {
+      confirmCapture.disabled = true;
+      setActionStatus(normalizeExtensionError(error), "error");
+    });
   } else {
     clearCapturePreview();
   }
@@ -392,6 +455,33 @@ cancelCapture.addEventListener("click", () => {
       else if (!response.success) setActionStatus(response.error, "error");
     })
     .catch((error) => setActionStatus(normalizeExtensionError(error), "error"));
+});
+
+async function discardUnconfirmedCaptureForModeChange(selectedMode) {
+  if (
+    selectedMode === "loaded" ||
+    !currentOperation ||
+    !activeWhatsAppTabId ||
+    !["ready-for-review", "retry-required"].includes(currentOperation.state)
+  ) {
+    return;
+  }
+  await sendRuntimeMessage({
+    action: "CANCEL_CAPTURE_OPERATION",
+    tabId: activeWhatsAppTabId,
+    operationId: currentOperation.operationId,
+    reason: "Capture mode changed. The unconfirmed buffer was discarded.",
+  });
+  currentOperation = null;
+  clearCapturePreview();
+}
+
+document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    void discardUnconfirmedCaptureForModeChange(input.value).catch((error) =>
+      setActionStatus(normalizeExtensionError(error), "error"),
+    );
+  });
 });
 
 chrome.runtime.onMessage.addListener((message) => {

@@ -138,6 +138,7 @@
 }
 
 .ws-launcher-panel[hidden],
+.ws-capture-review[hidden],
 .ws-legacy-attention[hidden] {
   display: none !important;
 }
@@ -268,6 +269,134 @@
 .ws-capture-btn:disabled {
   opacity: 0.64;
   cursor: progress;
+}
+
+.ws-capture-modes {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.ws-capture-modes legend {
+  margin-bottom: 5px;
+  color: var(--ws-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ws-capture-mode {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--ws-border);
+  border-radius: 9px;
+  background: var(--ws-surface);
+  font-size: 11px;
+}
+
+.ws-capture-mode-selected {
+  border-color: var(--ws-green);
+  background: var(--ws-surface-muted);
+}
+
+.ws-capture-mode input {
+  margin: 2px 0 0;
+}
+
+.ws-capture-mode span {
+  display: grid;
+  gap: 1px;
+}
+
+.ws-capture-mode small,
+.ws-capture-mode em {
+  color: var(--ws-text-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.ws-capture-mode-disabled {
+  opacity: 0.7;
+}
+
+.ws-capture-review {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  background: var(--ws-surface-muted);
+}
+
+.ws-capture-review h3,
+.ws-preview-grid,
+.ws-preview-grid div,
+.ws-preview-range {
+  margin: 0;
+}
+
+.ws-capture-review h3 {
+  font-size: 13px;
+}
+
+.ws-preview-chat-name {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.ws-preview-grid div {
+  padding: 6px;
+  border-radius: 7px;
+  background: var(--ws-surface);
+}
+
+.ws-preview-grid dt,
+.ws-preview-range {
+  color: var(--ws-text-muted);
+  font-size: 10px;
+}
+
+.ws-preview-grid dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.ws-preview-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.ws-preview-actions .ws-capture-btn {
+  margin-top: 0;
+}
+
+.ws-secondary-btn {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  background: var(--ws-surface);
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .ws-scope-copy {
