@@ -149,6 +149,7 @@ let legacyQueueCount = 0;
 let launcherSuppressClick = false;
 let launcherAuthRefreshGeneration = 0;
 let launcherOperationRenderGeneration = 0;
+let launcherCaptureAuthGeneration = 0;
 
 // =============================================================================
 // Initialization
@@ -533,6 +534,9 @@ async function refreshLauncherFromValidatedAuthentication(): Promise<void> {
   const authResponse = (await chrome.runtime.sendMessage({
     action: "GET_AUTH_STATUS",
   })) as ExtensionResponse<AuthStatusData>;
+  if (authResponse.success) {
+    launcherCaptureAuthGeneration = authResponse.data?.authGeneration || 0;
+  }
   if (!authResponse.success || !authResponse.data?.isAuthenticated) return;
 
   const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
@@ -629,9 +633,11 @@ async function handleExtractClick(): Promise<void> {
     const existingResponse = (await chrome.runtime.sendMessage({
       action: "GET_CAPTURE_OPERATION",
     })) as ExtensionResponse<CaptureOperationSnapshot>;
-    const existingOperation = existingResponse.success
-      ? existingResponse.data
-      : undefined;
+    const existingOperation =
+      existingResponse.success &&
+      existingResponse.data?.authGeneration === launcherCaptureAuthGeneration
+        ? existingResponse.data
+        : undefined;
     if (
       existingOperation &&
       ["ready-for-review", "retry-required"].includes(existingOperation.state)
@@ -677,7 +683,7 @@ async function handleExtractClick(): Promise<void> {
       );
       return;
     }
-    renderCaptureOperation(response.data);
+    if (!renderCaptureOperation(response.data)) return;
     if (["ready-for-review", "retry-required"].includes(response.data.state)) {
       if (response.data.state === "retry-required") {
         pageConfirmationOperationId = null;
@@ -692,6 +698,7 @@ async function handleExtractClick(): Promise<void> {
 async function reviewPageCapture(
   operation: CaptureOperationSnapshot,
 ): Promise<void> {
+  if (operation.authGeneration !== launcherCaptureAuthGeneration) return;
   if (pageConfirmationOperationId === operation.operationId) return;
   pageConfirmationOperationId = operation.operationId;
   const confirmed = window.confirm(
@@ -707,7 +714,9 @@ async function reviewPageCapture(
       reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
     })) as ExtensionResponse<CaptureOperationSnapshot>;
     if (response.success && response.data) {
-      renderCaptureOperation(response.data);
+      if (!renderCaptureOperation(response.data)) {
+        pageConfirmationOperationId = null;
+      }
       return;
     }
     pageConfirmationOperationId = null;
@@ -721,7 +730,8 @@ async function reviewPageCapture(
   }
 }
 
-function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
+function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
+  if (operation.authGeneration !== launcherCaptureAuthGeneration) return false;
   launcherOperationRenderGeneration += 1;
   launcherOperation = operation;
   updateLauncherBadge(operation);
@@ -788,6 +798,7 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
       updateStatus(operation.reason || "Capture cancelled.", "error");
       break;
   }
+  return true;
 }
 
 function getLauncherActionLabel(operation: CaptureOperationSnapshot): string {
@@ -1681,6 +1692,7 @@ function handleMessage(
         break;
       }
       authToken = normalizeAuthToken(typedMessage.token);
+      launcherCaptureAuthGeneration = typedMessage.authGeneration;
       chrome.storage.local
         .set({ [STORAGE_KEYS.authToken]: authToken })
         .catch(() => undefined);

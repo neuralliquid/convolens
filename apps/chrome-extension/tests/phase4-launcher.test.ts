@@ -168,6 +168,18 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
     /case "SET_AUTH_TOKEN"[\s\S]*authToken = normalizeAuthToken\(typedMessage\.token\)[\s\S]*refreshLauncherAuthenticationState\(authToken\)/,
   );
   assert.match(contentSource, /launcherOperation = null/);
+  assert.match(
+    backgroundSource,
+    /SET_AUTH_TOKEN[\s\S]*authGeneration: captureLifecycleEpoch/,
+  );
+  assert.match(
+    contentSource,
+    /operation\.authGeneration !== launcherCaptureAuthGeneration[\s\S]*return false/,
+  );
+  assert.match(
+    contentSource,
+    /launcherCaptureAuthGeneration = typedMessage\.authGeneration/,
+  );
 });
 
 test("moves focus into the panel and clears cancelled-drag suppression", () => {

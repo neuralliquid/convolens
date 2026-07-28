@@ -29,6 +29,7 @@ test("models active and terminal capture operation states", () => {
     new Date("2026-07-28T12:00:00.000Z"),
   );
   assert.equal(started.tabId, 42);
+  assert.equal(started.authGeneration, 0);
   assert.equal(started.state, "inspecting");
   assert.equal(isActiveCaptureState(started.state), true);
 

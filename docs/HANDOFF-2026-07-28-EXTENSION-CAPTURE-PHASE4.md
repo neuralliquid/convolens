@@ -15,6 +15,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Safe summary refreshes capture a monotonic launcher-render generation and cannot overwrite a newer live capture-operation update.
 - Failed safe-summary refreshes use the same render-generation guard and cannot clear a newer live operation.
 - Starting expiry-aware authentication validation advances the auth refresh generation immediately, invalidating older in-flight summary results even when validation ends signed out.
+- Capture snapshots carry the background authentication epoch; direct responses and operation-update messages render only for the content script's validated current epoch, preventing old-account state from resurfacing after logout or account switch.
 - Cancelled pointer drags restore the last saved launcher placement instead of persisting interrupted coordinates.
 - Opening the panel moves focus into its first enabled control, while pointer cancellation clears drag click-suppression state.
 - Escape, focus-visible, reduced-motion, forced-colour, dark-mode, and narrow-window behavior are included.
@@ -40,7 +41,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `79EF3D7A311339F13729F9A3B9133AEED433BCBF6CCCC7B82D235BF99E9E0CDF`.
+- Packaged ZIP SHA-256: `DB4800BC5178BFC955FC43E8DCD06B3BA8A665A764876FD91E595AD86C2766B8`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open

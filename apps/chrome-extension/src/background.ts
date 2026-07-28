@@ -244,7 +244,10 @@ async function loadCaptureOperations(): Promise<void> {
       if (!Number.isInteger(tabId) || !value || typeof value !== "object") {
         continue;
       }
-      const operation = value as CaptureOperationSnapshot;
+      const operation = {
+        ...(value as CaptureOperationSnapshot),
+        authGeneration: captureLifecycleEpoch,
+      };
       const restored = isActiveCaptureState(operation.state)
         ? completeCaptureOperation(
             operation,
@@ -352,7 +355,12 @@ async function startCaptureOperation(
     return { success: true, data: existing };
   }
 
-  let operation = createCaptureOperation(tabId, message.initiator);
+  let operation = createCaptureOperation(
+    tabId,
+    message.initiator,
+    new Date(),
+    operationEpoch,
+  );
   captureOperationEpochs.set(operation.operationId, operationEpoch);
   captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
   await publishCaptureOperation(operation);
@@ -971,7 +979,10 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
     if (!syncResponse.success) {
       return {
         success: true,
-        data: { isAuthenticated: false },
+        data: {
+          isAuthenticated: false,
+          authGeneration: captureLifecycleEpoch,
+        },
       };
     }
     stored = await chrome.storage.local.get([
@@ -984,6 +995,7 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
     success: true,
     data: {
       isAuthenticated: !!stored[STORAGE_KEYS.authToken],
+      authGeneration: captureLifecycleEpoch,
       user: stored[STORAGE_KEYS.user],
     },
   };
@@ -1077,7 +1089,11 @@ async function notifyContentScripts(token: string | null): Promise<void> {
     tabs.map((tab) =>
       tab.id
         ? chrome.tabs
-            .sendMessage(tab.id, { action: "SET_AUTH_TOKEN", token })
+            .sendMessage(tab.id, {
+              action: "SET_AUTH_TOKEN",
+              token,
+              authGeneration: captureLifecycleEpoch,
+            })
             .catch(() => undefined)
         : Promise.resolve(),
     ),

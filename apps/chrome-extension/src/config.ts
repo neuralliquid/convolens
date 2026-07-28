@@ -151,6 +151,7 @@ export interface CheckStatusMessage {
 export interface SetAuthTokenMessage {
   action: "SET_AUTH_TOKEN";
   token: string | null;
+  authGeneration: number;
 }
 
 export interface SendChatDataMessage {
@@ -317,6 +318,7 @@ export type ExtensionResponse<T = unknown> = SuccessResponse<T> | ErrorResponse;
 // Specific response data types
 export interface AuthStatusData {
   isAuthenticated: boolean;
+  authGeneration: number;
   user?: {
     id: string;
     email: string;

@@ -14,6 +14,7 @@ export type CaptureOperationInitiator = "popup" | "page";
 
 export interface CaptureOperationSnapshot {
   operationId: string;
+  authGeneration: number;
   tabId: number;
   initiator: CaptureOperationInitiator;
   mode: "loaded";
@@ -63,9 +64,11 @@ export function createCaptureOperation(
   tabId: number,
   initiator: CaptureOperationInitiator,
   now: Date = new Date(),
+  authGeneration: number = 0,
 ): CaptureOperationSnapshot {
   return {
     operationId: crypto.randomUUID(),
+    authGeneration,
     tabId,
     initiator,
     mode: "loaded",
