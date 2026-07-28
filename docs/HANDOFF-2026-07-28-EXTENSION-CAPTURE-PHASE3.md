@@ -12,7 +12,7 @@ Phase 3 implements the shared capture-operation slice from the phased extension 
 - Concurrent starts reuse the current per-tab operation, and concurrent confirmations reuse one upload promise. Cancellation is refused once an upload has begun because an external request can no longer be truthfully undone.
 - Each collection/upload carries the current capture-lifecycle epoch and an in-memory binding to the authenticated owner that reviewed it. Successful dashboard sync and direct-login writes are serialized; replacing one authenticated owner with another immediately invalidates the old owner's operations and reviewed payloads while new capture work is blocked. The owner is also revalidated together with the exact token immediately before the request is invoked, closing account-change races between confirmation and credential selection. Sign-out blocks new capture work, lets any already-authorized upload record its real result, then invalidates the epoch and discards every prior-account operation and reviewed tab payload before clearing authentication. Authentication expiry or a refresh to a different owner invalidates and clears all operations without waiting on the request that detected the change. No stale async continuation can republish after a transition, so a later account cannot inherit an earlier account's review.
 - Closing a tab cancels only pre-upload work. Once the background has entered `uploading`, tab closure cannot falsely label the external request cancelled; the background records the actual request result.
-- Content-script navigation compares the selected chat's verified JID or scoped header fallback and cancels pre-upload collection/review when the chat changes. Page unload, tab closure, missing receivers, and background restart become explicit cancellation outcomes.
+- Content-script navigation compares the selected chat's verified JID or scoped header fallback and cancels pre-upload collection/review when the chat changes. Late collection responses are accepted only while the exact background operation remains in `collecting`, and stale content-script cleanup is scoped to its own operation ID so it cannot clear a newer chat's capture. Page unload, tab closure, missing receivers, and background restart become explicit cancellation outcomes.
 - Both surfaces render the same operation updates, including duplicate and reconciliation-required outcomes. Loaded-message confirmation remains mandatory, and guided/automatic history capture remains unavailable.
 - Extension runtime and package metadata are synchronized at `1.0.14`.
 
@@ -26,13 +26,13 @@ Phase 3 implements the shared capture-operation slice from the phased extension 
 
 ## Validation
 
-- Chrome extension Node tests: 46 passed, 0 failed, including shared-state, persistence-boundary, double-activation, navigation, teardown, serialized auth-owner replacement, exact-credential auth-owner binding, auth-transition invalidation, in-flight logout truth, terminal-render deduplication, page retry, and popup-reopen source contracts.
+- Chrome extension Node tests: 48 passed, 0 failed, including shared-state, persistence-boundary, double-activation, navigation, stale-collection cancellation, teardown, serialized auth-owner replacement, exact-credential auth-owner binding, auth-transition invalidation, in-flight logout truth, terminal-render deduplication, page retry, and popup-reopen source contracts.
 - Chrome extension TypeScript: passed.
 - Popup JavaScript syntax and `git diff --check`: passed.
 - Repository forced Turbo build with a worktree-local cache: 8 of 8 packages passed. The ordinary exact-source rerun encountered a Windows shared-cache log permission error after task replay; the isolated-cache run completed all tasks uncached.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.14`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `5B8290258E68B51FA47A43F5D3BD20D6FB59955EE181F2A55E8ED7C997AE2719`.
+- Packaged ZIP SHA-256: `6B4EB5F5F63CE1C30A4387D4819584018ADC57D3C442AC074604B88D512524F0`.
 
 ## Boundaries still open
 

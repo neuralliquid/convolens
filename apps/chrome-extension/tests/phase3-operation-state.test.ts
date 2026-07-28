@@ -187,3 +187,22 @@ test("keeps in-flight upload truth across logout and tab closure", () => {
   assert.doesNotMatch(tabRemoval, /isActiveCaptureState/);
   assert.doesNotMatch(tabRemoval, /"uploading"/);
 });
+
+test("rejects late collection responses after background cancellation", () => {
+  assert.match(
+    backgroundSource,
+    /isCurrentCaptureOperation\(operation, operationEpoch, "collecting"\)/,
+  );
+  assert.match(backgroundSource, /currentOperation\.state === expectedState/);
+});
+
+test("keeps stale content collection cleanup scoped to its operation", () => {
+  assert.match(
+    contentSource,
+    /activeCaptureOperation\?\.operationId === operationId/,
+  );
+  assert.match(
+    contentSource,
+    /activeCaptureOperation\.operationId === operationId\s*\) \{\s*state\.isExtracting = false/,
+  );
+});

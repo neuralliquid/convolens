@@ -33,6 +33,7 @@ import {
   sanitizeOperationReason,
   type CaptureCollectionSummary,
   type CaptureOperationSnapshot,
+  type CaptureOperationState,
 } from "./capture-operation";
 
 // =============================================================================
@@ -348,10 +349,10 @@ async function startCaptureOperation(
     })) as ExtensionResponse<{
       summary: CaptureCollectionSummary;
     }>;
-    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+    if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
       return await abandonCaptureOperation(
         operation,
-        "Authentication changed while messages were being read.",
+        "The capture was cancelled while messages were being read.",
       );
     }
     if (!response.success || !response.data?.summary) {
@@ -382,6 +383,12 @@ async function startCaptureOperation(
     await publishCaptureOperation(operation);
     return { success: true, data: operation };
   } catch (error) {
+    if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+      return await abandonCaptureOperation(
+        operation,
+        "The capture was cancelled while messages were being read.",
+      );
+    }
     return await finishCaptureOperation(
       operation,
       "cancelled",
@@ -551,12 +558,14 @@ async function uploadCaptureOperation(
 function isCurrentCaptureOperation(
   operation: CaptureOperationSnapshot,
   operationEpoch: number,
+  expectedState?: CaptureOperationState,
 ): boolean {
+  const currentOperation = captureOperations.get(operation.tabId);
   return (
     operationEpoch === captureLifecycleEpoch &&
     captureOperationEpochs.get(operation.operationId) === operationEpoch &&
-    captureOperations.get(operation.tabId)?.operationId ===
-      operation.operationId
+    currentOperation?.operationId === operation.operationId &&
+    (!expectedState || currentOperation.state === expectedState)
   );
 }
 

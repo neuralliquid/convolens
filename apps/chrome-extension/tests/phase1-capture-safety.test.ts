@@ -33,7 +33,7 @@ test("keeps popup extraction page-UI-silent and resets terminal progress", () =>
   assert.match(contentSource, /if \(!silent && i % 10 === 0\)/);
   assert.match(
     contentSource,
-    /finally \{\s+state\.isExtracting = false;\s+updateProgress\(0\);/,
+    /finally \{[\s\S]*activeCaptureOperation\.operationId === operationId[\s\S]*state\.isExtracting = false;\s+updateProgress\(0\);/,
   );
 });
 

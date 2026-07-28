@@ -530,6 +530,14 @@ async function collectCaptureOperation(
         "The selected chat changed while messages were being read.",
       );
     }
+    if (
+      activeCaptureOperation?.operationId !== operationId ||
+      activeCaptureOperation.state !== "collecting"
+    ) {
+      throw new Error(
+        "The capture was cancelled while messages were being read.",
+      );
+    }
 
     activeCaptureOperation = {
       operationId,
@@ -554,11 +562,18 @@ async function collectCaptureOperation(
       newestTimestamp: timestamps[timestamps.length - 1],
     };
   } catch (error) {
-    activeCaptureOperation = null;
+    if (activeCaptureOperation?.operationId === operationId) {
+      activeCaptureOperation = null;
+    }
     throw error;
   } finally {
-    state.isExtracting = false;
-    updateProgress(0);
+    if (
+      !activeCaptureOperation ||
+      activeCaptureOperation.operationId === operationId
+    ) {
+      state.isExtracting = false;
+      updateProgress(0);
+    }
   }
 }
 
