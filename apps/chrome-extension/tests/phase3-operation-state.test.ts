@@ -206,3 +206,15 @@ test("keeps stale content collection cleanup scoped to its operation", () => {
     /activeCaptureOperation\.operationId === operationId\s*\) \{\s*state\.isExtracting = false/,
   );
 });
+
+test("validates the selected chat before publishing a retry", () => {
+  assert.match(backgroundSource, /VALIDATE_CAPTURE_OPERATION_CONTEXT/);
+  assert.match(
+    backgroundSource,
+    /!contextResponse\.success \|\| !contextResponse\.data\?\.isCurrent/,
+  );
+  assert.match(
+    contentSource,
+    /activeCaptureOperation\.chatIdentity === getCurrentChatIdentity\(\)/,
+  );
+});

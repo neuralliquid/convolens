@@ -210,6 +210,11 @@ export interface GetCaptureOperationPayloadMessage {
   operationId: string;
 }
 
+export interface ValidateCaptureOperationContextMessage {
+  action: "VALIDATE_CAPTURE_OPERATION_CONTEXT";
+  operationId: string;
+}
+
 export interface DiscardCaptureOperationMessage {
   action: "DISCARD_CAPTURE_OPERATION";
   operationId: string;
@@ -268,6 +273,7 @@ export type ExtensionMessage =
   | CancelCaptureOperationMessage
   | CollectCaptureOperationMessage
   | GetCaptureOperationPayloadMessage
+  | ValidateCaptureOperationContextMessage
   | DiscardCaptureOperationMessage
   | CaptureOperationUpdatedMessage
   | OpenDashboardMessage

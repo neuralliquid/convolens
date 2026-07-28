@@ -199,6 +199,7 @@ async function handleMessage(
     case "SET_AUTH_TOKEN":
     case "COLLECT_CAPTURE_OPERATION":
     case "GET_CAPTURE_OPERATION_PAYLOAD":
+    case "VALIDATE_CAPTURE_OPERATION_CONTEXT":
     case "DISCARD_CAPTURE_OPERATION":
     case "CAPTURE_OPERATION_UPDATED":
       // These are handled by content script, not background
@@ -508,6 +509,28 @@ async function uploadCaptureOperation(
     }
     if (!uploadResult.success) {
       if (uploadResult.retryRequired) {
+        const contextResponse = (await chrome.tabs.sendMessage(
+          operation.tabId,
+          {
+            action: "VALIDATE_CAPTURE_OPERATION_CONTEXT",
+            operationId: operation.operationId,
+          },
+        )) as ExtensionResponse<{ isCurrent: boolean }>;
+        if (
+          !isCurrentCaptureOperation(operation, operationEpoch, "uploading")
+        ) {
+          return await abandonCaptureOperation(
+            operation,
+            "The capture was cancelled while the upload was being reconciled.",
+          );
+        }
+        if (!contextResponse.success || !contextResponse.data?.isCurrent) {
+          return await finishCaptureOperation(
+            operation,
+            "cancelled",
+            "The selected chat changed during upload. Recapture before retrying.",
+          );
+        }
         operation = {
           ...operation,
           state: "retry-required",

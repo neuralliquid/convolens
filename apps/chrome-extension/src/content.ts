@@ -1165,6 +1165,14 @@ function handleMessage(
       }
       break;
 
+    case "VALIDATE_CAPTURE_OPERATION_CONTEXT": {
+      const isCurrent =
+        activeCaptureOperation?.operationId === message.operationId &&
+        activeCaptureOperation.chatIdentity === getCurrentChatIdentity();
+      sendResponse({ success: true, data: { isCurrent } });
+      break;
+    }
+
     case "DISCARD_CAPTURE_OPERATION":
       if (activeCaptureOperation?.operationId === message.operationId) {
         activeCaptureOperation = null;
