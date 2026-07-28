@@ -69,6 +69,7 @@ let captureLifecycleEpoch = 0;
 let captureAuthTransitionCount = 0;
 let authenticationWriteTail: Promise<void> = Promise.resolve();
 let authenticationIntentGeneration = 0;
+let committedAuthenticationIntentGeneration = 0;
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const operation = captureOperations.get(tabId);
@@ -1191,6 +1192,8 @@ async function replaceAuthenticatedUser(
     releaseWrite = resolve;
   });
   await previousWrite;
+  const committedAuthenticationIntent =
+    expectedAuthenticationIntent ?? authenticationIntentGeneration;
   if (
     typeof expectedAuthenticationIntent === "number" &&
     expectedAuthenticationIntent !== authenticationIntentGeneration
@@ -1228,6 +1231,10 @@ async function replaceAuthenticatedUser(
     }
 
     await notifyContentScripts(token);
+    committedAuthenticationIntentGeneration = Math.max(
+      committedAuthenticationIntentGeneration,
+      committedAuthenticationIntent,
+    );
     return true;
   } finally {
     captureAuthTransitionCount -= 1;
@@ -1272,9 +1279,17 @@ async function clearCaptureStateAndAuthentication(
     });
     await previousWrite;
     try {
-      if (clearAuthenticationIntent !== authenticationIntentGeneration) return;
+      if (
+        committedAuthenticationIntentGeneration > clearAuthenticationIntent
+      ) {
+        return;
+      }
       await invalidateLoadedCaptureOperations();
       await clearAuthenticationState();
+      committedAuthenticationIntentGeneration = Math.max(
+        committedAuthenticationIntentGeneration,
+        clearAuthenticationIntent,
+      );
     } finally {
       releaseWrite();
     }

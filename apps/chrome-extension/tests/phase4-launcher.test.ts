@@ -194,7 +194,7 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     backgroundSource,
-    /clearCaptureStateAndAuthentication[\s\S]*const clearAuthenticationIntent = \+\+authenticationIntentGeneration[\s\S]*Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*clearAuthenticationIntent !== authenticationIntentGeneration[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
+    /clearCaptureStateAndAuthentication[\s\S]*const clearAuthenticationIntent = \+\+authenticationIntentGeneration[\s\S]*Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*committedAuthenticationIntentGeneration > clearAuthenticationIntent[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
   );
   assert.match(
     backgroundSource,
@@ -203,6 +203,10 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   assert.match(
     backgroundSource,
     /expectedAuthenticationIntent !== authenticationIntentGeneration[\s\S]*return false/,
+  );
+  assert.match(
+    backgroundSource,
+    /notifyContentScripts\(token\)[\s\S]*committedAuthenticationIntentGeneration = Math\.max/,
   );
 });
 
