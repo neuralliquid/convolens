@@ -51,6 +51,7 @@ import {
   type LauncherPosition,
   type LauncherPreset,
 } from "./launcher-position";
+import { mergeGuidedWindow, type GuidedWindowItem } from "./guided-capture";
 
 // =============================================================================
 // Types
@@ -66,6 +67,8 @@ interface ExtractedMessage {
   mediaType?: "image" | "video" | "audio" | "document" | "sticker";
   replyTo?: string;
   senderRef?: string;
+  captureSourceId?: string;
+  captureAlignmentToken?: string;
 }
 
 interface ExtractedParticipant {
@@ -120,6 +123,7 @@ interface CapturePreviewSummary {
   mediaCount: number;
   skippedCount: number;
   unreadableCount: number;
+  alignmentWarningCount: number;
 }
 
 interface ExtractionState {
@@ -149,9 +153,31 @@ interface ActiveCaptureOperation {
   chatIdentity: string;
   state: CaptureOperationState;
   payload: ExtractedChat | null;
+  alignmentWarningCount?: number;
 }
 
+interface GuidedCaptureSession {
+  operationId: string;
+  chatIdentity: string;
+  payload: ExtractedChat;
+  items: GuidedWindowItem<ExtractedMessage>[];
+  observer: MutationObserver;
+  scrollTarget: Element;
+  debounceId?: number;
+  timeoutId?: number;
+  consecutiveFailures: number;
+  alignmentWarningCount: number;
+  skippedCount: number;
+  unreadableCount: number;
+  reading: boolean;
+  pendingRead: boolean;
+}
+
+const GUIDED_CAPTURE_LIMIT = 2_000;
+const GUIDED_CAPTURE_TIMEOUT_MS = 10 * 60 * 1_000;
+
 let activeCaptureOperation: ActiveCaptureOperation | null = null;
+let guidedCaptureSession: GuidedCaptureSession | null = null;
 let pageConfirmationOperationId: string | null = null;
 let lastCountedTerminalOperationId: string | null = null;
 const chatIdentityTokens = new Map<string, string>();
@@ -214,6 +240,9 @@ function cleanup(): void {
       operationId: operation.operationId,
       reason: "The WhatsApp tab unloaded during capture.",
     });
+  }
+  if (guidedCaptureSession) {
+    teardownGuidedCaptureSession(guidedCaptureSession.operationId);
   }
   activeCaptureOperation = null;
   if (chatObserver) {
@@ -304,10 +333,10 @@ async function injectUI(): Promise<void> {
           <span><strong>Loaded messages</strong><small>Review what WhatsApp has loaded now</small></span>
           <em>Selected</em>
         </label>
-        <label class="ws-capture-mode ws-capture-mode-disabled">
-          <input type="radio" name="ws-capture-mode" value="scroll" disabled>
+        <label class="ws-capture-mode">
+          <input type="radio" name="ws-capture-mode" value="scroll">
           <span><strong>Capture as I scroll</strong><small>Guided collection while you scroll</small></span>
-          <em>Soon · Phase 6</em>
+          <em>Available</em>
         </label>
         <label class="ws-capture-mode ws-capture-mode-disabled">
           <input type="radio" name="ws-capture-mode" value="automatic" disabled>
@@ -318,18 +347,29 @@ async function injectUI(): Promise<void> {
       <button id="ws-extract-btn" class="ws-capture-btn" type="button" disabled>
         Sign in to capture
       </button>
+      <section id="ws-guided-progress" class="ws-guided-progress" aria-live="polite" hidden>
+        <strong>Guided capture is active</strong>
+        <span>Scroll upward in this chat. ConvoLens will retain each message window before WhatsApp removes it.</span>
+        <p><b id="ws-guided-count">0</b> unique messages · oldest <span id="ws-guided-oldest">Not detected</span></p>
+        <p id="ws-guided-warning" class="ws-guided-warning" hidden></p>
+        <div class="ws-preview-actions">
+          <button id="ws-stop-guided" class="ws-capture-btn" type="button">Stop and review</button>
+          <button id="ws-cancel-guided" class="ws-secondary-btn" type="button">Cancel</button>
+        </div>
+      </section>
       <section id="ws-capture-review" class="ws-capture-review" aria-labelledby="ws-capture-review-title" hidden>
         <h3 id="ws-capture-review-title">Review before upload</h3>
         <strong id="ws-preview-chat-name" class="ws-preview-chat-name"></strong>
         <dl class="ws-preview-grid">
-          <div><dt>Loaded messages</dt><dd id="ws-preview-loaded">0</dd></div>
+          <div><dt id="ws-preview-count-label">Loaded messages</dt><dd id="ws-preview-loaded">0</dd></div>
           <div><dt>Participant labels</dt><dd id="ws-preview-participants">0</dd></div>
           <div><dt>Media</dt><dd id="ws-preview-media">0</dd></div>
           <div><dt>Skipped</dt><dd id="ws-preview-skipped">0</dd></div>
           <div><dt>Unreadable</dt><dd id="ws-preview-unreadable">0</dd></div>
         </dl>
         <p id="ws-preview-range" class="ws-preview-range"></p>
-        <p class="ws-scope-copy">Only the loaded messages counted above will be uploaded. Older messages WhatsApp has not loaded are excluded. Nothing is sent until you confirm.</p>
+        <p id="ws-preview-warning" class="ws-guided-warning" hidden></p>
+        <p id="ws-scope-copy" class="ws-scope-copy">Only the loaded messages counted above will be uploaded. Older messages WhatsApp has not loaded are excluded. Nothing is sent until you confirm.</p>
         <div class="ws-preview-actions">
           <button id="ws-confirm-capture" class="ws-capture-btn" type="button">Confirm upload</button>
           <button id="ws-cancel-capture" class="ws-secondary-btn" type="button">Cancel</button>
@@ -379,6 +419,12 @@ async function injectUI(): Promise<void> {
     ?.addEventListener("click", () => {
       if (launcherOperation) void reviewPageCapture(launcherOperation, false);
     });
+  document.getElementById("ws-stop-guided")?.addEventListener("click", () => {
+    if (launcherOperation) void stopPageGuidedCapture(launcherOperation);
+  });
+  document.getElementById("ws-cancel-guided")?.addEventListener("click", () => {
+    if (launcherOperation) void reviewPageCapture(launcherOperation, false);
+  });
   fab
     .querySelectorAll<HTMLInputElement>('input[name="ws-capture-mode"]')
     .forEach((input) =>
@@ -729,6 +775,7 @@ function getCapturePreviewSummary(
         unreadableCount,
     ),
     unreadableCount,
+    alignmentWarningCount: operation.alignmentWarningCount || 0,
   };
 }
 
@@ -767,18 +814,61 @@ function renderPageCapturePreview(operation: CaptureOperationSnapshot): void {
     const element = document.getElementById(id);
     if (element) element.textContent = value;
   }
+  const countLabel = document.getElementById("ws-preview-count-label");
+  if (countLabel) {
+    countLabel.textContent =
+      operation.mode === "guided" ? "Captured messages" : "Loaded messages";
+  }
+  const scopeCopy = document.getElementById("ws-scope-copy");
+  if (scopeCopy) {
+    scopeCopy.textContent =
+      operation.mode === "guided"
+        ? "Only the guided messages counted above will be uploaded. Collection stopped before review, and nothing is sent until you confirm."
+        : "Only the loaded messages counted above will be uploaded. Older messages WhatsApp has not loaded are excluded. Nothing is sent until you confirm.";
+  }
+  const warning = document.getElementById("ws-preview-warning");
+  if (warning) {
+    warning.hidden = operation.alignmentWarningCount === 0;
+    warning.textContent = operation.alignmentWarningCount
+      ? `${operation.alignmentWarningCount} ambiguous overlap${operation.alignmentWarningCount === 1 ? " was" : "s were"} retained for review; no candidate occurrence was silently removed.`
+      : "";
+  }
   review.hidden = false;
 }
 
 function handleCaptureModeChange(event: Event): void {
   const selectedMode = (event.target as HTMLInputElement).value;
+  document
+    .querySelectorAll<HTMLElement>(".ws-capture-mode")
+    .forEach((label) => {
+      const input = label.querySelector<HTMLInputElement>(
+        'input[name="ws-capture-mode"]',
+      );
+      const selected = input?.value === selectedMode;
+      label.classList.toggle("ws-capture-mode-selected", selected);
+      const status = label.querySelector("em");
+      if (status && input?.value !== "automatic") {
+        status.textContent = selected ? "Selected" : "Available";
+      }
+    });
   if (
-    selectedMode !== "loaded" &&
     launcherOperation &&
-    ["ready-for-review", "retry-required"].includes(launcherOperation.state)
+    ((launcherOperation.mode === "loaded" && selectedMode !== "loaded") ||
+      (launcherOperation.mode === "guided" && selectedMode !== "scroll")) &&
+    ["collecting", "ready-for-review", "retry-required"].includes(
+      launcherOperation.state,
+    )
   ) {
     void reviewPageCapture(launcherOperation, false);
   }
+}
+
+function selectedPageCaptureMode(): "loaded" | "guided" {
+  return document.querySelector<HTMLInputElement>(
+    'input[name="ws-capture-mode"]:checked',
+  )?.value === "scroll"
+    ? "guided"
+    : "loaded";
 }
 
 async function handleExtractClick(): Promise<void> {
@@ -827,6 +917,7 @@ async function handleExtractClick(): Promise<void> {
     const response = (await chrome.runtime.sendMessage({
       action: "START_CAPTURE_OPERATION",
       initiator: "page",
+      mode: selectedPageCaptureMode(),
     })) as ExtensionResponse<CaptureOperationSnapshot>;
     if (!response.success || !response.data) {
       updateStatus(
@@ -840,6 +931,29 @@ async function handleExtractClick(): Promise<void> {
       if (response.data.state === "retry-required") {
         pageConfirmationOperationId = null;
       }
+    }
+  } catch (error) {
+    updateStatus(normalizeErrorMessage(error), "error");
+  }
+}
+
+async function stopPageGuidedCapture(
+  operation: CaptureOperationSnapshot,
+): Promise<void> {
+  if (operation.mode !== "guided" || operation.state !== "collecting") return;
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      action: "STOP_GUIDED_CAPTURE_OPERATION",
+      operationId: operation.operationId,
+      stopReason: "guided-user-stopped",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    if (response.success && response.data) {
+      renderCaptureOperation(response.data);
+    } else {
+      updateStatus(
+        response.success ? "Guided capture could not stop." : response.error,
+        "error",
+      );
     }
   } catch (error) {
     updateStatus(normalizeErrorMessage(error), "error");
@@ -896,8 +1010,22 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   if (operation.authGeneration !== launcherCaptureAuthGeneration) return false;
   launcherOperationRenderGeneration += 1;
   launcherOperation = operation;
+  const modeValue = operation.mode === "guided" ? "scroll" : "loaded";
+  document
+    .querySelectorAll<HTMLInputElement>('input[name="ws-capture-mode"]')
+    .forEach((input) => {
+      input.checked = input.value === modeValue;
+      input
+        .closest(".ws-capture-mode")
+        ?.classList.toggle("ws-capture-mode-selected", input.checked);
+      const status = input.closest(".ws-capture-mode")?.querySelector("em");
+      if (status && input.value !== "automatic") {
+        status.textContent = input.checked ? "Selected" : "Available";
+      }
+    });
   updateLauncherBadge(operation);
   renderPageCapturePreview(operation);
+  renderPageGuidedProgress(operation);
   if (activeCaptureOperation?.operationId === operation.operationId) {
     activeCaptureOperation.state = operation.state;
   }
@@ -913,14 +1041,24 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
 
   switch (operation.state) {
     case "inspecting":
-    case "collecting":
       updateStatus("Reading loaded messages…", "loading");
-      updateProgress(operation.state === "inspecting" ? 10 : 35);
+      updateProgress(10);
+      break;
+    case "collecting":
+      updateStatus(
+        operation.mode === "guided"
+          ? `Guided capture active: ${operation.extractedCount} unique message${operation.extractedCount === 1 ? "" : "s"}. Scroll upward, then stop and review.`
+          : "Reading loaded messages…",
+        "loading",
+      );
+      updateProgress(operation.mode === "guided" ? 0 : 35);
       break;
     case "ready-for-review":
       updateProgress(0);
       updateStatus(
-        `${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} ready for review.`,
+        operation.mode === "guided"
+          ? `${operation.extractedCount} guided message${operation.extractedCount === 1 ? "" : "s"} ready for review. ${guidedStopReasonLabel(operation.stopReason)}`
+          : `${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} ready for review.`,
         "info",
       );
       break;
@@ -964,11 +1102,50 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   return true;
 }
 
+function guidedStopReasonLabel(
+  reason: CaptureOperationSnapshot["stopReason"],
+): string {
+  switch (reason) {
+    case "guided-safety-limit":
+      return "The guided safety limit was reached.";
+    case "guided-timeout":
+      return "The guided session timed out.";
+    case "guided-dom-failure":
+      return "Collection stopped after repeated WhatsApp DOM read failures.";
+    default:
+      return "You stopped collection.";
+  }
+}
+
+function renderPageGuidedProgress(operation: CaptureOperationSnapshot): void {
+  const panel = document.getElementById("ws-guided-progress");
+  if (!panel) return;
+  const active =
+    operation.mode === "guided" && operation.state === "collecting";
+  panel.hidden = !active;
+  if (!active) return;
+  const count = document.getElementById("ws-guided-count");
+  const oldest = document.getElementById("ws-guided-oldest");
+  const warning = document.getElementById("ws-guided-warning");
+  if (count) count.textContent = String(operation.extractedCount);
+  if (oldest)
+    oldest.textContent = formatPreviewTimestamp(operation.oldestTimestamp);
+  if (warning) {
+    warning.hidden = operation.alignmentWarningCount === 0;
+    warning.textContent = operation.alignmentWarningCount
+      ? "An overlap could not be aligned unambiguously. Candidate occurrences were retained; use smaller upward scroll steps."
+      : "";
+  }
+}
+
 function getLauncherActionLabel(operation: CaptureOperationSnapshot): string {
   switch (operation.state) {
     case "inspecting":
-    case "collecting":
       return "Reading loaded messages…";
+    case "collecting":
+      return operation.mode === "guided"
+        ? `Guided: ${operation.extractedCount} captured`
+        : "Reading loaded messages…";
     case "ready-for-review":
       return `Review ${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"}`;
     case "uploading":
@@ -1122,8 +1299,357 @@ function getOpaqueChatKey(chatIdentity: string): string {
   return token;
 }
 
+function participantIdentityKey(participant: ExtractedParticipant): string {
+  return participant.isSelf
+    ? "self"
+    : participant.platformUserId ||
+        participant.normalizedPhone ||
+        participant.rawUsername ||
+        participant.rawDisplayName ||
+        participant.ref;
+}
+
+function cloneGuidedMessage(
+  message: ExtractedMessage,
+  senderRef: string | undefined,
+): ExtractedMessage {
+  const clone: ExtractedMessage = { ...message, senderRef };
+  Object.defineProperties(clone, {
+    captureSourceId: {
+      value: message.captureSourceId,
+      enumerable: false,
+    },
+    captureAlignmentToken: {
+      value: message.captureAlignmentToken,
+      enumerable: false,
+    },
+  });
+  return clone;
+}
+
+function guidedItems(
+  messages: ExtractedMessage[],
+): GuidedWindowItem<ExtractedMessage>[] {
+  return messages.map((message) => ({
+    stableId: message.captureSourceId,
+    alignmentToken:
+      message.captureAlignmentToken ||
+      JSON.stringify({
+        sender: message.sender,
+        text: message.text,
+        timestamp: message.timestamp,
+        direction: message.isOutgoing,
+        mediaType: message.mediaType || "none",
+      }),
+    value: message,
+  }));
+}
+
+function guidedMergeEdge(
+  existing: GuidedWindowItem<ExtractedMessage>[],
+  incoming: GuidedWindowItem<ExtractedMessage>[],
+): "prepend" | "append" {
+  if (existing.length === 0 || incoming.length === 0) return "prepend";
+  const existingIds = new Set(
+    existing
+      .map((item) => item.stableId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  if (incoming[0].stableId && existingIds.has(incoming[0].stableId)) {
+    return "append";
+  }
+  const lastIncomingId = incoming[incoming.length - 1].stableId;
+  if (lastIncomingId && existingIds.has(lastIncomingId)) {
+    return "prepend";
+  }
+  const prepend = mergeGuidedWindow(existing, incoming, "prepend");
+  const append = mergeGuidedWindow(existing, incoming, "append");
+  return append.overlapCount > prepend.overlapCount ? "append" : "prepend";
+}
+
+function summarizeCapturePayload(
+  payload: ExtractedChat,
+  chatIdentity: string,
+  skippedCount: number,
+  unreadableCount: number,
+  alignmentWarningCount: number,
+): CaptureCollectionSummary {
+  const timestamps = payload.messages
+    .map((message) => message.timestamp)
+    .filter(Boolean)
+    .sort();
+  return {
+    chatKey: getOpaqueChatKey(chatIdentity),
+    renderedCount: payload.messages.length + skippedCount + unreadableCount,
+    extractedCount: payload.messages.length,
+    skippedCount,
+    unreadableCount,
+    participantLabelCount: payload.participants.filter(
+      (participant) =>
+        participant.isSelf ||
+        Boolean(
+          participant.rawDisplayName ||
+            participant.rawUsername ||
+            participant.normalizedPhone ||
+            participant.platformUserId,
+        ),
+    ).length,
+    alignmentWarningCount,
+    mediaCount: payload.messages.filter((message) => message.isMedia).length,
+    oldestTimestamp: timestamps[0],
+    newestTimestamp: timestamps[timestamps.length - 1],
+  };
+}
+
+function mergeGuidedPayload(
+  session: GuidedCaptureSession,
+  incoming: ExtractedChat,
+): CaptureCollectionSummary {
+  const canonicalParticipants = new Map(
+    session.payload.participants.map((participant) => [
+      participantIdentityKey(participant),
+      participant,
+    ]),
+  );
+  const remappedRefs = new Map<string, string>();
+  for (const participant of incoming.participants) {
+    const key = participantIdentityKey(participant);
+    let canonical = canonicalParticipants.get(key);
+    if (!canonical) {
+      canonical = {
+        ...participant,
+        ref: `participant_${session.payload.participants.length + 1}`,
+      };
+      session.payload.participants.push(canonical);
+      canonicalParticipants.set(key, canonical);
+    }
+    remappedRefs.set(participant.ref, canonical.ref);
+  }
+  const remappedMessages = incoming.messages.map((message) =>
+    cloneGuidedMessage(
+      message,
+      message.senderRef ? remappedRefs.get(message.senderRef) : undefined,
+    ),
+  );
+  const incomingItems = guidedItems(remappedMessages);
+  const merge = mergeGuidedWindow(
+    session.items,
+    incomingItems,
+    guidedMergeEdge(session.items, incomingItems),
+  );
+  session.items = merge.items;
+  if (merge.ambiguous) session.alignmentWarningCount += 1;
+  const incomingSkipped = Math.max(
+    0,
+    incoming.diagnostics.messageContainerCount -
+      incoming.messages.length -
+      incoming.diagnostics.unreadableMessageCount,
+  );
+  const addedRatio =
+    incoming.messages.length > 0
+      ? Math.min(1, merge.addedCount / incoming.messages.length)
+      : 0;
+  session.skippedCount += Math.ceil(incomingSkipped * addedRatio);
+  session.unreadableCount += Math.ceil(
+    incoming.diagnostics.unreadableMessageCount * addedRatio,
+  );
+  session.payload.messages = session.items.map((item) => item.value);
+  session.payload.messageCount = session.payload.messages.length;
+  session.payload.extractedAt = new Date().toISOString();
+  session.payload.diagnostics = {
+    ...session.payload.diagnostics,
+    messageContainerCount:
+      session.payload.messages.length +
+      session.skippedCount +
+      session.unreadableCount,
+    extractedMessageCount: session.payload.messages.length,
+    unreadableMessageCount: session.unreadableCount,
+  };
+  if (activeCaptureOperation?.operationId === session.operationId) {
+    activeCaptureOperation.payload = session.payload;
+    activeCaptureOperation.alignmentWarningCount =
+      session.alignmentWarningCount;
+  }
+  return summarizeCapturePayload(
+    session.payload,
+    session.chatIdentity,
+    session.skippedCount,
+    session.unreadableCount,
+    session.alignmentWarningCount,
+  );
+}
+
+function teardownGuidedCaptureSession(operationId: string): void {
+  const session = guidedCaptureSession;
+  if (!session || session.operationId !== operationId) return;
+  session.observer.disconnect();
+  session.scrollTarget.removeEventListener("scroll", scheduleGuidedWindowRead);
+  if (session.debounceId !== undefined) window.clearTimeout(session.debounceId);
+  if (session.timeoutId !== undefined) window.clearTimeout(session.timeoutId);
+  guidedCaptureSession = null;
+}
+
+function scheduleGuidedWindowRead(): void {
+  const session = guidedCaptureSession;
+  if (!session) return;
+  if (session.reading) {
+    session.pendingRead = true;
+    return;
+  }
+  if (session.debounceId !== undefined) return;
+  session.debounceId = window.setTimeout(() => {
+    session.debounceId = undefined;
+    void collectNextGuidedWindow(session);
+  }, 250);
+}
+
+async function collectNextGuidedWindow(
+  session: GuidedCaptureSession,
+): Promise<void> {
+  if (guidedCaptureSession !== session) return;
+  if (session.reading) {
+    session.pendingRead = true;
+    return;
+  }
+  session.reading = true;
+  if (getCurrentChatIdentity() !== session.chatIdentity) {
+    teardownGuidedCaptureSession(session.operationId);
+    activeCaptureOperation = null;
+    sendRuntimeLifecycleMessage({
+      action: "CANCEL_CAPTURE_OPERATION",
+      operationId: session.operationId,
+      reason: "The selected chat changed. Nothing was sent.",
+    });
+    return;
+  }
+  try {
+    const incoming = await extractCurrentChat(true);
+    if (guidedCaptureSession !== session) return;
+    session.consecutiveFailures = 0;
+    const summary = mergeGuidedPayload(session, incoming);
+    await chrome.runtime.sendMessage({
+      action: "UPDATE_GUIDED_CAPTURE_OPERATION",
+      operationId: session.operationId,
+      summary,
+    });
+    if (summary.extractedCount >= GUIDED_CAPTURE_LIMIT) {
+      await chrome.runtime.sendMessage({
+        action: "STOP_GUIDED_CAPTURE_OPERATION",
+        operationId: session.operationId,
+        stopReason: "guided-safety-limit",
+      });
+    }
+  } catch {
+    session.consecutiveFailures += 1;
+    if (session.consecutiveFailures >= 3) {
+      await chrome.runtime.sendMessage({
+        action: "STOP_GUIDED_CAPTURE_OPERATION",
+        operationId: session.operationId,
+        stopReason: "guided-dom-failure",
+      });
+    }
+  } finally {
+    session.reading = false;
+    if (session.pendingRead && guidedCaptureSession === session) {
+      session.pendingRead = false;
+      scheduleGuidedWindowRead();
+    }
+  }
+}
+
+async function startGuidedCaptureOperation(
+  operationId: string,
+  chatIdentity: string,
+  initialPayload: ExtractedChat,
+): Promise<CaptureCollectionSummary> {
+  const messageList = findConversationRoot(
+    document,
+    SELECTORS.primary.messageList,
+    SELECTORS.fallback.messageList,
+  );
+  if (!messageList) throw new Error("Could not observe the selected chat.");
+  const unreadableCount = initialPayload.diagnostics.unreadableMessageCount;
+  const skippedCount = Math.max(
+    0,
+    initialPayload.diagnostics.messageContainerCount -
+      initialPayload.messages.length -
+      unreadableCount,
+  );
+  const observer = new MutationObserver(scheduleGuidedWindowRead);
+  const session: GuidedCaptureSession = {
+    operationId,
+    chatIdentity,
+    payload: initialPayload,
+    items: guidedItems(initialPayload.messages),
+    observer,
+    scrollTarget: messageList,
+    consecutiveFailures: 0,
+    alignmentWarningCount: 0,
+    skippedCount,
+    unreadableCount,
+    reading: false,
+    pendingRead: false,
+  };
+  guidedCaptureSession = session;
+  return summarizeCapturePayload(
+    initialPayload,
+    chatIdentity,
+    skippedCount,
+    unreadableCount,
+    0,
+  );
+}
+
+function activateGuidedCaptureOperation(operationId: string): void {
+  const session = guidedCaptureSession;
+  if (!session || session.operationId !== operationId) {
+    throw new Error("The guided capture buffer is no longer available.");
+  }
+  if (session.timeoutId !== undefined) return;
+  session.observer.observe(session.scrollTarget, {
+    childList: true,
+    subtree: true,
+  });
+  session.scrollTarget.addEventListener("scroll", scheduleGuidedWindowRead, {
+    passive: true,
+  });
+  session.timeoutId = window.setTimeout(() => {
+    if (guidedCaptureSession?.operationId !== operationId) return;
+    void chrome.runtime.sendMessage({
+      action: "STOP_GUIDED_CAPTURE_OPERATION",
+      operationId,
+      stopReason: "guided-timeout",
+    });
+  }, GUIDED_CAPTURE_TIMEOUT_MS);
+}
+
+function finalizeGuidedCaptureOperation(
+  operationId: string,
+): CaptureCollectionSummary {
+  const session = guidedCaptureSession;
+  if (!session || session.operationId !== operationId) {
+    throw new Error("The guided capture buffer is no longer available.");
+  }
+  const summary = summarizeCapturePayload(
+    session.payload,
+    session.chatIdentity,
+    session.skippedCount,
+    session.unreadableCount,
+    session.alignmentWarningCount,
+  );
+  teardownGuidedCaptureSession(operationId);
+  if (activeCaptureOperation?.operationId === operationId) {
+    activeCaptureOperation.state = "ready-for-review";
+    activeCaptureOperation.payload = session.payload;
+    activeCaptureOperation.alignmentWarningCount =
+      session.alignmentWarningCount;
+  }
+  return summary;
+}
+
 async function collectCaptureOperation(
   operationId: string,
+  mode: "loaded" | "guided" = "loaded",
 ): Promise<CaptureCollectionSummary> {
   if (
     activeCaptureOperation &&
@@ -1170,9 +1696,16 @@ async function collectCaptureOperation(
     activeCaptureOperation = {
       operationId,
       chatIdentity,
-      state: "ready-for-review",
+      state: mode === "guided" ? "collecting" : "ready-for-review",
       payload,
     };
+    if (mode === "guided") {
+      return await startGuidedCaptureOperation(
+        operationId,
+        chatIdentity,
+        payload,
+      );
+    }
     const timestamps = payload.messages
       .map((message) => message.timestamp)
       .filter(Boolean)
@@ -1198,6 +1731,7 @@ async function collectCaptureOperation(
               participant.platformUserId,
           ),
       ).length,
+      alignmentWarningCount: 0,
       mediaCount: payload.messages.filter((message) => message.isMedia).length,
       oldestTimestamp: timestamps[0],
       newestTimestamp: timestamps[timestamps.length - 1],
@@ -1422,7 +1956,7 @@ function extractMessageData(
   diagnostics.senderMethodCounts[participantIdentity.extractionMethod] += 1;
   diagnostics.timestampMethodCounts[timestamp.method] += 1;
 
-  return {
+  const message: ExtractedMessage = {
     id: generateMessageId(),
     text,
     sender:
@@ -1433,6 +1967,26 @@ function extractMessageData(
     mediaType,
     senderRef,
   };
+  const captureSourceId = messageRecord.getAttribute("data-id")?.trim();
+  const captureAlignmentToken = JSON.stringify({
+    metadata: metadata.value,
+    direction: isOutgoing ? "out" : "in",
+    sender: displayLabel || participantIdentity.rawDisplayName || "unknown",
+    text,
+    mediaType: mediaType || "none",
+    timestamp: timestamp.value,
+  });
+  Object.defineProperties(message, {
+    captureSourceId: {
+      value: captureSourceId || undefined,
+      enumerable: false,
+    },
+    captureAlignmentToken: {
+      value: captureAlignmentToken,
+      enumerable: false,
+    },
+  });
+  return message;
 }
 
 function extractSenderIdentity(
@@ -1739,6 +2293,9 @@ function observeChatChanges(): void {
           operation.chatIdentity !== newChatId &&
           operation.state !== "uploading"
         ) {
+          if (guidedCaptureSession?.operationId === operation.operationId) {
+            teardownGuidedCaptureSession(operation.operationId);
+          }
           activeCaptureOperation = null;
           sendRuntimeLifecycleMessage({
             action: "CANCEL_CAPTURE_OPERATION",
@@ -1781,7 +2338,7 @@ function handleMessage(
 ): boolean {
   switch (message.action) {
     case "COLLECT_CAPTURE_OPERATION":
-      collectCaptureOperation(message.operationId)
+      collectCaptureOperation(message.operationId, message.mode)
         .then((summary) =>
           respondSafely(sendResponse, {
             success: true,
@@ -1795,6 +2352,28 @@ function handleMessage(
           }),
         );
       return true;
+
+    case "FINALIZE_GUIDED_CAPTURE_OPERATION":
+      try {
+        sendResponse({
+          success: true,
+          data: {
+            summary: finalizeGuidedCaptureOperation(message.operationId),
+          },
+        });
+      } catch (error) {
+        sendResponse({ success: false, error: normalizeErrorMessage(error) });
+      }
+      break;
+
+    case "ACTIVATE_GUIDED_CAPTURE_OPERATION":
+      try {
+        activateGuidedCaptureOperation(message.operationId);
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: normalizeErrorMessage(error) });
+      }
+      break;
 
     case "GET_CAPTURE_PREVIEW": {
       const preview = getCapturePreviewSummary(message.operationId);
@@ -1832,6 +2411,9 @@ function handleMessage(
     }
 
     case "DISCARD_CAPTURE_OPERATION":
+      if (guidedCaptureSession?.operationId === message.operationId) {
+        teardownGuidedCaptureSession(message.operationId);
+      }
       if (activeCaptureOperation?.operationId === message.operationId) {
         activeCaptureOperation = null;
       }

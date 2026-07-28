@@ -31,6 +31,15 @@ const previewSkipped = document.getElementById("previewSkipped");
 const previewUnreadable = document.getElementById("previewUnreadable");
 const confirmCapture = document.getElementById("confirmCapture");
 const cancelCapture = document.getElementById("cancelCapture");
+const captureScope = document.getElementById("captureScope");
+const previewCountLabel = document.getElementById("previewCountLabel");
+const previewWarning = document.getElementById("previewWarning");
+const guidedProgress = document.getElementById("guidedProgress");
+const guidedCount = document.getElementById("guidedCount");
+const guidedOldest = document.getElementById("guidedOldest");
+const guidedWarning = document.getElementById("guidedWarning");
+const stopGuidedCapture = document.getElementById("stopGuidedCapture");
+const cancelGuidedCapture = document.getElementById("cancelGuidedCapture");
 
 let currentOperation = null;
 let activeWhatsAppTabId = null;
@@ -89,12 +98,26 @@ function clearCapturePreview() {
     field.textContent = "0";
   }
   capturePreview.classList.remove("show");
+  previewWarning.classList.remove("show");
 }
 
 function formatPreviewTimestamp(value) {
   if (!value) return "Not detected";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not detected" : date.toLocaleString();
+}
+
+function guidedStopReasonLabel(reason) {
+  switch (reason) {
+    case "guided-safety-limit":
+      return "The guided safety limit was reached.";
+    case "guided-timeout":
+      return "The guided session timed out.";
+    case "guided-dom-failure":
+      return "Collection stopped after repeated WhatsApp DOM read failures.";
+    default:
+      return "You stopped collection.";
+  }
 }
 
 async function renderCapturePreview(operation) {
@@ -132,12 +155,31 @@ async function renderCapturePreview(operation) {
   previewSkipped.textContent = String(preview.skippedCount);
   previewUnreadable.textContent = String(preview.unreadableCount);
   captureRange.textContent = `Oldest: ${formatPreviewTimestamp(preview.oldestTimestamp)} · Newest: ${formatPreviewTimestamp(preview.newestTimestamp)}`;
+  previewCountLabel.textContent =
+    operation.mode === "guided" ? "Captured messages" : "Loaded messages";
+  captureScope.textContent =
+    operation.mode === "guided"
+      ? `Only the guided messages counted above will be uploaded. ${guidedStopReasonLabel(operation.stopReason)} Nothing is sent until you confirm.`
+      : "Only the loaded messages counted above will be uploaded. Unloaded older messages are excluded. Nothing is sent until you confirm.";
+  previewWarning.textContent = operation.alignmentWarningCount
+    ? `${operation.alignmentWarningCount} ambiguous overlap${operation.alignmentWarningCount === 1 ? " was" : "s were"} retained for review; no candidate occurrence was silently removed.`
+    : "";
+  previewWarning.classList.toggle("show", operation.alignmentWarningCount > 0);
   confirmCapture.disabled = false;
 }
 
 function renderCaptureOperation(operation) {
   if (!operation) return;
   currentOperation = operation;
+  const modeValue = operation.mode === "guided" ? "scroll" : "loaded";
+  document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
+    input.checked = input.value === modeValue;
+    input.closest(".capture-mode")?.classList.toggle("selected", input.checked);
+    const status = input.closest(".capture-mode")?.querySelector("em");
+    if (status && input.value !== "automatic") {
+      status.textContent = input.checked ? "Selected" : "Available";
+    }
+  });
   const count = operation.extractedCount || 0;
   const busy = ["inspecting", "collecting", "uploading"].includes(
     operation.state,
@@ -145,6 +187,26 @@ function renderCaptureOperation(operation) {
   extractBtn.disabled = busy;
   confirmCapture.disabled = operation.state === "uploading";
   cancelCapture.disabled = operation.state === "uploading";
+  extractBtn.textContent =
+    operation.mode === "guided"
+      ? operation.state === "collecting"
+        ? `Guided: ${count} captured`
+        : "Start guided capture"
+      : "Review loaded messages";
+
+  const guidedActive =
+    operation.mode === "guided" && operation.state === "collecting";
+  guidedProgress.classList.toggle("show", guidedActive);
+  if (guidedActive) {
+    guidedCount.textContent = String(count);
+    guidedOldest.textContent = formatPreviewTimestamp(
+      operation.oldestTimestamp,
+    );
+    guidedWarning.textContent = operation.alignmentWarningCount
+      ? "An overlap could not be aligned unambiguously. Candidate occurrences were retained; use smaller upward scroll steps."
+      : "";
+    guidedWarning.classList.toggle("show", operation.alignmentWarningCount > 0);
+  }
 
   if (["ready-for-review", "retry-required"].includes(operation.state)) {
     capturePreview.classList.add("show");
@@ -158,8 +220,15 @@ function renderCaptureOperation(operation) {
 
   switch (operation.state) {
     case "inspecting":
-    case "collecting":
       setActionStatus("Reading loaded messages…", "info");
+      break;
+    case "collecting":
+      setActionStatus(
+        operation.mode === "guided"
+          ? `Guided capture active: ${count} unique message${count === 1 ? "" : "s"}.`
+          : "Reading loaded messages…",
+        "info",
+      );
       break;
     case "ready-for-review":
       setActionStatus(
@@ -355,6 +424,7 @@ logoutBtn.addEventListener("click", async () => {
     await sendRuntimeMessage({ action: "LOGOUT" });
     currentOperation = null;
     clearCapturePreview();
+    guidedProgress.classList.remove("show");
     showLoggedOut();
   } catch (error) {
     setActionStatus(normalizeExtensionError(error), "error");
@@ -362,7 +432,12 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 extractBtn.addEventListener("click", async () => {
-  const defaultLabel = "Review loaded messages";
+  const selectedMode = document.querySelector(
+    'input[name="captureMode"]:checked',
+  )?.value;
+  const mode = selectedMode === "scroll" ? "guided" : "loaded";
+  const defaultLabel =
+    mode === "guided" ? "Start guided capture" : "Review loaded messages";
   setActionStatus("");
 
   try {
@@ -381,6 +456,7 @@ extractBtn.addEventListener("click", async () => {
       action: "START_CAPTURE_OPERATION",
       tabId: tab.id,
       initiator: "popup",
+      mode,
     });
 
     if (response.success && response.data) {
@@ -398,8 +474,55 @@ extractBtn.addEventListener("click", async () => {
     window.setTimeout(() => {
       extractBtn.textContent = defaultLabel;
     }, 1500);
-    extractBtn.disabled = false;
+    extractBtn.disabled = Boolean(
+      currentOperation &&
+        ["inspecting", "collecting", "uploading"].includes(
+          currentOperation.state,
+        ),
+    );
   }
+});
+
+stopGuidedCapture.addEventListener("click", async () => {
+  if (!currentOperation || !activeWhatsAppTabId) return;
+  stopGuidedCapture.disabled = true;
+  cancelGuidedCapture.disabled = true;
+  try {
+    const response = await sendRuntimeMessage({
+      action: "STOP_GUIDED_CAPTURE_OPERATION",
+      tabId: activeWhatsAppTabId,
+      operationId: currentOperation.operationId,
+      stopReason: "guided-user-stopped",
+    });
+    if (response.success && response.data)
+      renderCaptureOperation(response.data);
+    else
+      setActionStatus(
+        response.error || "Guided capture could not stop.",
+        "error",
+      );
+  } catch (error) {
+    setActionStatus(normalizeExtensionError(error), "error");
+  } finally {
+    stopGuidedCapture.disabled = false;
+    cancelGuidedCapture.disabled = false;
+  }
+});
+
+cancelGuidedCapture.addEventListener("click", () => {
+  if (!currentOperation || !activeWhatsAppTabId) return;
+  sendRuntimeMessage({
+    action: "CANCEL_CAPTURE_OPERATION",
+    tabId: activeWhatsAppTabId,
+    operationId: currentOperation.operationId,
+    reason: "Upload cancelled. Nothing was sent.",
+  })
+    .then((response) => {
+      if (response.success && response.data)
+        renderCaptureOperation(response.data);
+      else if (!response.success) setActionStatus(response.error, "error");
+    })
+    .catch((error) => setActionStatus(normalizeExtensionError(error), "error"));
 });
 
 confirmCapture.addEventListener("click", async () => {
@@ -458,11 +581,14 @@ cancelCapture.addEventListener("click", () => {
 });
 
 async function discardUnconfirmedCaptureForModeChange(selectedMode) {
+  const selectedOperationMode = selectedMode === "scroll" ? "guided" : "loaded";
   if (
-    selectedMode === "loaded" ||
     !currentOperation ||
     !activeWhatsAppTabId ||
-    !["ready-for-review", "retry-required"].includes(currentOperation.state)
+    currentOperation.mode === selectedOperationMode ||
+    !["collecting", "ready-for-review", "retry-required"].includes(
+      currentOperation.state,
+    )
   ) {
     return;
   }
@@ -474,10 +600,24 @@ async function discardUnconfirmedCaptureForModeChange(selectedMode) {
   });
   currentOperation = null;
   clearCapturePreview();
+  guidedProgress.classList.remove("show");
 }
 
 document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
   input.addEventListener("change", () => {
+    document.querySelectorAll(".capture-mode").forEach((label) => {
+      const modeInput = label.querySelector('input[name="captureMode"]');
+      const selected = modeInput?.value === input.value;
+      label.classList.toggle("selected", selected);
+      const status = label.querySelector("em");
+      if (status && modeInput?.value !== "automatic") {
+        status.textContent = selected ? "Selected" : "Available";
+      }
+    });
+    extractBtn.textContent =
+      input.value === "scroll"
+        ? "Start guided capture"
+        : "Review loaded messages";
     void discardUnconfirmedCaptureForModeChange(input.value).catch((error) =>
       setActionStatus(normalizeExtensionError(error), "error"),
     );

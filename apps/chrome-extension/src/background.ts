@@ -25,6 +25,7 @@ import {
   type StartCaptureOperationMessage,
   type ConfirmCaptureOperationMessage,
   type CancelCaptureOperationMessage,
+  type StopGuidedCaptureOperationMessage,
 } from "./config";
 import {
   completeCaptureOperation,
@@ -34,6 +35,7 @@ import {
   type CaptureCollectionSummary,
   type CaptureOperationSnapshot,
   type CaptureOperationState,
+  type CaptureStopReason,
 } from "./capture-operation";
 
 // =============================================================================
@@ -61,6 +63,10 @@ const captureOperations = new Map<number, CaptureOperationSnapshot>();
 const captureOperationEpochs = new Map<string, number>();
 const captureOperationOwnerIds = new Map<string, string>();
 const captureUploadPromises = new Map<
+  string,
+  Promise<ExtensionResponse<CaptureOperationSnapshot>>
+>();
+const guidedStopPromises = new Map<
   string,
   Promise<ExtensionResponse<CaptureOperationSnapshot>>
 >();
@@ -160,6 +166,19 @@ async function handleMessage(
     case "CANCEL_CAPTURE_OPERATION":
       return await cancelCaptureOperation(message, _sender);
 
+    case "UPDATE_GUIDED_CAPTURE_OPERATION":
+      return await updateGuidedCaptureOperation(message, _sender);
+
+    case "STOP_GUIDED_CAPTURE_OPERATION": {
+      const inFlight = guidedStopPromises.get(message.operationId);
+      if (inFlight) return await inFlight;
+      const stop = stopGuidedCaptureOperation(message, _sender).finally(() => {
+        guidedStopPromises.delete(message.operationId);
+      });
+      guidedStopPromises.set(message.operationId, stop);
+      return await stop;
+    }
+
     case "SEND_CHAT_DATA": {
       return {
         success: false,
@@ -209,6 +228,8 @@ async function handleMessage(
     case "CHECK_STATUS":
     case "SET_AUTH_TOKEN":
     case "COLLECT_CAPTURE_OPERATION":
+    case "FINALIZE_GUIDED_CAPTURE_OPERATION":
+    case "ACTIVATE_GUIDED_CAPTURE_OPERATION":
     case "GET_CAPTURE_OPERATION_PAYLOAD":
     case "VALIDATE_CAPTURE_OPERATION_CONTEXT":
     case "DISCARD_CAPTURE_OPERATION":
@@ -255,9 +276,13 @@ async function loadCaptureOperations(): Promise<void> {
       if (!Number.isInteger(tabId) || !value || typeof value !== "object") {
         continue;
       }
-      const operation = {
+      const operation: CaptureOperationSnapshot = {
         ...(value as CaptureOperationSnapshot),
         authGeneration: captureLifecycleEpoch,
+        mode:
+          (value as CaptureOperationSnapshot).mode === "guided"
+            ? "guided"
+            : "loaded",
         unreadableCount: Number.isInteger(
           (value as CaptureOperationSnapshot).unreadableCount,
         )
@@ -267,6 +292,11 @@ async function loadCaptureOperations(): Promise<void> {
           (value as CaptureOperationSnapshot).participantLabelCount,
         )
           ? (value as CaptureOperationSnapshot).participantLabelCount
+          : 0,
+        alignmentWarningCount: Number.isInteger(
+          (value as CaptureOperationSnapshot).alignmentWarningCount,
+        )
+          ? (value as CaptureOperationSnapshot).alignmentWarningCount
           : 0,
       };
       const restored = isActiveCaptureState(operation.state)
@@ -382,6 +412,7 @@ async function startCaptureOperation(
     message.initiator,
     new Date(),
     operationEpoch,
+    message.mode === "guided" ? "guided" : "loaded",
   );
   captureOperationEpochs.set(operation.operationId, operationEpoch);
   captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
@@ -405,6 +436,7 @@ async function startCaptureOperation(
     const response = (await chrome.tabs.sendMessage(tabId, {
       action: "COLLECT_CAPTURE_OPERATION",
       operationId: operation.operationId,
+      mode: operation.mode,
     })) as ExtensionResponse<{
       summary: CaptureCollectionSummary;
     }>;
@@ -427,7 +459,7 @@ async function startCaptureOperation(
     const summary = response.data.summary;
     operation = {
       ...operation,
-      state: "ready-for-review",
+      state: operation.mode === "guided" ? "collecting" : "ready-for-review",
       chatKey: summary.chatKey,
       renderedCount: summary.renderedCount,
       collectedCount: summary.extractedCount,
@@ -435,13 +467,27 @@ async function startCaptureOperation(
       skippedCount: summary.skippedCount,
       unreadableCount: summary.unreadableCount,
       participantLabelCount: summary.participantLabelCount,
+      alignmentWarningCount: summary.alignmentWarningCount,
       mediaCount: summary.mediaCount,
       oldestTimestamp: summary.oldestTimestamp,
       newestTimestamp: summary.newestTimestamp,
-      stopReason: "loaded-window",
+      stopReason: operation.mode === "loaded" ? "loaded-window" : undefined,
       reason: undefined,
     };
     await publishCaptureOperation(operation);
+    if (operation.mode === "guided") {
+      const activation = (await chrome.tabs.sendMessage(tabId, {
+        action: "ACTIVATE_GUIDED_CAPTURE_OPERATION",
+        operationId: operation.operationId,
+      })) as ExtensionResponse;
+      if (!activation.success) {
+        return await finishCaptureOperation(
+          operation,
+          "cancelled",
+          activation.error || "Guided capture could not observe this chat.",
+        );
+      }
+    }
     return { success: true, data: operation };
   } catch (error) {
     if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
@@ -456,6 +502,135 @@ async function startCaptureOperation(
       normalizeChannelLifecycleReason(error),
     );
   }
+}
+
+async function updateGuidedCaptureOperation(
+  message: Extract<
+    ExtensionMessage,
+    { action: "UPDATE_GUIDED_CAPTURE_OPERATION" }
+  >,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const tabId = resolveCaptureTabId(undefined, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "Guided progress must come from its WhatsApp tab.",
+    };
+  }
+  await loadCaptureOperations();
+  const operation = captureOperations.get(tabId);
+  const operationEpoch = operation
+    ? captureOperationEpochs.get(operation.operationId)
+    : undefined;
+  if (
+    !operation ||
+    operation.operationId !== message.operationId ||
+    operation.mode !== "guided" ||
+    operation.state !== "collecting" ||
+    operationEpoch === undefined ||
+    !isCurrentCaptureOperation(operation, operationEpoch, "collecting")
+  ) {
+    return {
+      success: false,
+      error: "This guided capture is no longer active.",
+    };
+  }
+  if (operation.chatKey && operation.chatKey !== message.summary.chatKey) {
+    return await finishCaptureOperation(
+      operation,
+      "cancelled",
+      "The selected chat changed. Nothing was sent.",
+    );
+  }
+  const updated: CaptureOperationSnapshot = {
+    ...operation,
+    chatKey: message.summary.chatKey,
+    renderedCount: message.summary.renderedCount,
+    collectedCount: message.summary.extractedCount,
+    extractedCount: message.summary.extractedCount,
+    skippedCount: message.summary.skippedCount,
+    unreadableCount: message.summary.unreadableCount,
+    participantLabelCount: message.summary.participantLabelCount,
+    alignmentWarningCount: message.summary.alignmentWarningCount,
+    mediaCount: message.summary.mediaCount,
+    oldestTimestamp: message.summary.oldestTimestamp,
+    newestTimestamp: message.summary.newestTimestamp,
+  };
+  await publishCaptureOperation(updated);
+  return { success: true, data: updated };
+}
+
+async function stopGuidedCaptureOperation(
+  message: StopGuidedCaptureOperationMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const tabId = resolveCaptureTabId(message.tabId, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "The WhatsApp tab is no longer available.",
+    };
+  }
+  await loadCaptureOperations();
+  const operation = captureOperations.get(tabId);
+  if (!operation || operation.operationId !== message.operationId) {
+    return {
+      success: false,
+      error: "This capture operation is no longer current.",
+    };
+  }
+  if (operation.mode !== "guided" || operation.state !== "collecting") {
+    return { success: true, data: operation };
+  }
+  const response = (await chrome.tabs.sendMessage(tabId, {
+    action: "FINALIZE_GUIDED_CAPTURE_OPERATION",
+    operationId: operation.operationId,
+  })) as ExtensionResponse<{ summary: CaptureCollectionSummary }>;
+  if (!response.success || !response.data?.summary) {
+    return await finishCaptureOperation(
+      operation,
+      "cancelled",
+      response.success
+        ? "The guided capture buffer is no longer available."
+        : response.error,
+    );
+  }
+  const current = captureOperations.get(tabId);
+  if (
+    current?.operationId !== operation.operationId ||
+    current.state !== "collecting"
+  ) {
+    return { success: true, data: current ?? operation };
+  }
+  const summary = response.data.summary;
+  const allowedReasons = new Set<CaptureStopReason>([
+    "guided-user-stopped",
+    "guided-safety-limit",
+    "guided-timeout",
+    "guided-dom-failure",
+  ]);
+  const ready: CaptureOperationSnapshot = {
+    ...current,
+    state: "ready-for-review",
+    renderedCount: summary.renderedCount,
+    collectedCount: summary.extractedCount,
+    extractedCount: summary.extractedCount,
+    skippedCount: summary.skippedCount,
+    unreadableCount: summary.unreadableCount,
+    participantLabelCount: summary.participantLabelCount,
+    alignmentWarningCount: summary.alignmentWarningCount,
+    mediaCount: summary.mediaCount,
+    oldestTimestamp: summary.oldestTimestamp,
+    newestTimestamp: summary.newestTimestamp,
+    stopReason:
+      message.stopReason && allowedReasons.has(message.stopReason)
+        ? message.stopReason
+        : "guided-user-stopped",
+    reason: undefined,
+  };
+  await publishCaptureOperation(ready);
+  return { success: true, data: ready };
 }
 
 async function confirmCaptureOperation(
@@ -713,6 +888,7 @@ function safeCancellationReason(reason: string | undefined): string {
     "Upload cancelled. Nothing was sent.",
     "The selected chat changed. Nothing was sent.",
     "The WhatsApp tab unloaded during capture.",
+    "Capture mode changed. The unconfirmed buffer was discarded.",
   ]);
   return reason && allowed.has(reason)
     ? reason

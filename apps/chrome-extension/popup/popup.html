@@ -260,6 +260,18 @@
         font-size: 10px;
       }
 
+      .capture-warning {
+        display: none;
+        margin: 6px 0;
+        color: #9a6700;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .capture-warning.show {
+        display: block;
+      }
+
       .capture-summary-grid dd {
         margin: 2px 0 0;
         color: #14532d;
@@ -447,15 +459,52 @@
             <button class="btn-primary" id="openDashboard">
               Open Dashboard
             </button>
+            <fieldset class="capture-modes">
+              <legend>Capture mode</legend>
+              <label class="capture-mode selected">
+                <input type="radio" name="captureMode" value="loaded" checked />
+                <span>Loaded messages</span><em>Selected</em>
+              </label>
+              <label class="capture-mode">
+                <input type="radio" name="captureMode" value="scroll" />
+                <span>Capture as I scroll</span><em>Available</em>
+              </label>
+              <label class="capture-mode disabled">
+                <input
+                  type="radio"
+                  name="captureMode"
+                  value="automatic"
+                  disabled
+                />
+                <span>Load older messages for me</span><em>Soon · Phase 7</em>
+              </label>
+            </fieldset>
             <button class="btn-secondary" id="extractBtn">
               Review loaded messages
             </button>
+            <div class="capture-preview" id="guidedProgress">
+              <h4>Guided capture is active</h4>
+              <p>Scroll upward in the selected chat, then stop and review.</p>
+              <p>
+                <strong id="guidedCount">0</strong> unique messages · oldest
+                <span id="guidedOldest">Not detected</span>
+              </p>
+              <p class="capture-warning" id="guidedWarning"></p>
+              <div class="preview-actions">
+                <button class="btn-primary" id="stopGuidedCapture">
+                  Stop and review
+                </button>
+                <button class="btn-secondary" id="cancelGuidedCapture">
+                  Cancel
+                </button>
+              </div>
+            </div>
             <div class="capture-preview" id="capturePreview">
               <h4>Loaded-message review</h4>
               <strong id="captureChatName"></strong>
               <dl class="capture-summary-grid" id="captureSummary">
                 <div>
-                  <dt>Loaded messages</dt>
+                  <dt id="previewCountLabel">Loaded messages</dt>
                   <dd id="previewLoaded">0</dd>
                 </div>
                 <div>
@@ -476,41 +525,12 @@
                 </div>
               </dl>
               <p class="capture-range" id="captureRange"></p>
-              <p class="capture-scope">
+              <p class="capture-warning" id="previewWarning"></p>
+              <p class="capture-scope" id="captureScope">
                 Only the loaded messages counted above will be uploaded.
                 Unloaded older messages are excluded. Nothing is sent until you
                 confirm.
               </p>
-              <fieldset class="capture-modes">
-                <legend>Capture mode</legend>
-                <label class="capture-mode selected">
-                  <input
-                    type="radio"
-                    name="captureMode"
-                    value="loaded"
-                    checked
-                  />
-                  <span>Loaded messages</span><em>Selected</em>
-                </label>
-                <label class="capture-mode disabled">
-                  <input
-                    type="radio"
-                    name="captureMode"
-                    value="scroll"
-                    disabled
-                  />
-                  <span>Capture as I scroll</span><em>Soon · Phase 6</em>
-                </label>
-                <label class="capture-mode disabled">
-                  <input
-                    type="radio"
-                    name="captureMode"
-                    value="automatic"
-                    disabled
-                  />
-                  <span>Load older messages for me</span><em>Soon · Phase 7</em>
-                </label>
-              </fieldset>
               <div class="preview-actions">
                 <button class="btn-primary" id="confirmCapture">
                   Confirm upload

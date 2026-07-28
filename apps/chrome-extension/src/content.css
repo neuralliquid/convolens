@@ -335,6 +335,36 @@
   background: var(--ws-surface-muted);
 }
 
+.ws-guided-progress {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(37, 211, 102, 0.45);
+  border-radius: 10px;
+  background: rgba(37, 211, 102, 0.08);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ws-guided-progress[hidden] {
+  display: none;
+}
+
+.ws-guided-progress p {
+  margin: 0;
+}
+
+.ws-guided-warning {
+  margin: 0;
+  color: #9a6700;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ws-guided-warning[hidden] {
+  display: none;
+}
+
 .ws-capture-review h3,
 .ws-preview-grid,
 .ws-preview-grid div,
