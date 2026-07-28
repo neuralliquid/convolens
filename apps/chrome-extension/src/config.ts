@@ -91,6 +91,7 @@ export const STORAGE_KEYS = {
   settings: "settings",
   extractionHistory: "extractionHistory",
   pendingUploads: "pendingUploads",
+  captureOperations: "captureOperations",
 };
 
 // =============================================================================
@@ -175,6 +176,55 @@ export interface SendChatDataMessage {
   };
 }
 
+export interface StartCaptureOperationMessage {
+  action: "START_CAPTURE_OPERATION";
+  tabId?: number;
+  initiator: "popup" | "page";
+}
+
+export interface GetCaptureOperationMessage {
+  action: "GET_CAPTURE_OPERATION";
+  tabId?: number;
+}
+
+export interface ConfirmCaptureOperationMessage {
+  action: "CONFIRM_CAPTURE_OPERATION";
+  tabId?: number;
+  operationId: string;
+}
+
+export interface CancelCaptureOperationMessage {
+  action: "CANCEL_CAPTURE_OPERATION";
+  tabId?: number;
+  operationId: string;
+  reason?: string;
+}
+
+export interface CollectCaptureOperationMessage {
+  action: "COLLECT_CAPTURE_OPERATION";
+  operationId: string;
+}
+
+export interface GetCaptureOperationPayloadMessage {
+  action: "GET_CAPTURE_OPERATION_PAYLOAD";
+  operationId: string;
+}
+
+export interface ValidateCaptureOperationContextMessage {
+  action: "VALIDATE_CAPTURE_OPERATION_CONTEXT";
+  operationId: string;
+}
+
+export interface DiscardCaptureOperationMessage {
+  action: "DISCARD_CAPTURE_OPERATION";
+  operationId: string;
+}
+
+export interface CaptureOperationUpdatedMessage {
+  action: "CAPTURE_OPERATION_UPDATED";
+  operation: import("./capture-operation").CaptureOperationSnapshot;
+}
+
 export interface OpenDashboardMessage {
   action: "OPEN_DASHBOARD";
   path?: string;
@@ -217,6 +267,15 @@ export type ExtensionMessage =
   | CheckStatusMessage
   | SetAuthTokenMessage
   | SendChatDataMessage
+  | StartCaptureOperationMessage
+  | GetCaptureOperationMessage
+  | ConfirmCaptureOperationMessage
+  | CancelCaptureOperationMessage
+  | CollectCaptureOperationMessage
+  | GetCaptureOperationPayloadMessage
+  | ValidateCaptureOperationContextMessage
+  | DiscardCaptureOperationMessage
+  | CaptureOperationUpdatedMessage
   | OpenDashboardMessage
   | GetAuthStatusMessage
   | SyncMystiraAuthMessage

@@ -24,6 +24,11 @@ import {
   type SetAuthTokenMessage,
   type CheckStatusData,
 } from "./config";
+import type {
+  CaptureCollectionSummary,
+  CaptureOperationSnapshot,
+  CaptureOperationState,
+} from "./capture-operation";
 import { parseWhatsAppMessageMetadata } from "./whatsapp-metadata";
 import {
   combineSenderEvidence,
@@ -118,7 +123,17 @@ let currentChatId: string | null = null;
 let statusUI: HTMLElement | null = null;
 let chatObserver: MutationObserver | null = null;
 let isInitialized = false;
-let reviewedCapture: ExtractedChat | null = null;
+interface ActiveCaptureOperation {
+  operationId: string;
+  chatIdentity: string;
+  state: CaptureOperationState;
+  payload: ExtractedChat | null;
+}
+
+let activeCaptureOperation: ActiveCaptureOperation | null = null;
+let pageConfirmationOperationId: string | null = null;
+let lastCountedTerminalOperationId: string | null = null;
+const chatIdentityTokens = new Map<string, string>();
 
 // =============================================================================
 // Initialization
@@ -170,6 +185,15 @@ async function init(): Promise<void> {
  * Cleanup resources when page unloads
  */
 function cleanup(): void {
+  const operation = activeCaptureOperation;
+  if (operation && operation.state !== "uploading") {
+    sendRuntimeLifecycleMessage({
+      action: "CANCEL_CAPTURE_OPERATION",
+      operationId: operation.operationId,
+      reason: "The WhatsApp tab unloaded during capture.",
+    });
+  }
+  activeCaptureOperation = null;
   if (chatObserver) {
     chatObserver.disconnect();
     chatObserver = null;
@@ -307,6 +331,38 @@ function updateProgress(percent: number): void {
 // =============================================================================
 
 async function handleExtractClick(): Promise<void> {
+  try {
+    const existingResponse = (await chrome.runtime.sendMessage({
+      action: "GET_CAPTURE_OPERATION",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    const existingOperation = existingResponse.success
+      ? existingResponse.data
+      : undefined;
+    if (
+      existingOperation &&
+      ["ready-for-review", "retry-required"].includes(existingOperation.state)
+    ) {
+      renderCaptureOperation(existingOperation);
+      if (existingOperation.state === "retry-required") {
+        pageConfirmationOperationId = null;
+      }
+      await reviewPageCapture(existingOperation);
+      return;
+    }
+    if (
+      existingOperation &&
+      ["inspecting", "collecting", "uploading"].includes(
+        existingOperation.state,
+      )
+    ) {
+      renderCaptureOperation(existingOperation);
+      return;
+    }
+  } catch {
+    // START_CAPTURE_OPERATION below remains the authoritative availability and
+    // authentication check when no existing operation can be read.
+  }
+
   // Check rate limiting
   if (!checkRateLimit()) {
     const waitTime = Math.ceil((state.rateLimitResetTime - Date.now()) / 1000);
@@ -315,85 +371,252 @@ async function handleExtractClick(): Promise<void> {
     return;
   }
 
-  // Prevent concurrent extractions
-  if (state.isExtracting) {
-    updateStatus("A loaded-message review is already in progress", "info");
-    return;
-  }
-
-  state.isExtracting = true;
-  updateStatus("Reading loaded messages…", "loading");
-  updateProgress(10);
-
   try {
-    const chatData = await extractCurrentChatWithRetry();
-
-    if (!chatData || chatData.messages.length === 0) {
-      updateStatus("No readable loaded messages found", "error");
-      return;
-    }
-
-    updateProgress(60);
-    reviewedCapture = chatData;
-
-    const confirmed = window.confirm(
-      `Send ${chatData.messages.length} loaded message${chatData.messages.length === 1 ? "" : "s"} from “${chatData.chatName}” to ConvoLens?\n\nOlder messages that WhatsApp has not loaded are excluded. Capture as I scroll and automatic older-message loading are coming soon.`,
-    );
-
-    if (!confirmed) {
-      reviewedCapture = null;
-      updateStatus("Upload cancelled. Nothing was sent.", "info");
-      return;
-    }
-
-    updateStatus(
-      `Sending ${chatData.messages.length} loaded messages…`,
-      "loading",
-    );
-
-    // Send to background script
-    const response = await chrome.runtime.sendMessage({
-      action: "SEND_CHAT_DATA",
-      data: chatData,
-    });
-
-    updateProgress(100);
-
-    if (response.success) {
-      reviewedCapture = null;
-      const reconciliationRequired = Boolean(
-        response.data?.reconciliationRequired,
-      );
+    const response = (await chrome.runtime.sendMessage({
+      action: "START_CAPTURE_OPERATION",
+      initiator: "page",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    if (!response.success || !response.data) {
       updateStatus(
-        reconciliationRequired
-          ? `${chatData.messages.length} loaded messages stored separately. Review the possible prior intake in ConvoLens.`
-          : `${chatData.messages.length} loaded messages received by ConvoLens`,
-        "success",
-      );
-      state.lastExtraction = Date.now();
-      state.extractionCount++;
-
-      // Optionally open dashboard
-      if (response.data?.openDashboard) {
-        try {
-          await chrome.runtime.sendMessage({ action: "OPEN_DASHBOARD" });
-        } catch {
-          // The service worker can disappear after the upload has succeeded.
-        }
-      }
-    } else {
-      updateStatus(
-        response.retryRequired
-          ? "Upload not sent. Review the loaded messages and try again from this tab."
-          : response.error || "Failed to send loaded messages",
+        response.success ? "Capture could not start." : response.error,
         "error",
       );
+      return;
+    }
+    renderCaptureOperation(response.data);
+    if (
+      ["ready-for-review", "retry-required"].includes(response.data.state)
+    ) {
+      if (response.data.state === "retry-required") {
+        pageConfirmationOperationId = null;
+      }
+      await reviewPageCapture(response.data);
     }
   } catch (error) {
     updateStatus(normalizeErrorMessage(error), "error");
+  }
+}
+
+async function reviewPageCapture(
+  operation: CaptureOperationSnapshot,
+): Promise<void> {
+  if (pageConfirmationOperationId === operation.operationId) return;
+  pageConfirmationOperationId = operation.operationId;
+  const confirmed = window.confirm(
+    `Send ${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} from the selected chat to ConvoLens?\n\nOlder messages that WhatsApp has not loaded are excluded. Capture as I scroll and automatic older-message loading are coming soon.`,
+  );
+  const action = confirmed
+    ? "CONFIRM_CAPTURE_OPERATION"
+    : "CANCEL_CAPTURE_OPERATION";
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      action,
+      operationId: operation.operationId,
+      reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    if (response.success && response.data) {
+      renderCaptureOperation(response.data);
+      return;
+    }
+    pageConfirmationOperationId = null;
+    updateStatus(
+      response.success ? "Capture could not continue." : response.error,
+      "error",
+    );
+  } catch (error) {
+    pageConfirmationOperationId = null;
+    throw error;
+  }
+}
+
+function renderCaptureOperation(operation: CaptureOperationSnapshot): void {
+  if (activeCaptureOperation?.operationId === operation.operationId) {
+    activeCaptureOperation.state = operation.state;
+  }
+  const button = document.getElementById(
+    "ws-extract-btn",
+  ) as HTMLButtonElement | null;
+  if (button) {
+    button.disabled = ["inspecting", "collecting", "uploading"].includes(
+      operation.state,
+    );
+  }
+
+  switch (operation.state) {
+    case "inspecting":
+    case "collecting":
+      updateStatus("Reading loaded messages…", "loading");
+      updateProgress(operation.state === "inspecting" ? 10 : 35);
+      break;
+    case "ready-for-review":
+      updateProgress(0);
+      updateStatus(
+        `${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} ready for review.`,
+        "info",
+      );
+      break;
+    case "uploading":
+      updateStatus(
+        `Sending ${operation.extractedCount} loaded messages…`,
+        "loading",
+      );
+      updateProgress(75);
+      break;
+    case "received":
+    case "duplicate":
+      updateProgress(0);
+      updateStatus(
+        operation.reconciliationRequired
+          ? `${operation.extractedCount} loaded messages stored separately. Review the possible prior intake in ConvoLens.`
+          : operation.state === "duplicate"
+            ? `${operation.extractedCount} loaded messages already exist in ConvoLens.`
+            : `${operation.extractedCount} loaded messages received by ConvoLens.`,
+        "success",
+      );
+      if (lastCountedTerminalOperationId !== operation.operationId) {
+        lastCountedTerminalOperationId = operation.operationId;
+        state.lastExtraction = Date.now();
+        state.extractionCount++;
+      }
+      break;
+    case "retry-required":
+      updateProgress(0);
+      updateStatus(
+        operation.reason || "Upload not sent. Review and retry from this tab.",
+        "error",
+      );
+      break;
+    case "failed":
+    case "cancelled":
+      updateProgress(0);
+      updateStatus(operation.reason || "Capture cancelled.", "error");
+      break;
+  }
+}
+
+function getCurrentChatIdentity(): string {
+  const messageList = findConversationRoot(
+    document,
+    SELECTORS.primary.messageList,
+    SELECTORS.fallback.messageList,
+  );
+  const messageContainers = messageList
+    ? findMessageContainers(
+        messageList,
+        SELECTORS.primary.messageContainer,
+        SELECTORS.fallback.messageContainer,
+      )
+    : [];
+  const stableId = extractStableWhatsAppConversationId([
+    messageList?.getAttribute("data-chat-id"),
+    messageList?.getAttribute("data-jid"),
+    messageList?.closest("[data-chat-id]")?.getAttribute("data-chat-id"),
+    messageList?.closest("[data-jid]")?.getAttribute("data-jid"),
+    ...messageContainers
+      .slice(0, 10)
+      .map((container) =>
+        findMessageRecord(container as HTMLElement).getAttribute("data-id"),
+      ),
+  ]);
+  if (stableId) return stableId;
+
+  const header = querySelector(
+    SELECTORS.primary.contactName,
+    SELECTORS.fallback.contactName,
+  )
+    ?.textContent?.trim()
+    .toLocaleLowerCase();
+  return header ? `header:${header}` : "unselected";
+}
+
+function getOpaqueChatKey(chatIdentity: string): string {
+  const existing = chatIdentityTokens.get(chatIdentity);
+  if (existing) return existing;
+  const token = crypto.randomUUID();
+  chatIdentityTokens.set(chatIdentity, token);
+  return token;
+}
+
+async function collectCaptureOperation(
+  operationId: string,
+): Promise<CaptureCollectionSummary> {
+  if (
+    activeCaptureOperation &&
+    activeCaptureOperation.operationId !== operationId &&
+    ["collecting", "ready-for-review", "uploading", "retry-required"].includes(
+      activeCaptureOperation.state,
+    )
+  ) {
+    throw new Error("Another capture operation is already active in this tab.");
+  }
+
+  const chatIdentity = getCurrentChatIdentity();
+  activeCaptureOperation = {
+    operationId,
+    chatIdentity,
+    state: "collecting",
+    payload: null,
+  };
+  state.isExtracting = true;
+  updateProgress(35);
+
+  try {
+    const payload = await extractCurrentChatWithRetry(
+      EXTRACTION_CONFIG.retryAttempts,
+      true,
+    );
+    if (!payload || payload.messages.length === 0) {
+      throw new Error("No readable loaded messages were found.");
+    }
+    if (getCurrentChatIdentity() !== chatIdentity) {
+      throw new Error(
+        "The selected chat changed while messages were being read.",
+      );
+    }
+    if (
+      activeCaptureOperation?.operationId !== operationId ||
+      activeCaptureOperation.state !== "collecting"
+    ) {
+      throw new Error(
+        "The capture was cancelled while messages were being read.",
+      );
+    }
+
+    activeCaptureOperation = {
+      operationId,
+      chatIdentity,
+      state: "ready-for-review",
+      payload,
+    };
+    const timestamps = payload.messages
+      .map((message) => message.timestamp)
+      .filter(Boolean)
+      .sort();
+    return {
+      chatKey: getOpaqueChatKey(chatIdentity),
+      renderedCount: payload.diagnostics.messageContainerCount,
+      extractedCount: payload.messages.length,
+      skippedCount: Math.max(
+        0,
+        payload.diagnostics.messageContainerCount - payload.messages.length,
+      ),
+      mediaCount: payload.messages.filter((message) => message.isMedia).length,
+      oldestTimestamp: timestamps[0],
+      newestTimestamp: timestamps[timestamps.length - 1],
+    };
+  } catch (error) {
+    if (activeCaptureOperation?.operationId === operationId) {
+      activeCaptureOperation = null;
+    }
+    throw error;
   } finally {
-    state.isExtracting = false;
-    updateProgress(0);
+    if (
+      !activeCaptureOperation ||
+      activeCaptureOperation.operationId === operationId
+    ) {
+      state.isExtracting = false;
+      updateProgress(0);
+    }
   }
 }
 
@@ -903,15 +1126,24 @@ function observeChatChanges(): void {
       SELECTORS.fallback.chatHeader,
     );
     if (header) {
-      const contactName = querySelector(
-        SELECTORS.primary.contactName,
-        SELECTORS.fallback.contactName,
-      );
-      const newChatId = generateChatId(contactName?.textContent || "");
+      const newChatId = getCurrentChatIdentity();
 
       if (newChatId !== currentChatId) {
         currentChatId = newChatId;
         console.log("[ConvoLens] Chat changed");
+        const operation = activeCaptureOperation;
+        if (
+          operation &&
+          operation.chatIdentity !== newChatId &&
+          operation.state !== "uploading"
+        ) {
+          activeCaptureOperation = null;
+          sendRuntimeLifecycleMessage({
+            action: "CANCEL_CAPTURE_OPERATION",
+            operationId: operation.operationId,
+            reason: "The selected chat changed. Nothing was sent.",
+          });
+        }
       }
     }
   });
@@ -946,12 +1178,14 @@ function handleMessage(
   sendResponse: (response: ExtensionResponse) => void,
 ): boolean {
   switch (message.action) {
-    case "GET_CURRENT_CHAT":
-      extractCurrentChatWithRetry(EXTRACTION_CONFIG.retryAttempts, true)
-        .then((data) => {
-          reviewedCapture = data;
-          respondSafely(sendResponse, { success: true, data });
-        })
+    case "COLLECT_CAPTURE_OPERATION":
+      collectCaptureOperation(message.operationId)
+        .then((summary) =>
+          respondSafely(sendResponse, {
+            success: true,
+            data: { summary },
+          }),
+        )
         .catch((error) =>
           respondSafely(sendResponse, {
             success: false,
@@ -959,6 +1193,47 @@ function handleMessage(
           }),
         );
       return true;
+
+    case "GET_CAPTURE_OPERATION_PAYLOAD":
+      if (
+        activeCaptureOperation?.operationId !== message.operationId ||
+        !activeCaptureOperation.payload
+      ) {
+        sendResponse({
+          success: false,
+          error: "The reviewed capture is no longer available in this tab.",
+        });
+      } else {
+        sendResponse({ success: true, data: activeCaptureOperation.payload });
+      }
+      break;
+
+    case "VALIDATE_CAPTURE_OPERATION_CONTEXT": {
+      const isCurrent =
+        activeCaptureOperation?.operationId === message.operationId &&
+        activeCaptureOperation.chatIdentity === getCurrentChatIdentity();
+      sendResponse({ success: true, data: { isCurrent } });
+      break;
+    }
+
+    case "DISCARD_CAPTURE_OPERATION":
+      if (activeCaptureOperation?.operationId === message.operationId) {
+        activeCaptureOperation = null;
+      }
+      sendResponse({ success: true });
+      break;
+
+    case "CAPTURE_OPERATION_UPDATED":
+      renderCaptureOperation(message.operation);
+      sendResponse({ success: true });
+      break;
+
+    case "GET_CURRENT_CHAT":
+      sendResponse({
+        success: false,
+        error: "Use the shared capture operation command.",
+      });
+      break;
 
     case "CHECK_STATUS": {
       const chatList = querySelector(
@@ -968,7 +1243,14 @@ function handleMessage(
       const statusData: CheckStatusData = {
         isWhatsAppWeb: true,
         isLoggedIn: !!chatList,
-        isExtracting: state.isExtracting,
+        isExtracting:
+          state.isExtracting ||
+          Boolean(
+            activeCaptureOperation &&
+              ["collecting", "uploading"].includes(
+                activeCaptureOperation.state,
+              ),
+          ),
       };
       sendResponse({ success: true, data: statusData });
       break;
@@ -1006,6 +1288,14 @@ function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
   return "The extension could not complete this operation.";
+}
+
+function sendRuntimeLifecycleMessage(message: ExtensionMessage): void {
+  try {
+    chrome.runtime.sendMessage(message).catch(() => undefined);
+  } catch {
+    // The content-script context may already be invalidated during teardown.
+  }
 }
 
 function respondSafely(

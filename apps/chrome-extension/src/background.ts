@@ -22,7 +22,19 @@ import {
   type UpdateSettingsMessage,
   type SendChatDataMessage,
   type OpenDashboardMessage,
+  type StartCaptureOperationMessage,
+  type ConfirmCaptureOperationMessage,
+  type CancelCaptureOperationMessage,
 } from "./config";
+import {
+  completeCaptureOperation,
+  createCaptureOperation,
+  isActiveCaptureState,
+  sanitizeOperationReason,
+  type CaptureCollectionSummary,
+  type CaptureOperationSnapshot,
+  type CaptureOperationState,
+} from "./capture-operation";
 
 // =============================================================================
 // Types
@@ -45,6 +57,34 @@ class HttpRequestError extends Error {
 
 // Storage key for persistent rate limiting
 const RATE_LIMIT_STORAGE_KEY = "ws_rate_limit_state";
+const captureOperations = new Map<number, CaptureOperationSnapshot>();
+const captureOperationEpochs = new Map<string, number>();
+const captureOperationOwnerIds = new Map<string, string>();
+const captureUploadPromises = new Map<
+  string,
+  Promise<ExtensionResponse<CaptureOperationSnapshot>>
+>();
+let captureOperationsLoadPromise: Promise<void> | null = null;
+let captureLifecycleEpoch = 0;
+let captureAuthTransitionCount = 0;
+let authenticationWriteTail: Promise<void> = Promise.resolve();
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  const operation = captureOperations.get(tabId);
+  if (
+    operation &&
+    ["inspecting", "collecting", "ready-for-review", "retry-required"].includes(
+      operation.state,
+    )
+  ) {
+    void finishCaptureOperation(
+      operation,
+      "cancelled",
+      "The WhatsApp tab was closed.",
+      false,
+    );
+  }
+});
 
 // =============================================================================
 // Message Handler
@@ -92,9 +132,29 @@ async function handleMessage(
   console.log("[Background] Received message:", message.action);
 
   switch (message.action) {
+    case "START_CAPTURE_OPERATION":
+      return await startCaptureOperation(message, _sender);
+
+    case "GET_CAPTURE_OPERATION": {
+      const tabId = resolveCaptureTabId(message.tabId, _sender);
+      if (tabId === null) {
+        return { success: false, error: "A WhatsApp tab is required." };
+      }
+      await loadCaptureOperations();
+      return { success: true, data: captureOperations.get(tabId) };
+    }
+
+    case "CONFIRM_CAPTURE_OPERATION":
+      return await confirmCaptureOperation(message, _sender);
+
+    case "CANCEL_CAPTURE_OPERATION":
+      return await cancelCaptureOperation(message, _sender);
+
     case "SEND_CHAT_DATA": {
-      const typedMessage = message as SendChatDataMessage;
-      return await sendChatData(typedMessage.data);
+      return {
+        success: false,
+        error: "Use the shared capture operation command.",
+      };
     }
 
     case "OPEN_DASHBOARD": {
@@ -137,6 +197,11 @@ async function handleMessage(
     case "GET_CURRENT_CHAT":
     case "CHECK_STATUS":
     case "SET_AUTH_TOKEN":
+    case "COLLECT_CAPTURE_OPERATION":
+    case "GET_CAPTURE_OPERATION_PAYLOAD":
+    case "VALIDATE_CAPTURE_OPERATION_CONTEXT":
+    case "DISCARD_CAPTURE_OPERATION":
+    case "CAPTURE_OPERATION_UPDATED":
       // These are handled by content script, not background
       return { success: false, error: "Action handled by content script" };
 
@@ -146,17 +211,534 @@ async function handleMessage(
 }
 
 // =============================================================================
+// Shared capture operation lifecycle
+// =============================================================================
+
+function resolveCaptureTabId(
+  requestedTabId: number | undefined,
+  sender: chrome.runtime.MessageSender,
+): number | null {
+  if (Number.isInteger(requestedTabId)) return requestedTabId as number;
+  return Number.isInteger(sender.tab?.id) ? (sender.tab?.id as number) : null;
+}
+
+async function loadCaptureOperations(): Promise<void> {
+  if (captureOperationsLoadPromise) return await captureOperationsLoadPromise;
+  captureOperationsLoadPromise = (async () => {
+    const stored = await chrome.storage.session.get([
+      STORAGE_KEYS.captureOperations,
+    ]);
+    const persisted = stored[STORAGE_KEYS.captureOperations];
+    if (!persisted || typeof persisted !== "object") return;
+
+    const interrupted: CaptureOperationSnapshot[] = [];
+    for (const [tabIdValue, value] of Object.entries(persisted)) {
+      const tabId = Number(tabIdValue);
+      if (!Number.isInteger(tabId) || !value || typeof value !== "object") {
+        continue;
+      }
+      const operation = value as CaptureOperationSnapshot;
+      const restored = isActiveCaptureState(operation.state)
+        ? completeCaptureOperation(
+            operation,
+            "cancelled",
+            "The extension background restarted. Recapture and review the loaded messages.",
+          )
+        : operation;
+      captureOperations.set(tabId, restored);
+      captureOperationEpochs.set(restored.operationId, captureLifecycleEpoch);
+      if (restored !== operation) interrupted.push(restored);
+    }
+    await persistCaptureOperations();
+    for (const operation of interrupted) {
+      chrome.runtime
+        .sendMessage({ action: "CAPTURE_OPERATION_UPDATED", operation })
+        .catch(() => undefined);
+      await chrome.tabs
+        .sendMessage(operation.tabId, {
+          action: "CAPTURE_OPERATION_UPDATED",
+          operation,
+        })
+        .catch(() => undefined);
+      await discardCapturePayload(operation);
+    }
+  })();
+  return await captureOperationsLoadPromise;
+}
+
+async function persistCaptureOperations(): Promise<void> {
+  await chrome.storage.session.set({
+    [STORAGE_KEYS.captureOperations]: Object.fromEntries(captureOperations),
+  });
+}
+
+async function publishCaptureOperation(
+  operation: CaptureOperationSnapshot,
+  notifyTab: boolean = true,
+): Promise<void> {
+  captureOperations.set(operation.tabId, operation);
+  await persistCaptureOperations();
+
+  chrome.runtime
+    .sendMessage({ action: "CAPTURE_OPERATION_UPDATED", operation })
+    .catch(() => undefined);
+  if (notifyTab) {
+    chrome.tabs
+      .sendMessage(operation.tabId, {
+        action: "CAPTURE_OPERATION_UPDATED",
+        operation,
+      })
+      .catch(() => undefined);
+  }
+}
+
+async function startCaptureOperation(
+  message: StartCaptureOperationMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const operationEpoch = captureLifecycleEpoch;
+  if (captureAuthTransitionCount > 0) {
+    return {
+      success: false,
+      error: "Authentication is changing. Try capture again after it finishes.",
+    };
+  }
+  const tabId = resolveCaptureTabId(message.tabId, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "Open WhatsApp Web and select a chat first.",
+    };
+  }
+  await loadCaptureOperations();
+  if (operationEpoch !== captureLifecycleEpoch) {
+    return {
+      success: false,
+      error: "Authentication changed while capture was starting. Try again.",
+    };
+  }
+  const authState = await chrome.storage.local.get([STORAGE_KEYS.user]);
+  if (
+    operationEpoch !== captureLifecycleEpoch ||
+    captureAuthTransitionCount > 0
+  ) {
+    return {
+      success: false,
+      error: "Authentication changed while capture was starting. Try again.",
+    };
+  }
+  const authenticatedOwnerId = authState[STORAGE_KEYS.user]?.id;
+  if (typeof authenticatedOwnerId !== "string") {
+    return {
+      success: false,
+      error:
+        "Authentication is required. Sign in before reviewing loaded messages.",
+    };
+  }
+
+  const existing = captureOperations.get(tabId);
+  if (
+    existing &&
+    isActiveCaptureState(existing.state) &&
+    captureOperationEpochs.get(existing.operationId) === captureLifecycleEpoch
+  ) {
+    return { success: true, data: existing };
+  }
+
+  let operation = createCaptureOperation(tabId, message.initiator);
+  captureOperationEpochs.set(operation.operationId, operationEpoch);
+  captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
+  await publishCaptureOperation(operation);
+  if (!isCurrentCaptureOperation(operation, operationEpoch, "inspecting")) {
+    return await abandonCaptureOperation(
+      operation,
+      "Authentication changed while capture was starting. Try again.",
+    );
+  }
+  operation = { ...operation, state: "collecting" };
+  await publishCaptureOperation(operation);
+  if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+    return await abandonCaptureOperation(
+      operation,
+      "Authentication changed before messages could be read.",
+    );
+  }
+
+  try {
+    const response = (await chrome.tabs.sendMessage(tabId, {
+      action: "COLLECT_CAPTURE_OPERATION",
+      operationId: operation.operationId,
+    })) as ExtensionResponse<{
+      summary: CaptureCollectionSummary;
+    }>;
+    if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+      return await abandonCaptureOperation(
+        operation,
+        "The capture was cancelled while messages were being read.",
+      );
+    }
+    if (!response.success || !response.data?.summary) {
+      return await finishCaptureOperation(
+        operation,
+        "cancelled",
+        response.success
+          ? "The loaded-message review was cancelled."
+          : response.error,
+      );
+    }
+
+    const summary = response.data.summary;
+    operation = {
+      ...operation,
+      state: "ready-for-review",
+      chatKey: summary.chatKey,
+      renderedCount: summary.renderedCount,
+      collectedCount: summary.extractedCount,
+      extractedCount: summary.extractedCount,
+      skippedCount: summary.skippedCount,
+      mediaCount: summary.mediaCount,
+      oldestTimestamp: summary.oldestTimestamp,
+      newestTimestamp: summary.newestTimestamp,
+      stopReason: "loaded-window",
+      reason: undefined,
+    };
+    await publishCaptureOperation(operation);
+    return { success: true, data: operation };
+  } catch (error) {
+    if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+      return await abandonCaptureOperation(
+        operation,
+        "The capture was cancelled while messages were being read.",
+      );
+    }
+    return await finishCaptureOperation(
+      operation,
+      "cancelled",
+      normalizeChannelLifecycleReason(error),
+    );
+  }
+}
+
+async function confirmCaptureOperation(
+  message: ConfirmCaptureOperationMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  if (captureAuthTransitionCount > 0) {
+    return {
+      success: false,
+      error: "Authentication is changing. Recapture after it finishes.",
+    };
+  }
+  const tabId = resolveCaptureTabId(message.tabId, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "The WhatsApp tab is no longer available.",
+    };
+  }
+  await loadCaptureOperations();
+  const operation = captureOperations.get(tabId);
+  if (!operation || operation.operationId !== message.operationId) {
+    return {
+      success: false,
+      error: "This capture operation is no longer current.",
+    };
+  }
+  if (
+    captureOperationEpochs.get(operation.operationId) !== captureLifecycleEpoch
+  ) {
+    return {
+      success: false,
+      error:
+        "Authentication changed. Recapture and review the loaded messages.",
+    };
+  }
+  const currentAuthState = await chrome.storage.local.get([STORAGE_KEYS.user]);
+  const boundOwnerId = captureOperationOwnerIds.get(operation.operationId);
+  const currentOwnerId = currentAuthState[STORAGE_KEYS.user]?.id;
+  if (
+    typeof boundOwnerId !== "string" ||
+    typeof currentOwnerId !== "string" ||
+    currentOwnerId !== boundOwnerId
+  ) {
+    await clearCaptureStateForAccountChange();
+    return {
+      success: false,
+      error:
+        "The connected account changed. Recapture and review the loaded messages.",
+    };
+  }
+  if (
+    operation.state !== "ready-for-review" &&
+    operation.state !== "retry-required"
+  ) {
+    return { success: true, data: operation };
+  }
+
+  const inFlight = captureUploadPromises.get(operation.operationId);
+  if (inFlight) return await inFlight;
+
+  const upload = uploadCaptureOperation(operation).finally(() => {
+    captureUploadPromises.delete(operation.operationId);
+  });
+  captureUploadPromises.set(operation.operationId, upload);
+  return await upload;
+}
+
+async function uploadCaptureOperation(
+  initialOperation: CaptureOperationSnapshot,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const expectedOwnerId = captureOperationOwnerIds.get(
+    initialOperation.operationId,
+  );
+  if (typeof expectedOwnerId !== "string") {
+    return await finishCaptureOperation(
+      initialOperation,
+      "cancelled",
+      "Authentication changed. Recapture and review the loaded messages.",
+    );
+  }
+  const operationEpoch =
+    captureOperationEpochs.get(initialOperation.operationId) ??
+    captureLifecycleEpoch;
+  let operation: CaptureOperationSnapshot = {
+    ...initialOperation,
+    state: "uploading",
+    reason: undefined,
+  };
+  await publishCaptureOperation(operation);
+
+  try {
+    const payloadResponse = (await chrome.tabs.sendMessage(operation.tabId, {
+      action: "GET_CAPTURE_OPERATION_PAYLOAD",
+      operationId: operation.operationId,
+    })) as ExtensionResponse<SendChatDataMessage["data"]>;
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed before upload.",
+      );
+    }
+    if (!payloadResponse.success || !payloadResponse.data) {
+      return await finishCaptureOperation(
+        operation,
+        "cancelled",
+        payloadResponse.success
+          ? "The reviewed capture is no longer available in this tab."
+          : payloadResponse.error,
+      );
+    }
+
+    const uploadResult = await sendChatData(
+      payloadResponse.data,
+      expectedOwnerId,
+    );
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed during upload.",
+      );
+    }
+    if (!uploadResult.success) {
+      if (uploadResult.retryRequired) {
+        const contextResponse = (await chrome.tabs.sendMessage(
+          operation.tabId,
+          {
+            action: "VALIDATE_CAPTURE_OPERATION_CONTEXT",
+            operationId: operation.operationId,
+          },
+        )) as ExtensionResponse<{ isCurrent: boolean }>;
+        if (
+          !isCurrentCaptureOperation(operation, operationEpoch, "uploading")
+        ) {
+          return await abandonCaptureOperation(
+            operation,
+            "The capture was cancelled while the upload was being reconciled.",
+          );
+        }
+        if (!contextResponse.success || !contextResponse.data?.isCurrent) {
+          return await finishCaptureOperation(
+            operation,
+            "cancelled",
+            "The selected chat changed during upload. Recapture before retrying.",
+          );
+        }
+        operation = {
+          ...operation,
+          state: "retry-required",
+          reason: sanitizeOperationReason(uploadResult.error),
+        };
+        await publishCaptureOperation(operation);
+        return { success: true, data: operation };
+      }
+      return await finishCaptureOperation(
+        operation,
+        "failed",
+        safeUploadFailureReason(uploadResult.error),
+      );
+    }
+
+    const result = uploadResult.data as {
+      duplicate?: boolean;
+      reconciliationRequired?: boolean;
+      data?: { dashboardUrl?: string };
+    };
+    const duplicate = Boolean(result?.duplicate);
+    operation = completeCaptureOperation(
+      {
+        ...operation,
+        reconciliationRequired: Boolean(result?.reconciliationRequired),
+        resultPath: result?.data?.dashboardUrl,
+      },
+      duplicate ? "duplicate" : "received",
+    );
+    await publishCaptureOperation(operation);
+    await discardCapturePayload(operation);
+    return { success: true, data: operation };
+  } catch (error) {
+    if (!isCurrentCaptureOperation(operation, operationEpoch)) {
+      return await abandonCaptureOperation(
+        operation,
+        "Authentication changed during upload.",
+      );
+    }
+    return await finishCaptureOperation(
+      operation,
+      "cancelled",
+      normalizeChannelLifecycleReason(error),
+    );
+  }
+}
+
+function isCurrentCaptureOperation(
+  operation: CaptureOperationSnapshot,
+  operationEpoch: number,
+  expectedState?: CaptureOperationState,
+): boolean {
+  const currentOperation = captureOperations.get(operation.tabId);
+  return (
+    operationEpoch === captureLifecycleEpoch &&
+    captureOperationEpochs.get(operation.operationId) === operationEpoch &&
+    currentOperation?.operationId === operation.operationId &&
+    (!expectedState || currentOperation.state === expectedState)
+  );
+}
+
+async function abandonCaptureOperation(
+  operation: CaptureOperationSnapshot,
+  reason: string,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  await discardCapturePayload(operation);
+  return {
+    success: true,
+    data: completeCaptureOperation(operation, "cancelled", reason),
+  };
+}
+
+async function cancelCaptureOperation(
+  message: CancelCaptureOperationMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const tabId = resolveCaptureTabId(message.tabId, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "The WhatsApp tab is no longer available.",
+    };
+  }
+  await loadCaptureOperations();
+  const operation = captureOperations.get(tabId);
+  if (!operation || operation.operationId !== message.operationId) {
+    return {
+      success: false,
+      error: "This capture operation is no longer current.",
+    };
+  }
+  if (operation.state === "uploading") {
+    return { success: true, data: operation };
+  }
+  if (!isActiveCaptureState(operation.state)) {
+    return { success: true, data: operation };
+  }
+  return await finishCaptureOperation(
+    operation,
+    "cancelled",
+    safeCancellationReason(message.reason),
+  );
+}
+
+function safeCancellationReason(reason: string | undefined): string {
+  const allowed = new Set([
+    "Upload cancelled. Nothing was sent.",
+    "The selected chat changed. Nothing was sent.",
+    "The WhatsApp tab unloaded during capture.",
+  ]);
+  return reason && allowed.has(reason)
+    ? reason
+    : "Capture cancelled. Nothing was sent.";
+}
+
+function safeUploadFailureReason(reason: string): string {
+  return /authentication expired|log in again/i.test(reason)
+    ? "Authentication expired. Sign in again, then recapture and review the loaded messages."
+    : "ConvoLens could not receive this capture. Recapture and review the loaded messages before trying again.";
+}
+
+async function finishCaptureOperation(
+  operation: CaptureOperationSnapshot,
+  state: "failed" | "cancelled",
+  reason: unknown,
+  notifyTab: boolean = true,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const completed = completeCaptureOperation(
+    operation,
+    state,
+    sanitizeOperationReason(reason),
+  );
+  await publishCaptureOperation(completed, notifyTab);
+  if (notifyTab) await discardCapturePayload(completed);
+  return { success: true, data: completed };
+}
+
+async function discardCapturePayload(
+  operation: CaptureOperationSnapshot,
+): Promise<void> {
+  await chrome.tabs
+    .sendMessage(operation.tabId, {
+      action: "DISCARD_CAPTURE_OPERATION",
+      operationId: operation.operationId,
+    })
+    .catch(() => undefined);
+}
+
+function normalizeChannelLifecycleReason(error: unknown): string {
+  const message = normalizeErrorMessage(error);
+  if (
+    /message port closed|receiving end does not exist|context invalidated|tab was closed|no tab with id/i.test(
+      message,
+    )
+  ) {
+    return "The extension channel closed. Recapture and review the loaded messages.";
+  }
+  return message;
+}
+
+// =============================================================================
 // API Communication
 // =============================================================================
 
 /**
  * Send chat data to the API with retry logic
  */
-async function sendChatData(chatData: any): Promise<ExtensionResponse> {
+async function sendChatData(
+  chatData: any,
+  expectedOwnerId: string,
+): Promise<ExtensionResponse> {
   try {
     let stored = await chrome.storage.local.get([
       STORAGE_KEYS.authToken,
       STORAGE_KEYS.authTokenExpiresAt,
+      STORAGE_KEYS.user,
     ]);
     const expiresAt = Number(stored[STORAGE_KEYS.authTokenExpiresAt] || 0);
     if (
@@ -167,7 +749,21 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
       if (!syncResult.success) {
         return syncResult;
       }
-      stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
+      const refreshedOwnerId = (
+        syncResult.data as { user?: { id?: string } } | undefined
+      )?.user?.id;
+      if (!refreshedOwnerId || refreshedOwnerId !== expectedOwnerId) {
+        await clearCaptureStateForAccountChange();
+        return {
+          success: false,
+          error:
+            "The connected account changed. Recapture and review the loaded messages.",
+        };
+      }
+      stored = await chrome.storage.local.get([
+        STORAGE_KEYS.authToken,
+        STORAGE_KEYS.user,
+      ]);
     }
 
     // Check rate limiting (persistent across service worker restarts)
@@ -184,13 +780,41 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
 
     // Send with retry (include tracing headers for distributed tracing)
     const config = await getApiConfig();
+    // Read the owner and token together after every preceding await. Once this
+    // continuation resumes, JavaScript constructs the Authorization header and
+    // invokes fetchWithRetry synchronously, so another auth message cannot
+    // interleave between this ownership check and credential selection.
+    const finalCredentialState = await chrome.storage.local.get([
+      STORAGE_KEYS.authToken,
+      STORAGE_KEYS.user,
+    ]);
+    const finalOwnerId = finalCredentialState[STORAGE_KEYS.user]?.id;
+    if (
+      typeof finalOwnerId !== "string" ||
+      finalOwnerId !== expectedOwnerId
+    ) {
+      await clearCaptureStateForAccountChange();
+      return {
+        success: false,
+        error:
+          "The connected account changed. Recapture and review the loaded messages.",
+      };
+    }
+    const finalAuthToken = finalCredentialState[STORAGE_KEYS.authToken];
+    if (!finalAuthToken) {
+      return {
+        success: false,
+        error:
+          "Authentication is required. Sign in and recapture the loaded messages.",
+      };
+    }
     const result = await fetchWithRetry(
       `${config.apiUrl}/api/chat-export/extension`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${stored[STORAGE_KEYS.authToken]}`,
+          Authorization: `Bearer ${finalAuthToken}`,
           ...getTracingHeaders(),
         },
         body: JSON.stringify(chatData),
@@ -252,7 +876,9 @@ async function fetchWithRetry(
 
         // Don't retry on auth errors
         if (response.status === 401 || response.status === 403) {
-          await handleLogout();
+          // This path can run inside a capture upload, so it must not wait for
+          // the upload promise that is currently executing.
+          await clearCaptureStateAndAuthentication(false);
           throw new Error("Authentication expired. Please log in again.");
         }
 
@@ -412,13 +1038,11 @@ async function syncMystiraSession(): Promise<ExtensionResponse> {
       };
     }
 
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.authToken]: exchanged.token,
-      [STORAGE_KEYS.authTokenExpiresAt]:
-        Date.now() + exchanged.expiresIn * 1000,
-      [STORAGE_KEYS.user]: exchanged.user,
-    });
-    await notifyContentScripts(exchanged.token);
+    await replaceAuthenticatedUser(
+      exchanged.token,
+      exchanged.user,
+      Date.now() + exchanged.expiresIn * 1000,
+    );
 
     return {
       success: true,
@@ -472,12 +1096,7 @@ async function handleLogin(
 
     const { token, user } = await response.json();
 
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.authToken]: token,
-      [STORAGE_KEYS.user]: user,
-    });
-
-    await notifyContentScripts(token);
+    await replaceAuthenticatedUser(token, user);
 
     return { success: true, data: { user } };
   } catch (error) {
@@ -485,15 +1104,117 @@ async function handleLogin(
   }
 }
 
+async function replaceAuthenticatedUser(
+  token: string,
+  user: { id?: string },
+  expiresAt?: number,
+): Promise<void> {
+  let releaseWrite: () => void = () => undefined;
+  const previousWrite = authenticationWriteTail;
+  authenticationWriteTail = new Promise<void>((resolve) => {
+    releaseWrite = resolve;
+  });
+  await previousWrite;
+  captureAuthTransitionCount += 1;
+
+  try {
+    const previousState = await chrome.storage.local.get([STORAGE_KEYS.user]);
+    const previousOwnerId = previousState[STORAGE_KEYS.user]?.id;
+    const nextOwnerId = user?.id;
+
+    if (typeof expiresAt === "number") {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.authToken]: token,
+        [STORAGE_KEYS.authTokenExpiresAt]: expiresAt,
+        [STORAGE_KEYS.user]: user,
+      });
+    } else {
+      await chrome.storage.local.remove([STORAGE_KEYS.authTokenExpiresAt]);
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.authToken]: token,
+        [STORAGE_KEYS.user]: user,
+      });
+    }
+
+    if (
+      typeof previousOwnerId === "string" &&
+      (typeof nextOwnerId !== "string" || nextOwnerId !== previousOwnerId)
+    ) {
+      await loadCaptureOperations();
+      await invalidateLoadedCaptureOperations();
+    }
+
+    await notifyContentScripts(token);
+  } finally {
+    captureAuthTransitionCount -= 1;
+    releaseWrite();
+  }
+}
+
 async function handleLogout(): Promise<ExtensionResponse> {
+  await clearCaptureStateAndAuthentication(true);
+
+  return { success: true };
+}
+
+async function clearAuthenticationState(): Promise<void> {
   await chrome.storage.local.remove([
     STORAGE_KEYS.authToken,
     STORAGE_KEYS.authTokenExpiresAt,
     STORAGE_KEYS.user,
   ]);
   await notifyContentScripts(null);
+}
 
-  return { success: true };
+async function clearCaptureStateAndAuthentication(
+  waitForUploads: boolean,
+): Promise<void> {
+  captureAuthTransitionCount += 1;
+  try {
+    await loadCaptureOperations();
+
+    // An upload already carries the current account's authorization and cannot
+    // be truthfully undone. Let it settle before clearing that account, then
+    // remove every old-account snapshot and in-tab reviewed payload.
+    if (waitForUploads) {
+      await Promise.allSettled([...captureUploadPromises.values()]);
+    }
+
+    await invalidateLoadedCaptureOperations();
+    await clearAuthenticationState();
+  } finally {
+    captureAuthTransitionCount -= 1;
+  }
+}
+
+async function clearCaptureStateForAccountChange(): Promise<void> {
+  captureAuthTransitionCount += 1;
+  try {
+    await loadCaptureOperations();
+    await invalidateLoadedCaptureOperations();
+  } finally {
+    captureAuthTransitionCount -= 1;
+  }
+}
+
+async function invalidateLoadedCaptureOperations(): Promise<void> {
+  captureLifecycleEpoch += 1;
+
+  for (const operation of [...captureOperations.values()]) {
+    if (isActiveCaptureState(operation.state)) {
+      await finishCaptureOperation(
+        operation,
+        "cancelled",
+        "Authentication changed. The reviewed capture was discarded.",
+      );
+    } else {
+      await discardCapturePayload(operation);
+    }
+  }
+  captureOperations.clear();
+  captureOperationEpochs.clear();
+  captureOperationOwnerIds.clear();
+  await persistCaptureOperations();
 }
 
 // =============================================================================
