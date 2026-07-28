@@ -174,7 +174,7 @@ async function handleMessage(
       return await getAuthStatus();
 
     case "SYNC_MYSTIRA_AUTH":
-      return await syncMystiraSession();
+      return await syncMystiraSession(++authenticationIntentGeneration);
 
     case "LOGIN": {
       const typedMessage = message as LoginMessage;
@@ -985,7 +985,9 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
     !stored[STORAGE_KEYS.authToken] ||
     (expiresAt > 0 && expiresAt <= Date.now() + 30_000)
   ) {
-    const syncResponse = await syncMystiraSession();
+    const syncResponse = await syncMystiraSession(
+      ++authenticationIntentGeneration,
+    );
     if (!syncResponse.success) {
       return {
         success: true,
@@ -1011,8 +1013,11 @@ async function getAuthStatus(): Promise<ExtensionResponse> {
   };
 }
 
-async function syncMystiraSession(): Promise<ExtensionResponse> {
-  const authenticationIntent = authenticationIntentGeneration;
+async function syncMystiraSession(
+  expectedAuthenticationIntent?: number,
+): Promise<ExtensionResponse> {
+  const authenticationIntent =
+    expectedAuthenticationIntent ?? authenticationIntentGeneration;
   try {
     const config = getConfig();
     const sessionResponse = await fetch(
@@ -1248,7 +1253,7 @@ async function clearAuthenticationState(): Promise<void> {
 async function clearCaptureStateAndAuthentication(
   waitForUploads: boolean,
 ): Promise<void> {
-  authenticationIntentGeneration += 1;
+  const clearAuthenticationIntent = ++authenticationIntentGeneration;
   captureAuthTransitionCount += 1;
   try {
     await loadCaptureOperations();
@@ -1267,6 +1272,7 @@ async function clearCaptureStateAndAuthentication(
     });
     await previousWrite;
     try {
+      if (clearAuthenticationIntent !== authenticationIntentGeneration) return;
       await invalidateLoadedCaptureOperations();
       await clearAuthenticationState();
     } finally {

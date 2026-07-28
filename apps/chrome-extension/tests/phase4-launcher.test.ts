@@ -190,11 +190,15 @@ test("refreshes account-scoped launcher state on authentication messages", () =>
   );
   assert.match(
     backgroundSource,
-    /syncMystiraSession[\s\S]*const authenticationIntent = authenticationIntentGeneration[\s\S]*replaceAuthenticatedUser\([\s\S]*authenticationIntent[\s\S]*if \(!replaced\)/,
+    /syncMystiraSession[\s\S]*expectedAuthenticationIntent \?\? authenticationIntentGeneration[\s\S]*replaceAuthenticatedUser\([\s\S]*authenticationIntent[\s\S]*if \(!replaced\)/,
   );
   assert.match(
     backgroundSource,
-    /clearCaptureStateAndAuthentication[\s\S]*authenticationIntentGeneration \+= 1[\s\S]*Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
+    /clearCaptureStateAndAuthentication[\s\S]*const clearAuthenticationIntent = \+\+authenticationIntentGeneration[\s\S]*Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*clearAuthenticationIntent !== authenticationIntentGeneration[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
+  );
+  assert.match(
+    backgroundSource,
+    /case "SYNC_MYSTIRA_AUTH":[\s\S]*syncMystiraSession\(\+\+authenticationIntentGeneration\)/,
   );
   assert.match(
     backgroundSource,
@@ -243,7 +247,7 @@ test("revalidates authentication and safe legacy state after options changes", (
   );
   assert.match(
     backgroundSource,
-    /const syncResponse = await syncMystiraSession\(\)[\s\S]*if \(!syncResponse\.success\)[\s\S]*isAuthenticated: false/,
+    /const syncResponse = await syncMystiraSession\([\s\S]*authenticationIntentGeneration[\s\S]*if \(!syncResponse\.success\)[\s\S]*isAuthenticated: false/,
   );
   assert.match(
     optionsSource,
