@@ -218,3 +218,16 @@ test("validates the selected chat before publishing a retry", () => {
     /activeCaptureOperation\.chatIdentity === getCurrentChatIdentity\(\)/,
   );
 });
+
+test("notifies the tab when restart restoration cancels an operation", () => {
+  const restoreBlock = backgroundSource.slice(
+    backgroundSource.indexOf("for (const operation of interrupted)"),
+    backgroundSource.indexOf("async function persistCaptureOperations"),
+  );
+  assert.match(restoreBlock, /chrome\.tabs/);
+  assert.match(restoreBlock, /CAPTURE_OPERATION_UPDATED/);
+  assert.ok(
+    restoreBlock.indexOf("CAPTURE_OPERATION_UPDATED") <
+      restoreBlock.indexOf("discardCapturePayload"),
+  );
+});

@@ -254,6 +254,12 @@ async function loadCaptureOperations(): Promise<void> {
       chrome.runtime
         .sendMessage({ action: "CAPTURE_OPERATION_UPDATED", operation })
         .catch(() => undefined);
+      await chrome.tabs
+        .sendMessage(operation.tabId, {
+          action: "CAPTURE_OPERATION_UPDATED",
+          operation,
+        })
+        .catch(() => undefined);
       await discardCapturePayload(operation);
     }
   })();
