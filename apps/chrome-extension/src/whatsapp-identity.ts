@@ -66,7 +66,10 @@ export function extractStableWhatsAppConversationId(
   values: Array<string | null | undefined>,
 ): string | undefined {
   for (const value of values) {
-    const jid = value?.match(WHATSAPP_JID_PATTERN)?.[1]?.toLowerCase();
+    const jid = value
+      ?.match(WHATSAPP_JID_PATTERN)?.[1]
+      ?.toLowerCase()
+      .replace(/@c\.us$/, "@s.whatsapp.net");
     if (jid) return `whatsapp:${jid}`;
   }
   return undefined;

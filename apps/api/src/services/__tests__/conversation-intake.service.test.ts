@@ -218,6 +218,21 @@ describe('ConversationIntakeService', () => {
     );
   });
 
+  it('canonicalizes equivalent WhatsApp direct-chat JID domains', async () => {
+    const legacyInput = stableInput('whatsapp:27821234567@c.us');
+    const first = await service.save(legacyInput);
+    await dataSource.getRepository(ConversationIntake).update(first.conversation.id, {
+      sourceConversationId: 'whatsapp:27821234567@c.us',
+      contentHash: createConversationContentHashV2(legacyInput),
+    });
+    const second = await service.save(stableInput('whatsapp:27821234567@s.whatsapp.net'));
+
+    expect(second.duplicate).toBe(true);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.sourceConversationId).toBe('whatsapp:27821234567@s.whatsapp.net');
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+  });
+
   it('serializes concurrent compatibility matches whose v2 hashes differ', async () => {
     const phoneOnly = stableInput();
     const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');

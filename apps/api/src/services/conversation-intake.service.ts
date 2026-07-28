@@ -82,6 +82,19 @@ function normalizeHashValue(value: string): string {
   return value.normalize('NFKC').replace(/\r\n/g, '\n').trim();
 }
 
+function normalizeStableSourceConversationId(value: string): string {
+  return normalizeHashValue(value)
+    .toLowerCase()
+    .replace(/@c\.us$/, '@s.whatsapp.net');
+}
+
+function sourceConversationAliases(value: string): string[] {
+  const canonical = normalizeStableSourceConversationId(value);
+  return canonical.endsWith('@s.whatsapp.net')
+    ? [canonical, canonical.replace(/@s\.whatsapp\.net$/, '@c.us')]
+    : [canonical];
+}
+
 export function createConversationContentHash(
   input: Pick<ConversationIntakeInput, 'sourcePlatform' | 'messages'>
 ): string {
@@ -320,7 +333,12 @@ function shouldRequireReconciliation(
 ): boolean {
   if (!usesStableV2) return true;
   if (!candidate.sourceConversationIdentityStable) return true;
-  return candidate.sourceConversationId === sourceConversationId;
+  return Boolean(
+    candidate.sourceConversationId &&
+      sourceConversationId &&
+      normalizeStableSourceConversationId(candidate.sourceConversationId) ===
+        normalizeStableSourceConversationId(sourceConversationId)
+  );
 }
 
 function parseConnectorVersion(value: string | undefined): number[] | null {
@@ -401,6 +419,15 @@ export class ConversationIntakeService {
     if (options.persistVerifiedStableScope) {
       conversation.sourceConversationId = input.sourceConversationId;
       conversation.sourceConversationIdentityStable = true;
+    } else if (
+      conversation.sourceConversationIdentityStable &&
+      conversation.sourceConversationId &&
+      input.sourceConversationIdentityStable &&
+      input.sourceConversationId &&
+      normalizeStableSourceConversationId(conversation.sourceConversationId) ===
+        input.sourceConversationId
+    ) {
+      conversation.sourceConversationId = input.sourceConversationId;
     }
     const correctedMessages = options.applyMediaCorrections
       ? applyCorrectedVisualMediaEvidence(conversation, input)
@@ -439,6 +466,12 @@ export class ConversationIntakeService {
   }
 
   async save(input: ConversationIntakeInput): Promise<SaveConversationResult> {
+    if (input.sourceConversationIdentityStable && input.sourceConversationId) {
+      input = {
+        ...input,
+        sourceConversationId: normalizeStableSourceConversationId(input.sourceConversationId),
+      };
+    }
     const usesStableV2 = Boolean(
       input.sourceConversationIdentityStable && input.sourceConversationId
     );
@@ -505,7 +538,7 @@ export class ConversationIntakeService {
                 where: {
                   userId: input.userId,
                   sourcePlatform: input.sourcePlatform,
-                  sourceConversationId: input.sourceConversationId,
+                  sourceConversationId: In(sourceConversationAliases(input.sourceConversationId!)),
                   contentHash: legacyContentHash,
                 },
                 ...exactLookupOptions,
@@ -550,7 +583,9 @@ export class ConversationIntakeService {
             ? lockedSemanticCandidates.filter(
                 (candidate) =>
                   candidate.sourceConversationIdentityStable &&
-                  candidate.sourceConversationId === input.sourceConversationId
+                  candidate.sourceConversationId &&
+                  normalizeStableSourceConversationId(candidate.sourceConversationId) ===
+                    input.sourceConversationId
               )
             : [];
           const lockedCompatibleCandidates = lockedSameStableConversation.filter(
