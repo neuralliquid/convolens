@@ -39,8 +39,8 @@ export interface ConversationParticipantEvidence {
 @Index('IDX_conversation_intakes_compatibility_scope', [
   'userId',
   'sourcePlatform',
-  'sourceConversationId',
   'compatibilityHash',
+  'sourceConversationId',
 ])
 @Index('UQ_conversation_intakes_user_content_hash', ['userId', 'contentHash'], {
   unique: true,

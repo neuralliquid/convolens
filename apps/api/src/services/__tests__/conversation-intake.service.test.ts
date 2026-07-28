@@ -165,6 +165,19 @@ describe('ConversationIntakeService', () => {
     expect(secondHash).toBe(firstHash);
   });
 
+  it('orders synchronized compatibility metadata for the service lookup predicate', () => {
+    const compatibilityIndex = dataSource
+      .getMetadata(ConversationIntake)
+      .indices.find((index) => index.givenName === 'IDX_conversation_intakes_compatibility_scope');
+
+    expect(compatibilityIndex?.columns.map((column) => column.propertyName)).toEqual([
+      'userId',
+      'sourcePlatform',
+      'compatibilityHash',
+      'sourceConversationId',
+    ]);
+  });
+
   it('deduplicates a scoped phone-only intake after its display name is enriched', async () => {
     const first = await service.save(stableInput());
     const enriched = stableInput('whatsapp:120363123456789@g.us', 'Greg Wright', '+27821234567');
@@ -451,18 +464,18 @@ describe('ConversationIntakeService', () => {
     );
   });
 
-  it('normalizes corrected image and video detection for captionless legacy media', () => {
+  it('normalizes corrected image and video detection when the media has a caption', () => {
     const legacy = stableInput();
     legacy.messages[0] = {
       ...legacy.messages[0],
-      content: '[image]',
+      content: 'Project clip',
       isMedia: true,
       mediaType: 'image',
     };
     const corrected = stableInput();
     corrected.messages[0] = {
       ...corrected.messages[0],
-      content: '',
+      content: 'Project clip',
       isMedia: true,
       mediaType: 'video',
     };
@@ -472,11 +485,11 @@ describe('ConversationIntakeService', () => {
     );
   });
 
-  it('persists a corrected video type when compatibility deduplicates legacy media', async () => {
+  it('persists a corrected video type for compatibility-deduplicated captioned media', async () => {
     const legacy = stableInput();
     legacy.messages[0] = {
       ...legacy.messages[0],
-      content: '[image]',
+      content: 'Project clip',
       isMedia: true,
       mediaType: 'image',
     };
@@ -484,7 +497,7 @@ describe('ConversationIntakeService', () => {
     const corrected = stableInput();
     corrected.messages[0] = {
       ...corrected.messages[0],
-      content: '',
+      content: 'Project clip',
       isMedia: true,
       mediaType: 'video',
     };
@@ -494,6 +507,6 @@ describe('ConversationIntakeService', () => {
     expect(second.duplicate).toBe(true);
     expect(second.conversation.id).toBe(first.conversation.id);
     expect(second.conversation.messages[0].mediaType).toBe('video');
-    expect(second.conversation.messages[0].content).toBe('[image]');
+    expect(second.conversation.messages[0].content).toBe('Project clip');
   });
 });

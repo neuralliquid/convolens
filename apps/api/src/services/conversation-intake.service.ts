@@ -165,12 +165,7 @@ export function createConversationCompatibilityHash(
 }
 
 function normalizeCompatibilityMediaType(message: ConversationMessageInput): string | null {
-  const content = normalizeCompatibilityContent(message);
-  if (
-    message.isMedia &&
-    content === '' &&
-    (message.mediaType === 'image' || message.mediaType === 'video')
-  ) {
+  if (message.isMedia && (message.mediaType === 'image' || message.mediaType === 'video')) {
     return 'visual';
   }
   return message.mediaType || null;
@@ -289,9 +284,7 @@ function applyCorrectedVisualMediaEvidence(
       message.isMedia &&
       incoming?.isMedia &&
       message.mediaType === 'image' &&
-      incoming.mediaType === 'video' &&
-      normalizeCompatibilityContent(message) === '' &&
-      normalizeCompatibilityContent(incoming) === ''
+      incoming.mediaType === 'video'
     ) {
       message.mediaType = 'video';
       return true;
