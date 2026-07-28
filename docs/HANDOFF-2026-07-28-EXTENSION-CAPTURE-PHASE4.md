@@ -10,7 +10,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - The expanded panel is absolutely anchored inward from either edge, aligned to the selected vertical preset, width- and height-bounded to the viewport, and scrollable when needed.
 - The panel renders ready, inspecting/collecting, review count, uploading, received/duplicate, retry-required, failed/cancelled, and legacy-migration attention states without changing the Phase 3 operation owner.
 - The legacy attention state receives only an authenticated, background-derived count. The WhatsApp content script does not read or subscribe to raw legacy `pendingUploads` values.
-- Cold start and authentication changes immediately establish the correct signed-in or signed-out launcher state. Authenticated sessions refetch both safe summaries through a generation-guarded path so stale successes or failures cannot overwrite a newer account transition.
+- Cold start normalizes an absent or invalid stored credential to signed out, and authentication changes immediately establish the correct launcher state. Authenticated sessions refetch both safe summaries through a generation-guarded path so stale successes or failures cannot overwrite a newer account transition.
 - Opening the panel moves focus into its first enabled control, while pointer cancellation clears drag click-suppression state.
 - Escape, focus-visible, reduced-motion, forced-colour, dark-mode, and narrow-window behavior are included.
 - The shared Phase 3 operation state machine, explicit loaded-message review, Phase 2 reconciliation truth, and memory-only new raw capture boundary remain intact.
@@ -32,7 +32,7 @@ Phase 4 replaces the permanent full-width WhatsApp pill with the compact movable
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.15`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `9B286A37ACC2B776692ABD3E3491DAD169ACBA5A2FED729679FD14B62AE6D591`.
+- Packaged ZIP SHA-256: `9A2CE603B0A6D7859E8B238B3EE78F44687B7B7FA5D2B572093FB0924602CE89`.
 - A local mocked WhatsApp Playwright smoke exposed an initial outward/flex-shrunk panel defect, which was replaced by explicit absolute inward anchoring and covered by focused source tests. The Playwright session wrapper became unresponsive before a post-fix screenshot could be captured, so no final visual or authentic acceptance is claimed.
 
 ## Boundaries still open

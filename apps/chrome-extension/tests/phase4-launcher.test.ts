@@ -113,6 +113,10 @@ test("gets only a safe legacy count from the background", () => {
 test("refreshes account-scoped launcher state on authentication messages", () => {
   assert.match(
     contentSource,
+    /typeof storedToken === "string" && storedToken\.trim\(\)\.length > 0[\s\S]*\? storedToken[\s\S]*: null/,
+  );
+  assert.match(
+    contentSource,
     /async function refreshLauncherAuthenticationState/,
   );
   assert.match(

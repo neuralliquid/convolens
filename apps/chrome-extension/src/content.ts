@@ -180,7 +180,11 @@ async function init(): Promise<void> {
   // Load saved auth token
   try {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.authToken]);
-    authToken = stored[STORAGE_KEYS.authToken];
+    const storedToken = stored[STORAGE_KEYS.authToken];
+    authToken =
+      typeof storedToken === "string" && storedToken.trim().length > 0
+        ? storedToken
+        : null;
   } catch (error) {
     console.warn("[ConvoLens] Failed to load auth token:", error);
   }
