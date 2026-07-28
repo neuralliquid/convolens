@@ -69,3 +69,18 @@ test("classifies popup and service-worker channel teardown", () => {
   assert.match(backgroundSource, /function respondSafely/);
   assert.match(contentSource, /function respondSafely/);
 });
+
+test("snapshots a confirmed capture until its upload settles", () => {
+  assert.match(popupSource, /const captureToSend = pendingCapture/);
+  assert.match(popupSource, /data: captureToSend/);
+  assert.match(popupSource, /extractBtn\.disabled = true/);
+  assert.match(popupSource, /logoutBtn\.disabled = true/);
+  assert.match(popupSource, /pendingCapture === captureToSend/);
+});
+
+test("classifies upstream HTTP 429 as retry-required", () => {
+  assert.match(backgroundSource, /class HttpRequestError extends Error/);
+  assert.match(backgroundSource, /isRateLimitError\(error\)/);
+  assert.match(backgroundSource, /error\.status === 429/);
+  assert.match(backgroundSource, /retryRequired: true/);
+});

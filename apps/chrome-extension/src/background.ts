@@ -33,6 +33,16 @@ interface RateLimitState {
   resetTime: number;
 }
 
+class HttpRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "HttpRequestError";
+  }
+}
+
 // Storage key for persistent rate limiting
 const RATE_LIMIT_STORAGE_KEY = "ws_rate_limit_state";
 
@@ -194,7 +204,7 @@ async function sendChatData(chatData: any): Promise<ExtensionResponse> {
   } catch (error) {
     console.error("[Background] Send failed; recapture is required");
 
-    if (isNetworkError(error)) {
+    if (isNetworkError(error) || isRateLimitError(error)) {
       return {
         success: false,
         code: "retry-required",
@@ -252,13 +262,15 @@ async function fetchWithRetry(
           response.status < 500 &&
           response.status !== 429
         ) {
-          throw new Error(
+          throw new HttpRequestError(
             errorData.message || `Request failed: ${response.status}`,
+            response.status,
           );
         }
 
-        throw new Error(
+        throw new HttpRequestError(
           errorData.message || `Request failed: ${response.status}`,
+          response.status,
         );
       }
 
@@ -304,6 +316,10 @@ function isNetworkError(error: any): boolean {
     error.message?.includes("network") ||
     error.message?.includes("offline")
   );
+}
+
+function isRateLimitError(error: unknown): boolean {
+  return error instanceof HttpRequestError && error.status === 429;
 }
 
 // =============================================================================

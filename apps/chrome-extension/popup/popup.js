@@ -281,21 +281,24 @@ extractBtn.addEventListener("click", async () => {
 
 confirmCapture.addEventListener("click", async () => {
   if (!pendingCapture) return;
+  const captureToSend = pendingCapture;
   confirmCapture.disabled = true;
   cancelCapture.disabled = true;
+  extractBtn.disabled = true;
+  logoutBtn.disabled = true;
   setActionStatus(
-    `Sending ${pendingCapture.messages.length} loaded messages…`,
+    `Sending ${captureToSend.messages.length} loaded messages…`,
     "info",
   );
 
   try {
     const sendResult = await sendRuntimeMessage({
       action: "SEND_CHAT_DATA",
-      data: pendingCapture,
+      data: captureToSend,
     });
     if (sendResult.success) {
-      const messageCount = pendingCapture.messages.length;
-      clearCapturePreview();
+      const messageCount = captureToSend.messages.length;
+      if (pendingCapture === captureToSend) clearCapturePreview();
       setActionStatus(
         `${messageCount} loaded message${messageCount === 1 ? "" : "s"} received by ConvoLens.`,
         "success",
@@ -314,6 +317,8 @@ confirmCapture.addEventListener("click", async () => {
   } finally {
     confirmCapture.disabled = false;
     cancelCapture.disabled = false;
+    extractBtn.disabled = false;
+    logoutBtn.disabled = false;
   }
 });
 

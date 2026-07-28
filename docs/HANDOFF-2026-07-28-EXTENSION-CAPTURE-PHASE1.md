@@ -24,13 +24,13 @@ Phase 1 changes the current WhatsApp capture surfaces from immediate upload to e
 
 ## Validation
 
-- Chrome extension Node tests: 21 passed, 0 failed.
+- Chrome extension Node tests: 23 passed, 0 failed, including confirmed-capture snapshot and upstream HTTP 429 retry classification.
 - TypeScript: passed.
 - Repository CI-equivalent `pnpm run build`: 8 of 8 packages passed.
 - Prettier: passed for changed TypeScript, JavaScript, JSON, tests, and handoff files; the legacy options HTML retains its existing repository formatting to avoid unrelated churn.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.12`; permissions are `storage`, `activeTab`, `scripting`, and `notifications`; `alarms` is absent.
-- Packaged ZIP SHA-256: `3ACA581F2065A65182E0C3D6391B7F3C8343A7D7B9CCD2383A57A7AD8EFD7A5A`.
+- Packaged ZIP SHA-256: `F9EC12D13BB00D112C8BBB48B00B5C6C1EDD9FED099EAEA8EAD348A7A8F8890C`.
 - The 16-mounted-of-200 fixture and both same-sender, same-text, same-minute occurrences remain covered.
 
 ## Boundaries still open
