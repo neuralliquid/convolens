@@ -349,8 +349,20 @@ async function startCaptureOperation(
   captureOperationEpochs.set(operation.operationId, operationEpoch);
   captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
   await publishCaptureOperation(operation);
+  if (!isCurrentCaptureOperation(operation, operationEpoch, "inspecting")) {
+    return await abandonCaptureOperation(
+      operation,
+      "Authentication changed while capture was starting. Try again.",
+    );
+  }
   operation = { ...operation, state: "collecting" };
   await publishCaptureOperation(operation);
+  if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+    return await abandonCaptureOperation(
+      operation,
+      "Authentication changed before messages could be read.",
+    );
+  }
 
   try {
     const response = (await chrome.tabs.sendMessage(tabId, {

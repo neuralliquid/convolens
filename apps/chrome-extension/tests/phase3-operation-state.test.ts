@@ -229,6 +229,42 @@ test("rejects late collection responses after background cancellation", () => {
   assert.match(backgroundSource, /currentOperation\.state === expectedState/);
 });
 
+test("rechecks the lifecycle epoch before requesting tab collection", () => {
+  const startBlock = backgroundSource.slice(
+    backgroundSource.indexOf("async function startCaptureOperation"),
+    backgroundSource.indexOf("async function confirmCaptureOperation"),
+  );
+  const firstPublish = startBlock.indexOf(
+    "await publishCaptureOperation(operation)",
+  );
+  const inspectingGuard = startBlock.indexOf(
+    'isCurrentCaptureOperation(operation, operationEpoch, "inspecting")',
+  );
+  const collectingGuard = startBlock.indexOf(
+    'isCurrentCaptureOperation(operation, operationEpoch, "collecting")',
+    inspectingGuard,
+  );
+  const collectRequest = startBlock.indexOf("COLLECT_CAPTURE_OPERATION");
+  assert.ok(firstPublish < inspectingGuard);
+  assert.ok(inspectingGuard < collectingGuard);
+  assert.ok(collectingGuard < collectRequest);
+});
+
+test("checks for a reviewed operation before new-extraction throttling", () => {
+  const clickHandler = contentSource.slice(
+    contentSource.indexOf("async function handleExtractClick"),
+    contentSource.indexOf("async function reviewPageCapture"),
+  );
+  assert.ok(
+    clickHandler.indexOf("GET_CAPTURE_OPERATION") <
+      clickHandler.indexOf("checkRateLimit()"),
+  );
+  assert.ok(
+    clickHandler.indexOf("await reviewPageCapture(existingOperation)") <
+      clickHandler.indexOf("checkRateLimit()"),
+  );
+});
+
 test("keeps stale content collection cleanup scoped to its operation", () => {
   assert.match(
     contentSource,

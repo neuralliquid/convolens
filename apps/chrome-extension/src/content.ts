@@ -331,6 +331,38 @@ function updateProgress(percent: number): void {
 // =============================================================================
 
 async function handleExtractClick(): Promise<void> {
+  try {
+    const existingResponse = (await chrome.runtime.sendMessage({
+      action: "GET_CAPTURE_OPERATION",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    const existingOperation = existingResponse.success
+      ? existingResponse.data
+      : undefined;
+    if (
+      existingOperation &&
+      ["ready-for-review", "retry-required"].includes(existingOperation.state)
+    ) {
+      renderCaptureOperation(existingOperation);
+      if (existingOperation.state === "retry-required") {
+        pageConfirmationOperationId = null;
+      }
+      await reviewPageCapture(existingOperation);
+      return;
+    }
+    if (
+      existingOperation &&
+      ["inspecting", "collecting", "uploading"].includes(
+        existingOperation.state,
+      )
+    ) {
+      renderCaptureOperation(existingOperation);
+      return;
+    }
+  } catch {
+    // START_CAPTURE_OPERATION below remains the authoritative availability and
+    // authentication check when no existing operation can be read.
+  }
+
   // Check rate limiting
   if (!checkRateLimit()) {
     const waitTime = Math.ceil((state.rateLimitResetTime - Date.now()) / 1000);
