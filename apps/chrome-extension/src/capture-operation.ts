@@ -11,13 +11,20 @@ export type CaptureOperationState =
   | "cancelled";
 
 export type CaptureOperationInitiator = "popup" | "page";
+export type CaptureOperationMode = "loaded" | "guided";
+export type CaptureStopReason =
+  | "loaded-window"
+  | "guided-user-stopped"
+  | "guided-safety-limit"
+  | "guided-timeout"
+  | "guided-dom-failure";
 
 export interface CaptureOperationSnapshot {
   operationId: string;
   authGeneration: number;
   tabId: number;
   initiator: CaptureOperationInitiator;
-  mode: "loaded";
+  mode: CaptureOperationMode;
   state: CaptureOperationState;
   chatKey?: string;
   renderedCount: number;
@@ -26,10 +33,11 @@ export interface CaptureOperationSnapshot {
   skippedCount: number;
   unreadableCount: number;
   participantLabelCount: number;
+  alignmentWarningCount: number;
   mediaCount: number;
   oldestTimestamp?: string;
   newestTimestamp?: string;
-  stopReason?: "loaded-window";
+  stopReason?: CaptureStopReason;
   resultPath?: string;
   reconciliationRequired?: boolean;
   reason?: string;
@@ -44,6 +52,7 @@ export interface CaptureCollectionSummary {
   skippedCount: number;
   unreadableCount: number;
   participantLabelCount: number;
+  alignmentWarningCount: number;
   mediaCount: number;
   oldestTimestamp?: string;
   newestTimestamp?: string;
@@ -69,13 +78,14 @@ export function createCaptureOperation(
   initiator: CaptureOperationInitiator,
   now: Date = new Date(),
   authGeneration: number = 0,
+  mode: CaptureOperationMode = "loaded",
 ): CaptureOperationSnapshot {
   return {
     operationId: crypto.randomUUID(),
     authGeneration,
     tabId,
     initiator,
-    mode: "loaded",
+    mode,
     state: "inspecting",
     renderedCount: 0,
     collectedCount: 0,
@@ -83,6 +93,7 @@ export function createCaptureOperation(
     skippedCount: 0,
     unreadableCount: 0,
     participantLabelCount: 0,
+    alignmentWarningCount: 0,
     mediaCount: 0,
     startedAt: now.toISOString(),
   };

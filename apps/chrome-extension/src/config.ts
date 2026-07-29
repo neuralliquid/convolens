@@ -188,6 +188,7 @@ export interface StartCaptureOperationMessage {
   action: "START_CAPTURE_OPERATION";
   tabId?: number;
   initiator: "popup" | "page";
+  mode?: import("./capture-operation").CaptureOperationMode;
 }
 
 export interface GetCaptureOperationMessage {
@@ -210,6 +211,33 @@ export interface CancelCaptureOperationMessage {
 
 export interface CollectCaptureOperationMessage {
   action: "COLLECT_CAPTURE_OPERATION";
+  operationId: string;
+  mode: import("./capture-operation").CaptureOperationMode;
+}
+
+export interface UpdateGuidedCaptureOperationMessage {
+  action: "UPDATE_GUIDED_CAPTURE_OPERATION";
+  operationId: string;
+  summary: import("./capture-operation").CaptureCollectionSummary;
+}
+
+export interface StopGuidedCaptureOperationMessage {
+  action: "STOP_GUIDED_CAPTURE_OPERATION";
+  tabId?: number;
+  operationId: string;
+  stopReason?: Exclude<
+    import("./capture-operation").CaptureStopReason,
+    "loaded-window"
+  >;
+}
+
+export interface FinalizeGuidedCaptureOperationMessage {
+  action: "FINALIZE_GUIDED_CAPTURE_OPERATION";
+  operationId: string;
+}
+
+export interface ActivateGuidedCaptureOperationMessage {
+  action: "ACTIVATE_GUIDED_CAPTURE_OPERATION";
   operationId: string;
 }
 
@@ -289,6 +317,10 @@ export type ExtensionMessage =
   | ConfirmCaptureOperationMessage
   | CancelCaptureOperationMessage
   | CollectCaptureOperationMessage
+  | UpdateGuidedCaptureOperationMessage
+  | StopGuidedCaptureOperationMessage
+  | FinalizeGuidedCaptureOperationMessage
+  | ActivateGuidedCaptureOperationMessage
   | GetCaptureOperationPayloadMessage
   | ValidateCaptureOperationContextMessage
   | DiscardCaptureOperationMessage
