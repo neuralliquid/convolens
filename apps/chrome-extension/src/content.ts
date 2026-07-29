@@ -1308,6 +1308,9 @@ function renderPageGuidedProgress(operation: CaptureOperationSnapshot): void {
   const pauseButton = document.getElementById(
     "ws-pause-automatic",
   ) as HTMLButtonElement | null;
+  const stopButton = document.getElementById(
+    "ws-stop-guided",
+  ) as HTMLButtonElement | null;
   if (title) {
     title.textContent = automatic
       ? operation.state === "paused"
@@ -1323,6 +1326,9 @@ function renderPageGuidedProgress(operation: CaptureOperationSnapshot): void {
   if (pauseButton) {
     pauseButton.hidden = !automatic || !operation.automaticControlsReady;
     pauseButton.textContent = operation.state === "paused" ? "Resume" : "Pause";
+  }
+  if (stopButton) {
+    stopButton.hidden = automatic && !operation.automaticControlsReady;
   }
   const count = document.getElementById("ws-guided-count");
   const oldest = document.getElementById("ws-guided-oldest");
@@ -1993,6 +1999,35 @@ function trimAutomaticDateBoundary(session: GuidedCaptureSession): void {
   }
 }
 
+function prepareAutomaticCaptureSummary(session: GuidedCaptureSession): void {
+  if (session.automaticBoundary?.kind !== "days") return;
+  const startedAt = session.automaticStartedAt;
+  const trustedTimestamps = session.items.map((item) =>
+    item.value.captureTimestampMethod === "metadata"
+      ? item.value.timestamp
+      : undefined,
+  );
+  const startIndex = startedAt
+    ? automaticDateBoundaryStartIndex(
+        trustedTimestamps,
+        session.automaticBoundary,
+        startedAt,
+      )
+    : null;
+  const everyRetainedDateIsTrusted = trustedTimestamps.every(
+    (timestamp) =>
+      Boolean(timestamp) && Number.isFinite(Date.parse(timestamp!)),
+  );
+  if (!startedAt || (startIndex === null && !everyRetainedDateIsTrusted)) {
+    throw new Error(
+      "The selected date boundary could not be verified from WhatsApp date metadata. Nothing was sent.",
+    );
+  }
+  if (startIndex !== null) {
+    retainAutomaticItems(session, session.items.slice(startIndex));
+  }
+}
+
 async function runAutomaticCapture(
   session: GuidedCaptureSession,
 ): Promise<void> {
@@ -2369,7 +2404,7 @@ async function finalizeAutomaticCaptureOperation(
   }
   const summary = await finalizeGuidedCaptureOperation(
     operationId,
-    trimAutomaticDateBoundary,
+    prepareAutomaticCaptureSummary,
   );
   if (summary.extractedCount === 0) {
     throw new Error(

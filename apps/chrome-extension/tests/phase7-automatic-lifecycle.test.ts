@@ -144,7 +144,7 @@ test("trims date boundaries after queued work drains on every finalization", () 
   );
   assert.match(
     contentSource,
-    /finalizeAutomaticCaptureOperation[\s\S]*finalizeGuidedCaptureOperation\(\s*operationId,\s*trimAutomaticDateBoundary/,
+    /finalizeAutomaticCaptureOperation[\s\S]*finalizeGuidedCaptureOperation\(\s*operationId,\s*prepareAutomaticCaptureSummary/,
   );
 });
 
@@ -179,5 +179,27 @@ test("publishes automatic pause controls only after runner activation", () => {
   assert.match(
     contentSource,
     /pauseButton\.hidden = !automatic \|\| !operation\.automaticControlsReady/,
+  );
+});
+
+test("fails closed when a date scope cannot be proven", () => {
+  assert.match(
+    contentSource,
+    /function prepareAutomaticCaptureSummary[\s\S]*automaticDateBoundaryStartIndex[\s\S]*trustedTimestamps\.every[\s\S]*selected date boundary could not be verified from WhatsApp date metadata\. Nothing was sent\./,
+  );
+  assert.match(
+    contentSource,
+    /finalizeAutomaticCaptureOperation[\s\S]*prepareAutomaticCaptureSummary/,
+  );
+});
+
+test("keeps stop-and-review hidden until automatic activation", () => {
+  assert.match(
+    popupSource,
+    /stopGuidedCapture\.hidden =[\s\S]*automatic && !operation\.automaticControlsReady/,
+  );
+  assert.match(
+    contentSource,
+    /stopButton\.hidden = automatic && !operation\.automaticControlsReady/,
   );
 });

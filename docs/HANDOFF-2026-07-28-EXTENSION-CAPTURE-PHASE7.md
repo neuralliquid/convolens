@@ -9,6 +9,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Operators can select the last 7 days, last 30 days, 100/250/500 messages, or a verified top-of-history marker. Every automatic run is capped at 500 retained messages.
 - Date boundaries rely only on trusted date-bearing WhatsApp metadata. Date-less visible times and generated fallback timestamps cannot claim that a date boundary was reached.
 - Date cutoffs use the same timezone-less wall-clock representation as WhatsApp's displayed metadata, preventing browser timezone offsets from widening or narrowing the selected range.
+- A date-scoped review fails closed unless the trusted cutoff was crossed or every retained message has a valid trusted in-range metadata date; unproven visible-time/fallback ranges cancel with nothing sent.
 - A mounted window that crosses a date cutoff is trimmed after its last trusted out-of-scope message before review, so older messages from that window are not included in the selected upload scope.
 - The trusted-date trim runs after queued snapshots drain for every automatic finalization, including user stop-and-review while loading or paused.
 - Automatic collection scrolls upward in bounded steps, snapshots the mounted window immediately, waits for DOM/scroll-height stabilization, and reuses the Phase 6 FIFO virtualized-window accumulator.
@@ -18,6 +19,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Completion reasons distinguish user stop, date boundary, message limit, verified top, the 500-message safety cap, no progress, and repeated DOM failures.
 - Pause, resume, stop-and-review, and cancel are available from both surfaces. Background control commands are serialized per operation so rapid commands are not collapsed into an unrelated in-flight response.
 - Pause is published only after the content-side automatic runner has activated; pre-activation control messages are inert and cannot strand a capture without a runner.
+- Stop-and-review is also hidden until activation; Cancel remains available throughout startup.
 - Pause disconnects DOM observation and drains already-snapshotted work before it is acknowledged; resume reconnects observation before automatic scrolling continues.
 - The runner rechecks pause after stabilization and draining, before any boundary or no-progress completion can be emitted.
 - Cancellation, chat change, tab teardown, authentication transition, or background restart remains fail-closed and sends nothing.
@@ -39,13 +41,13 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 
 ## Validation
 
-- Chrome extension Node tests: 115 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, zero-retained-scope cancellation, retained-scope alignment warnings, activation-gated controls, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 117 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, unproven-date and zero-retained-scope cancellation, retained-scope alignment warnings, activation-gated controls, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `30112EC254484DDA8110D137E8ED0D23B45A5EFB9EA0BEFD149259F9DCD63610`.
+- Packaged ZIP SHA-256: `D0F4F56E0686444147D0AB5F54E4F8BE5F8D40881819C1352E024E80DFC21B32`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open
