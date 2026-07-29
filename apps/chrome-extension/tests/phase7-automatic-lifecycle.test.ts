@@ -203,3 +203,10 @@ test("keeps stop-and-review hidden until automatic activation", () => {
     /stopButton\.hidden = automatic && !operation\.automaticControlsReady/,
   );
 });
+
+test("prefers a proven date boundary when the same merge reaches the cap", () => {
+  assert.match(
+    contentSource,
+    /if \(session\.limitReached\)[\s\S]*automaticBoundaryReason\(session, false\) \?\?[\s\S]*automaticLimitStopReason\(session\)/,
+  );
+});

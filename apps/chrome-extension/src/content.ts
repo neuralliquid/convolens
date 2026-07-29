@@ -2188,7 +2188,8 @@ async function drainGuidedWindowReads(
         if (session.limitReached) {
           session.pendingStopReason =
             session.mode === "automatic"
-              ? automaticLimitStopReason(session)
+              ? (automaticBoundaryReason(session, false) ??
+                automaticLimitStopReason(session))
               : "guided-safety-limit";
           session.pendingWindows.length = 0;
           return;
