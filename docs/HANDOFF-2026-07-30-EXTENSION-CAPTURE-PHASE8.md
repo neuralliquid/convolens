@@ -22,7 +22,7 @@ Phase 8 completes the practical post-capture loop while preserving the prior rev
 - Base: `origin/main` at `5f179f6f884369b3616ffd653636ea4db59cf8d3` (merged PR #155).
 - Branch: `agent/extension-capture-phase8`.
 - Worktree: `C:/tmp/convolens-extension-phase8`.
-- Pull request: pending publication.
+- Pull request: [#156](https://github.com/neuralliquid/convolens/pull/156).
 - The primary checkout and its pre-existing untracked handoff remain untouched.
 
 ## Validation
