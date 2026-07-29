@@ -325,6 +325,39 @@
   opacity: 0.7;
 }
 
+.ws-automatic-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 9px;
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--ws-text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ws-automatic-options[hidden] {
+  display: none;
+}
+
+.ws-automatic-options select {
+  width: 100%;
+  padding: 7px;
+  border: 1px solid var(--ws-border);
+  border-radius: 7px;
+  background: var(--ws-surface);
+  color: var(--ws-text);
+}
+
+.ws-automatic-consent {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 7px;
+}
+
 .ws-capture-review {
   display: grid;
   gap: 8px;

@@ -325,6 +325,37 @@
         font-weight: 600;
       }
 
+      .automatic-options {
+        display: none;
+        gap: 8px;
+        padding: 9px;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        background: #eff6ff;
+        color: #374151;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .automatic-options.show {
+        display: grid;
+      }
+
+      .automatic-options select {
+        width: 100%;
+        padding: 7px;
+        border: 1px solid #93c5fd;
+        border-radius: 6px;
+        background: white;
+      }
+
+      .automatic-consent {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 7px;
+        align-items: start;
+      }
+
       .preview-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -469,28 +500,48 @@
                 <input type="radio" name="captureMode" value="scroll" />
                 <span>Capture as I scroll</span><em>Available</em>
               </label>
-              <label class="capture-mode disabled">
-                <input
-                  type="radio"
-                  name="captureMode"
-                  value="automatic"
-                  disabled
-                />
-                <span>Load older messages for me</span><em>Soon · Phase 7</em>
+              <label class="capture-mode">
+                <input type="radio" name="captureMode" value="automatic" />
+                <span>Load older messages for me</span><em>Available</em>
               </label>
             </fieldset>
+            <div class="automatic-options" id="automaticOptions">
+              <label for="automaticBoundary">Stop boundary</label>
+              <select id="automaticBoundary">
+                <option value="days-7">Messages from the last 7 days</option>
+                <option value="days-30">Messages from the last 30 days</option>
+                <option value="messages-100">100 messages</option>
+                <option value="messages-250">250 messages</option>
+                <option value="messages-500">500 messages (safety cap)</option>
+                <option value="verified-top">
+                  Verified top of conversation
+                </option>
+              </select>
+              <label class="automatic-consent">
+                <input type="checkbox" id="automaticConsent" />
+                <span
+                  >I understand WhatsApp will scroll while collection runs. I
+                  can pause, stop, or cancel at any time.</span
+                >
+              </label>
+            </div>
             <button class="btn-secondary" id="extractBtn">
               Review loaded messages
             </button>
             <div class="capture-preview" id="guidedProgress">
-              <h4>Guided capture is active</h4>
-              <p>Scroll upward in the selected chat, then stop and review.</p>
+              <h4 id="collectionProgressTitle">Guided capture is active</h4>
+              <p id="collectionProgressInstruction">
+                Scroll upward in the selected chat, then stop and review.
+              </p>
               <p>
                 <strong id="guidedCount">0</strong> unique messages · oldest
                 <span id="guidedOldest">Not detected</span>
               </p>
               <p class="capture-warning" id="guidedWarning"></p>
               <div class="preview-actions">
+                <button class="btn-secondary" id="pauseAutomaticCapture" hidden>
+                  Pause
+                </button>
                 <button class="btn-primary" id="stopGuidedCapture">
                   Stop and review
                 </button>

@@ -39,13 +39,14 @@ test("renders an ephemeral exact-count preview in both capture surfaces", () => 
   );
 });
 
-test("enables guided capture while keeping automatic mode disabled", () => {
+test("offers all capture modes while requiring explicit automatic scroll consent", () => {
   for (const surface of [popupHtml, contentSource]) {
     assert.match(surface, /Capture as I scroll/);
     assert.match(surface, /Available/);
     assert.match(surface, /Load older messages for me/);
-    assert.match(surface, /Soon · Phase 7/);
-    assert.match(surface, /value="automatic"[\s\S]{0,40}disabled/);
+    assert.match(surface, /value="automatic"/);
+    assert.match(surface, /WhatsApp will scroll/);
+    assert.doesNotMatch(surface, /value="automatic"[\s\S]{0,40}disabled/);
   }
   assert.match(popupHtml, /value="loaded"[\s\S]{0,40}checked/);
   assert.match(contentSource, /value="loaded"[\s\S]{0,40}checked/);

@@ -189,6 +189,7 @@ export interface StartCaptureOperationMessage {
   tabId?: number;
   initiator: "popup" | "page";
   mode?: import("./capture-operation").CaptureOperationMode;
+  automaticBoundary?: import("./capture-operation").AutomaticCaptureBoundary;
 }
 
 export interface GetCaptureOperationMessage {
@@ -219,6 +220,40 @@ export interface UpdateGuidedCaptureOperationMessage {
   action: "UPDATE_GUIDED_CAPTURE_OPERATION";
   operationId: string;
   summary: import("./capture-operation").CaptureCollectionSummary;
+}
+
+export interface UpdateAutomaticCaptureOperationMessage {
+  action: "UPDATE_AUTOMATIC_CAPTURE_OPERATION";
+  operationId: string;
+  summary: import("./capture-operation").CaptureCollectionSummary;
+}
+
+export interface ControlAutomaticCaptureOperationMessage {
+  action: "CONTROL_AUTOMATIC_CAPTURE_OPERATION";
+  tabId?: number;
+  operationId: string;
+  command: "pause" | "resume" | "stop";
+  stopReason?: Extract<
+    import("./capture-operation").CaptureStopReason,
+    `automatic-${string}`
+  >;
+}
+
+export interface ActivateAutomaticCaptureOperationMessage {
+  action: "ACTIVATE_AUTOMATIC_CAPTURE_OPERATION";
+  operationId: string;
+  boundary: import("./capture-operation").AutomaticCaptureBoundary;
+}
+
+export interface SetAutomaticCapturePausedMessage {
+  action: "SET_AUTOMATIC_CAPTURE_PAUSED";
+  operationId: string;
+  paused: boolean;
+}
+
+export interface FinalizeAutomaticCaptureOperationMessage {
+  action: "FINALIZE_AUTOMATIC_CAPTURE_OPERATION";
+  operationId: string;
 }
 
 export interface StopGuidedCaptureOperationMessage {
@@ -318,6 +353,11 @@ export type ExtensionMessage =
   | CancelCaptureOperationMessage
   | CollectCaptureOperationMessage
   | UpdateGuidedCaptureOperationMessage
+  | UpdateAutomaticCaptureOperationMessage
+  | ControlAutomaticCaptureOperationMessage
+  | ActivateAutomaticCaptureOperationMessage
+  | SetAutomaticCapturePausedMessage
+  | FinalizeAutomaticCaptureOperationMessage
   | StopGuidedCaptureOperationMessage
   | FinalizeGuidedCaptureOperationMessage
   | ActivateGuidedCaptureOperationMessage

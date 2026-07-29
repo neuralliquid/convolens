@@ -26,6 +26,7 @@ import {
   type ConfirmCaptureOperationMessage,
   type CancelCaptureOperationMessage,
   type StopGuidedCaptureOperationMessage,
+  type ControlAutomaticCaptureOperationMessage,
 } from "./config";
 import {
   completeCaptureOperation,
@@ -37,6 +38,7 @@ import {
   type CaptureOperationState,
   type CaptureStopReason,
 } from "./capture-operation";
+import { normalizeAutomaticBoundary } from "./automatic-capture";
 
 // =============================================================================
 // Types
@@ -70,6 +72,10 @@ const guidedStopPromises = new Map<
   string,
   Promise<ExtensionResponse<CaptureOperationSnapshot>>
 >();
+const automaticControlPromises = new Map<
+  string,
+  Promise<ExtensionResponse<CaptureOperationSnapshot>>
+>();
 let captureOperationsLoadPromise: Promise<void> | null = null;
 let captureLifecycleEpoch = 0;
 let captureAuthTransitionCount = 0;
@@ -82,9 +88,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   const operation = captureOperations.get(tabId);
   if (
     operation &&
-    ["inspecting", "collecting", "ready-for-review", "retry-required"].includes(
-      operation.state,
-    )
+    [
+      "inspecting",
+      "collecting",
+      "paused",
+      "ready-for-review",
+      "retry-required",
+    ].includes(operation.state)
   ) {
     void finishCaptureOperation(
       operation,
@@ -169,6 +179,9 @@ async function handleMessage(
     case "UPDATE_GUIDED_CAPTURE_OPERATION":
       return await updateGuidedCaptureOperation(message, _sender);
 
+    case "UPDATE_AUTOMATIC_CAPTURE_OPERATION":
+      return await updateAutomaticCaptureOperation(message, _sender);
+
     case "STOP_GUIDED_CAPTURE_OPERATION": {
       const inFlight = guidedStopPromises.get(message.operationId);
       if (inFlight) return await inFlight;
@@ -177,6 +190,21 @@ async function handleMessage(
       });
       guidedStopPromises.set(message.operationId, stop);
       return await stop;
+    }
+
+    case "CONTROL_AUTOMATIC_CAPTURE_OPERATION": {
+      const previous = automaticControlPromises.get(message.operationId);
+      const control = (
+        previous ? previous.catch(() => undefined) : Promise.resolve(undefined)
+      ).then(() => controlAutomaticCaptureOperation(message, _sender));
+      automaticControlPromises.set(message.operationId, control);
+      try {
+        return await control;
+      } finally {
+        if (automaticControlPromises.get(message.operationId) === control) {
+          automaticControlPromises.delete(message.operationId);
+        }
+      }
     }
 
     case "SEND_CHAT_DATA": {
@@ -230,6 +258,9 @@ async function handleMessage(
     case "COLLECT_CAPTURE_OPERATION":
     case "FINALIZE_GUIDED_CAPTURE_OPERATION":
     case "ACTIVATE_GUIDED_CAPTURE_OPERATION":
+    case "ACTIVATE_AUTOMATIC_CAPTURE_OPERATION":
+    case "SET_AUTOMATIC_CAPTURE_PAUSED":
+    case "FINALIZE_AUTOMATIC_CAPTURE_OPERATION":
     case "GET_CAPTURE_OPERATION_PAYLOAD":
     case "VALIDATE_CAPTURE_OPERATION_CONTEXT":
     case "DISCARD_CAPTURE_OPERATION":
@@ -279,10 +310,17 @@ async function loadCaptureOperations(): Promise<void> {
       const operation: CaptureOperationSnapshot = {
         ...(value as CaptureOperationSnapshot),
         authGeneration: captureLifecycleEpoch,
-        mode:
-          (value as CaptureOperationSnapshot).mode === "guided"
-            ? "guided"
-            : "loaded",
+        mode: ["guided", "automatic"].includes(
+          (value as CaptureOperationSnapshot).mode,
+        )
+          ? (value as CaptureOperationSnapshot).mode
+          : "loaded",
+        automaticBoundary:
+          (value as CaptureOperationSnapshot).mode === "automatic"
+            ? normalizeAutomaticBoundary(
+                (value as CaptureOperationSnapshot).automaticBoundary,
+              )
+            : undefined,
         unreadableCount: Number.isInteger(
           (value as CaptureOperationSnapshot).unreadableCount,
         )
@@ -407,13 +445,23 @@ async function startCaptureOperation(
     return { success: true, data: existing };
   }
 
-  let operation = createCaptureOperation(
-    tabId,
-    message.initiator,
-    new Date(),
-    operationEpoch,
-    message.mode === "guided" ? "guided" : "loaded",
-  );
+  const selectedMode = ["guided", "automatic"].includes(message.mode ?? "")
+    ? (message.mode as "guided" | "automatic")
+    : "loaded";
+  const automaticBoundary =
+    selectedMode === "automatic"
+      ? normalizeAutomaticBoundary(message.automaticBoundary)
+      : undefined;
+  let operation: CaptureOperationSnapshot = {
+    ...createCaptureOperation(
+      tabId,
+      message.initiator,
+      new Date(),
+      operationEpoch,
+      selectedMode,
+    ),
+    automaticBoundary,
+  };
   captureOperationEpochs.set(operation.operationId, operationEpoch);
   captureOperationOwnerIds.set(operation.operationId, authenticatedOwnerId);
   await publishCaptureOperation(operation);
@@ -459,7 +507,7 @@ async function startCaptureOperation(
     const summary = response.data.summary;
     operation = {
       ...operation,
-      state: operation.mode === "guided" ? "collecting" : "ready-for-review",
+      state: operation.mode === "loaded" ? "ready-for-review" : "collecting",
       chatKey: summary.chatKey,
       renderedCount: summary.renderedCount,
       collectedCount: summary.extractedCount,
@@ -470,12 +518,13 @@ async function startCaptureOperation(
       alignmentWarningCount: summary.alignmentWarningCount,
       mediaCount: summary.mediaCount,
       oldestTimestamp: summary.oldestTimestamp,
+      oldestTrustedTimestamp: summary.oldestTrustedTimestamp,
       newestTimestamp: summary.newestTimestamp,
       stopReason: operation.mode === "loaded" ? "loaded-window" : undefined,
       reason: undefined,
     };
     await publishCaptureOperation(operation);
-    if (operation.mode === "guided") {
+    if (operation.mode !== "loaded") {
       const currentBeforeActivation = captureOperations.get(tabId);
       if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
         if (currentBeforeActivation?.operationId === operation.operationId) {
@@ -483,12 +532,18 @@ async function startCaptureOperation(
         }
         return await abandonCaptureOperation(
           operation,
-          "The capture was replaced before guided observation could start.",
+          "The capture was replaced before collection could start.",
         );
       }
       const activation = (await chrome.tabs.sendMessage(tabId, {
-        action: "ACTIVATE_GUIDED_CAPTURE_OPERATION",
+        action:
+          operation.mode === "automatic"
+            ? "ACTIVATE_AUTOMATIC_CAPTURE_OPERATION"
+            : "ACTIVATE_GUIDED_CAPTURE_OPERATION",
         operationId: operation.operationId,
+        ...(operation.mode === "automatic"
+          ? { boundary: operation.automaticBoundary }
+          : {}),
       })) as ExtensionResponse;
       if (!activation.success) {
         const currentAfterActivation = captureOperations.get(tabId);
@@ -501,7 +556,7 @@ async function startCaptureOperation(
         return await finishCaptureOperation(
           operation,
           "cancelled",
-          activation.error || "Guided capture could not observe this chat.",
+          activation.error || "Collection could not observe this chat.",
         );
       }
     }
@@ -576,6 +631,65 @@ async function updateGuidedCaptureOperation(
     alignmentWarningCount: message.summary.alignmentWarningCount,
     mediaCount: message.summary.mediaCount,
     oldestTimestamp: message.summary.oldestTimestamp,
+    oldestTrustedTimestamp: message.summary.oldestTrustedTimestamp,
+    newestTimestamp: message.summary.newestTimestamp,
+  };
+  await publishCaptureOperation(updated);
+  return { success: true, data: updated };
+}
+
+async function updateAutomaticCaptureOperation(
+  message: Extract<
+    ExtensionMessage,
+    { action: "UPDATE_AUTOMATIC_CAPTURE_OPERATION" }
+  >,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const tabId = resolveCaptureTabId(undefined, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "Automatic progress must come from its WhatsApp tab.",
+    };
+  }
+  await loadCaptureOperations();
+  const operation = captureOperations.get(tabId);
+  const operationEpoch = operation
+    ? captureOperationEpochs.get(operation.operationId)
+    : undefined;
+  if (
+    !operation ||
+    operation.operationId !== message.operationId ||
+    operation.mode !== "automatic" ||
+    !["collecting", "paused"].includes(operation.state) ||
+    operationEpoch === undefined ||
+    !isCurrentCaptureOperation(operation, operationEpoch)
+  ) {
+    return {
+      success: false,
+      error: "This automatic capture is no longer active.",
+    };
+  }
+  if (operation.chatKey && operation.chatKey !== message.summary.chatKey) {
+    return await finishCaptureOperation(
+      operation,
+      "cancelled",
+      "The selected chat changed. Nothing was sent.",
+    );
+  }
+  const updated: CaptureOperationSnapshot = {
+    ...operation,
+    chatKey: message.summary.chatKey,
+    renderedCount: message.summary.renderedCount,
+    collectedCount: message.summary.extractedCount,
+    extractedCount: message.summary.extractedCount,
+    skippedCount: message.summary.skippedCount,
+    unreadableCount: message.summary.unreadableCount,
+    participantLabelCount: message.summary.participantLabelCount,
+    alignmentWarningCount: message.summary.alignmentWarningCount,
+    mediaCount: message.summary.mediaCount,
+    oldestTimestamp: message.summary.oldestTimestamp,
+    oldestTrustedTimestamp: message.summary.oldestTrustedTimestamp,
     newestTimestamp: message.summary.newestTimestamp,
   };
   await publishCaptureOperation(updated);
@@ -643,11 +757,123 @@ async function stopGuidedCaptureOperation(
     alignmentWarningCount: summary.alignmentWarningCount,
     mediaCount: summary.mediaCount,
     oldestTimestamp: summary.oldestTimestamp,
+    oldestTrustedTimestamp: summary.oldestTrustedTimestamp,
     newestTimestamp: summary.newestTimestamp,
     stopReason:
       message.stopReason && allowedReasons.has(message.stopReason)
         ? message.stopReason
         : "guided-user-stopped",
+    reason: undefined,
+  };
+  await publishCaptureOperation(ready);
+  return { success: true, data: ready };
+}
+
+async function controlAutomaticCaptureOperation(
+  message: ControlAutomaticCaptureOperationMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const tabId = resolveCaptureTabId(message.tabId, sender);
+  if (tabId === null) {
+    return {
+      success: false,
+      error: "The WhatsApp tab is no longer available.",
+    };
+  }
+  await loadCaptureOperations();
+  const operation = captureOperations.get(tabId);
+  if (!operation || operation.operationId !== message.operationId) {
+    return {
+      success: false,
+      error: "This automatic capture operation is no longer current.",
+    };
+  }
+  if (operation.mode !== "automatic") {
+    return { success: true, data: operation };
+  }
+  if (message.command === "pause" || message.command === "resume") {
+    const expectedState = message.command === "pause" ? "collecting" : "paused";
+    if (operation.state !== expectedState) {
+      return { success: true, data: operation };
+    }
+    const paused = message.command === "pause";
+    const response = (await chrome.tabs.sendMessage(tabId, {
+      action: "SET_AUTOMATIC_CAPTURE_PAUSED",
+      operationId: operation.operationId,
+      paused,
+    })) as ExtensionResponse;
+    if (!response.success) {
+      const current = captureOperations.get(tabId);
+      if (current?.operationId !== operation.operationId) {
+        return { success: true, data: current ?? operation };
+      }
+      return { success: false, error: response.error };
+    }
+    const current = captureOperations.get(tabId);
+    if (
+      current?.operationId !== operation.operationId ||
+      current.state !== expectedState
+    ) {
+      return { success: true, data: current ?? operation };
+    }
+    const updated: CaptureOperationSnapshot = {
+      ...current,
+      state: paused ? "paused" : "collecting",
+    };
+    await publishCaptureOperation(updated);
+    return { success: true, data: updated };
+  }
+  if (!["collecting", "paused"].includes(operation.state)) {
+    return { success: true, data: operation };
+  }
+  const response = (await chrome.tabs.sendMessage(tabId, {
+    action: "FINALIZE_AUTOMATIC_CAPTURE_OPERATION",
+    operationId: operation.operationId,
+  })) as ExtensionResponse<{ summary: CaptureCollectionSummary }>;
+  if (!response.success || !response.data?.summary) {
+    return await finishCaptureOperation(
+      operation,
+      "cancelled",
+      response.success
+        ? "The automatic capture buffer is no longer available."
+        : response.error,
+    );
+  }
+  const current = captureOperations.get(tabId);
+  if (
+    current?.operationId !== operation.operationId ||
+    !["collecting", "paused"].includes(current.state)
+  ) {
+    return { success: true, data: current ?? operation };
+  }
+  const allowedReasons = new Set<CaptureStopReason>([
+    "automatic-user-stopped",
+    "automatic-date-boundary",
+    "automatic-message-limit",
+    "automatic-verified-top",
+    "automatic-safety-cap",
+    "automatic-no-progress",
+    "automatic-dom-failure",
+  ]);
+  const summary = response.data.summary;
+  const ready: CaptureOperationSnapshot = {
+    ...current,
+    state: "ready-for-review",
+    renderedCount: summary.renderedCount,
+    collectedCount: summary.extractedCount,
+    extractedCount: summary.extractedCount,
+    skippedCount: summary.skippedCount,
+    unreadableCount: summary.unreadableCount,
+    participantLabelCount: summary.participantLabelCount,
+    alignmentWarningCount: summary.alignmentWarningCount,
+    mediaCount: summary.mediaCount,
+    oldestTimestamp: summary.oldestTimestamp,
+    oldestTrustedTimestamp: summary.oldestTrustedTimestamp,
+    newestTimestamp: summary.newestTimestamp,
+    stopReason:
+      message.stopReason && allowedReasons.has(message.stopReason)
+        ? message.stopReason
+        : "automatic-user-stopped",
     reason: undefined,
   };
   await publishCaptureOperation(ready);
