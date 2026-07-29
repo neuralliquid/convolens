@@ -214,11 +214,17 @@ test("prefers a proven date boundary when the same merge reaches the cap", () =>
 test("preserves trusted date-boundary proof through early trimming", () => {
   assert.match(
     contentSource,
-    /function trimAutomaticDateBoundary[\s\S]*automaticDateBoundaryProven = true[\s\S]*retainAutomaticItems/,
+    /function trimAutomaticDateBoundary[\s\S]*retainAutomaticItems[\s\S]*automaticDateBoundaryProofItems = \[\.\.\.session\.items\]/,
   );
   assert.match(
     contentSource,
-    /function prepareAutomaticCaptureSummary[\s\S]*if \(session\.automaticDateBoundaryProven\) return/,
+    /function prepareAutomaticCaptureSummary[\s\S]*provenItems\?\.length === session\.items\.length[\s\S]*provenItems\.every\(\(item, index\) => item === session\.items\[index\]\)/,
   );
-  assert.match(contentSource, /automaticDateBoundaryProven: false/);
+});
+
+test("revalidates date proof whenever the retained item sequence changes", () => {
+  assert.match(
+    contentSource,
+    /provenItems\.every\(\(item, index\) => item === session\.items\[index\]\)[\s\S]*automaticDateBoundaryStartIndex/,
+  );
 });

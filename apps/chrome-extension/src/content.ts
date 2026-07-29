@@ -197,7 +197,7 @@ interface GuidedCaptureSession {
   limitReached: boolean;
   automaticBoundary?: AutomaticCaptureBoundary;
   automaticStartedAt?: Date;
-  automaticDateBoundaryProven: boolean;
+  automaticDateBoundaryProofItems?: GuidedWindowItem<ExtractedMessage>[];
   automaticPaused: boolean;
   automaticRunner?: Promise<void>;
   originalScrollTop?: number;
@@ -1996,14 +1996,20 @@ function trimAutomaticDateBoundary(session: GuidedCaptureSession): void {
     session.automaticStartedAt,
   );
   if (startIndex !== null) {
-    session.automaticDateBoundaryProven = true;
     retainAutomaticItems(session, session.items.slice(startIndex));
+    session.automaticDateBoundaryProofItems = [...session.items];
   }
 }
 
 function prepareAutomaticCaptureSummary(session: GuidedCaptureSession): void {
   if (session.automaticBoundary?.kind !== "days") return;
-  if (session.automaticDateBoundaryProven) return;
+  const provenItems = session.automaticDateBoundaryProofItems;
+  if (
+    provenItems?.length === session.items.length &&
+    provenItems.every((item, index) => item === session.items[index])
+  ) {
+    return;
+  }
   const startedAt = session.automaticStartedAt;
   const trustedTimestamps = session.items.map((item) =>
     item.value.captureTimestampMethod === "metadata"
@@ -2027,8 +2033,8 @@ function prepareAutomaticCaptureSummary(session: GuidedCaptureSession): void {
     );
   }
   if (startIndex !== null) {
-    session.automaticDateBoundaryProven = true;
     retainAutomaticItems(session, session.items.slice(startIndex));
+    session.automaticDateBoundaryProofItems = [...session.items];
   }
 }
 
@@ -2261,7 +2267,6 @@ async function startGuidedCaptureOperation(
     finalizing: false,
     limitReached: false,
     automaticPaused: false,
-    automaticDateBoundaryProven: false,
     noProgressCount: 0,
     observedWindowCount: 0,
   };
