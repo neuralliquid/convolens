@@ -107,7 +107,10 @@ test("preserves the requested mode after launcher cancellation renders", () => {
 });
 
 test("keeps guided capture user-controlled while automatic capture owns its scroll", () => {
-  assert.match(contentSource, /new MutationObserver\(queueGuidedWindowRead\)/);
+  assert.match(
+    contentSource,
+    /new MutationObserver\(queueObservedGuidedWindowRead\)/,
+  );
   assert.match(
     contentSource,
     /addEventListener\("scroll", queueGuidedWindowRead/,

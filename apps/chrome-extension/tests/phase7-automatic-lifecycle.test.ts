@@ -77,6 +77,15 @@ test("bounds automatic collection and distinguishes truthful completion", () => 
     contentSource,
     /session\.observedWindowCount > baselineObservedWindowCount/,
   );
+  assert.match(
+    contentSource,
+    /function queueObservedGuidedWindowRead[\s\S]*session\.observedWindowCount \+= 1[\s\S]*queueGuidedWindowRead\(\)/,
+  );
+  const eagerQueue = contentSource.slice(
+    contentSource.indexOf("function queueGuidedWindowRead"),
+    contentSource.indexOf("function queueObservedGuidedWindowRead"),
+  );
+  assert.doesNotMatch(eagerQueue, /observedWindowCount/);
   for (const reason of [
     "automatic-date-boundary",
     "automatic-message-limit",

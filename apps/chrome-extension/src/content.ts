@@ -2034,12 +2034,18 @@ async function runAutomaticCapture(
 function queueGuidedWindowRead(): void {
   const session = guidedCaptureSession;
   if (!session || session.finalizing) return;
-  session.observedWindowCount += 1;
   // Start extraction in the observer callback so the current virtualized DOM
   // window is snapshotted before WhatsApp can replace it. The promises are
   // merged in FIFO order to keep progress updates and retained order stable.
   session.pendingWindows.push(extractCurrentChat(true).catch(() => null));
   startGuidedWindowDrain(session);
+}
+
+function queueObservedGuidedWindowRead(): void {
+  const session = guidedCaptureSession;
+  if (!session || session.finalizing) return;
+  session.observedWindowCount += 1;
+  queueGuidedWindowRead();
 }
 
 function startGuidedWindowDrain(session: GuidedCaptureSession): void {
@@ -2165,7 +2171,7 @@ async function startGuidedCaptureOperation(
       initialPayload.messages.length -
       unreadableCount,
   );
-  const observer = new MutationObserver(queueGuidedWindowRead);
+  const observer = new MutationObserver(queueObservedGuidedWindowRead);
   const scrollTarget =
     mode === "automatic"
       ? resolveAutomaticScrollTarget(messageList)
