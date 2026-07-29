@@ -152,27 +152,14 @@ export function mergeGuidedWindow<T>(
   }
 
   if (sameTokenSequence(existing, incoming)) {
-    if (incoming.length === 1) {
-      const left = edge === "prepend" ? incoming : existing;
-      const right = edge === "prepend" ? existing : incoming;
-      return enforceGuidedLimit(
-        {
-          items: [...left, ...right],
-          addedCount: incoming.length,
-          overlapCount: 0,
-          ambiguous: true,
-        },
-        existing,
-        edge,
-        maxItems,
-      );
-    }
+    const left = edge === "prepend" ? incoming : existing;
+    const right = edge === "prepend" ? existing : incoming;
     return enforceGuidedLimit(
       {
-        items: existing,
-        addedCount: 0,
-        overlapCount: incoming.length,
-        ambiguous: false,
+        items: [...left, ...right],
+        addedCount: incoming.length,
+        overlapCount: 0,
+        ambiguous: true,
       },
       existing,
       edge,

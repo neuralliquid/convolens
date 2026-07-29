@@ -145,6 +145,24 @@ test("does not collapse two identical single-message fallback windows", () => {
   );
 });
 
+test("does not collapse two identical multi-message fallback windows", () => {
+  const existing = [
+    { alignmentToken: "same-a", value: "first a" },
+    { alignmentToken: "same-b", value: "first b" },
+  ];
+  const incoming = [
+    { alignmentToken: "same-a", value: "second a" },
+    { alignmentToken: "same-b", value: "second b" },
+  ];
+  const result = mergeGuidedWindow(existing, incoming, "prepend");
+
+  assert.equal(result.ambiguous, true);
+  assert.deepEqual(
+    result.items.map((item) => item.value),
+    ["second a", "second b", "first a", "first b"],
+  );
+});
+
 test("caps stable additions before they reach the retained payload", () => {
   const existing = Array.from({ length: 1_990 }, (_, index) =>
     fixtureItem(index + 1),

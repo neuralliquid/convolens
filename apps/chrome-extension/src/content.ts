@@ -163,14 +163,13 @@ interface GuidedCaptureSession {
   items: GuidedWindowItem<ExtractedMessage>[];
   observer: MutationObserver;
   scrollTarget: Element;
-  debounceId?: number;
   timeoutId?: number;
   consecutiveFailures: number;
   alignmentWarningCount: number;
   skippedCount: number;
   unreadableCount: number;
   reading: boolean;
-  pendingRead: boolean;
+  pendingWindows: Promise<ExtractedChat | null>[];
   limitReached: boolean;
 }
 
@@ -1504,34 +1503,26 @@ function teardownGuidedCaptureSession(operationId: string): void {
   const session = guidedCaptureSession;
   if (!session || session.operationId !== operationId) return;
   session.observer.disconnect();
-  session.scrollTarget.removeEventListener("scroll", scheduleGuidedWindowRead);
-  if (session.debounceId !== undefined) window.clearTimeout(session.debounceId);
+  session.scrollTarget.removeEventListener("scroll", queueGuidedWindowRead);
   if (session.timeoutId !== undefined) window.clearTimeout(session.timeoutId);
   guidedCaptureSession = null;
 }
 
-function scheduleGuidedWindowRead(): void {
+function queueGuidedWindowRead(): void {
   const session = guidedCaptureSession;
   if (!session) return;
-  if (session.reading) {
-    session.pendingRead = true;
-    return;
-  }
-  if (session.debounceId !== undefined) return;
-  session.debounceId = window.setTimeout(() => {
-    session.debounceId = undefined;
-    void collectNextGuidedWindow(session);
-  }, 250);
+  // Start extraction in the observer callback so the current virtualized DOM
+  // window is snapshotted before WhatsApp can replace it. The promises are
+  // merged in FIFO order to keep progress updates and retained order stable.
+  session.pendingWindows.push(extractCurrentChat(true).catch(() => null));
+  void drainGuidedWindowReads(session);
 }
 
-async function collectNextGuidedWindow(
+async function drainGuidedWindowReads(
   session: GuidedCaptureSession,
 ): Promise<void> {
   if (guidedCaptureSession !== session) return;
-  if (session.reading) {
-    session.pendingRead = true;
-    return;
-  }
+  if (session.reading) return;
   session.reading = true;
   if (getCurrentChatIdentity() !== session.chatIdentity) {
     teardownGuidedCaptureSession(session.operationId);
@@ -1544,36 +1535,55 @@ async function collectNextGuidedWindow(
     return;
   }
   try {
-    const incoming = await extractCurrentChat(true);
-    if (guidedCaptureSession !== session) return;
-    session.consecutiveFailures = 0;
-    const summary = mergeGuidedPayload(session, incoming);
-    await chrome.runtime.sendMessage({
-      action: "UPDATE_GUIDED_CAPTURE_OPERATION",
-      operationId: session.operationId,
-      summary,
-    });
-    if (session.limitReached) {
-      await chrome.runtime.sendMessage({
-        action: "STOP_GUIDED_CAPTURE_OPERATION",
-        operationId: session.operationId,
-        stopReason: "guided-safety-limit",
-      });
-    }
-  } catch {
-    session.consecutiveFailures += 1;
-    if (session.consecutiveFailures >= 3) {
-      await chrome.runtime.sendMessage({
-        action: "STOP_GUIDED_CAPTURE_OPERATION",
-        operationId: session.operationId,
-        stopReason: "guided-dom-failure",
-      });
+    while (session.pendingWindows.length > 0) {
+      const pendingWindow = session.pendingWindows.shift();
+      if (!pendingWindow) break;
+      try {
+        const incoming = await pendingWindow;
+        if (guidedCaptureSession !== session) return;
+        if (!incoming)
+          throw new Error("The observed window could not be read.");
+        if (getCurrentChatIdentity() !== session.chatIdentity) {
+          teardownGuidedCaptureSession(session.operationId);
+          activeCaptureOperation = null;
+          sendRuntimeLifecycleMessage({
+            action: "CANCEL_CAPTURE_OPERATION",
+            operationId: session.operationId,
+            reason: "The selected chat changed. Nothing was sent.",
+          });
+          return;
+        }
+        session.consecutiveFailures = 0;
+        const summary = mergeGuidedPayload(session, incoming);
+        await chrome.runtime.sendMessage({
+          action: "UPDATE_GUIDED_CAPTURE_OPERATION",
+          operationId: session.operationId,
+          summary,
+        });
+        if (session.limitReached) {
+          await chrome.runtime.sendMessage({
+            action: "STOP_GUIDED_CAPTURE_OPERATION",
+            operationId: session.operationId,
+            stopReason: "guided-safety-limit",
+          });
+          return;
+        }
+      } catch {
+        session.consecutiveFailures += 1;
+        if (session.consecutiveFailures >= 3) {
+          await chrome.runtime.sendMessage({
+            action: "STOP_GUIDED_CAPTURE_OPERATION",
+            operationId: session.operationId,
+            stopReason: "guided-dom-failure",
+          });
+          return;
+        }
+      }
     }
   } finally {
     session.reading = false;
-    if (session.pendingRead && guidedCaptureSession === session) {
-      session.pendingRead = false;
-      scheduleGuidedWindowRead();
+    if (session.pendingWindows.length > 0 && guidedCaptureSession === session) {
+      void drainGuidedWindowReads(session);
     }
   }
 }
@@ -1596,7 +1606,7 @@ async function startGuidedCaptureOperation(
       initialPayload.messages.length -
       unreadableCount,
   );
-  const observer = new MutationObserver(scheduleGuidedWindowRead);
+  const observer = new MutationObserver(queueGuidedWindowRead);
   const session: GuidedCaptureSession = {
     operationId,
     chatIdentity,
@@ -1609,7 +1619,7 @@ async function startGuidedCaptureOperation(
     skippedCount,
     unreadableCount,
     reading: false,
-    pendingRead: false,
+    pendingWindows: [],
     limitReached: false,
   };
   guidedCaptureSession = session;
@@ -1632,7 +1642,7 @@ function activateGuidedCaptureOperation(operationId: string): void {
     childList: true,
     subtree: true,
   });
-  session.scrollTarget.addEventListener("scroll", scheduleGuidedWindowRead, {
+  session.scrollTarget.addEventListener("scroll", queueGuidedWindowRead, {
     passive: true,
   });
   session.timeoutId = window.setTimeout(() => {

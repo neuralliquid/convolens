@@ -5,14 +5,14 @@
 Phase 6 enables user-driven `Capture as I scroll` collection without programmatically controlling WhatsApp's scroll position.
 
 - `Loaded messages` and `Capture as I scroll` are available in both the popup and WhatsApp launcher. Automatic older-history loading remains disabled and labelled `Soon · Phase 7`.
-- Guided capture reads the initial mounted window, then observes the active conversation's DOM and scroll events while the user scrolls upward.
+- Guided capture reads the initial mounted window, then snapshots every observed active-conversation DOM window before serially merging it while the user scrolls upward; it does not debounce away intermediate virtualized windows.
 - The background service worker remains the single operation owner. It persists aggregate progress only; raw messages, raw WhatsApp message IDs, and fallback alignment evidence remain in tab memory.
 - Background activation occurs only after the initial aggregate snapshot is published, preventing early observer progress from being overwritten by capture startup.
 - Progress updates are bound to the originating tab, current operation ID, authentication lifecycle epoch, guided mode, and collecting state.
 - Concurrent stop requests share one in-flight finalization promise, preventing timeout, safety, popup, and launcher stops from racing the retained buffer.
 - Stable WhatsApp message-scoped `data-id` values are preferred for overlap identity. Generated connector message IDs are never used for overlap deduplication.
-- When stable IDs are absent, maximal ordered suffix/prefix alignment uses sender, text, timestamp/metadata, direction, and media evidence. Exact repeated windows are idempotent.
-- A single-message fallback overlap is always treated as occurrence-ambiguous. Longer fallback overlaps must also be sequence-unique; ambiguous overlaps retain all candidate occurrences, increment a review warning, and ask the user to use smaller upward scroll steps rather than silently deleting a possible message.
+- When stable IDs are absent, maximal ordered suffix/prefix alignment uses sender, text, timestamp/metadata, direction, and media evidence.
+- Exact repeated fallback windows and single-message fallback overlaps are treated as occurrence-ambiguous. Longer fallback overlaps must also be sequence-unique; ambiguous overlaps retain all candidate occurrences, increment a review warning, and ask the user to use smaller upward scroll steps rather than silently deleting a possible message.
 - The merge direction detects both older prepended windows and newly appended live-message windows.
 - Running unique count, oldest detected timestamp, overlap warning, `Stop and review`, and `Cancel` are visible on both surfaces.
 - Stop reasons distinguish user stop, an enforced 2,000-message guided safety limit, ten-minute timeout, and three consecutive DOM read failures. Stable additions are capped before the payload is updated; an over-limit ambiguous window is rejected intact rather than partially dropping candidates. Chat changes and tab teardown cancel without sending.
@@ -30,7 +30,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 
 ## Validation
 
-- Chrome extension Node tests: 85 passed, 0 failed, including deterministic guided-window, repeated-occurrence, identical single-window ambiguity, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
+- Chrome extension Node tests: 87 passed, 0 failed, including deterministic guided-window, repeated-occurrence, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.

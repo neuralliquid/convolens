@@ -37,16 +37,23 @@ test("offers start, running count, stop-and-review, and cancel on both surfaces"
 });
 
 test("observes user scrolling without programmatically taking scroll control", () => {
+  assert.match(contentSource, /new MutationObserver\(queueGuidedWindowRead\)/);
   assert.match(
     contentSource,
-    /new MutationObserver\(scheduleGuidedWindowRead\)/,
-  );
-  assert.match(
-    contentSource,
-    /addEventListener\("scroll", scheduleGuidedWindowRead/,
+    /addEventListener\("scroll", queueGuidedWindowRead/,
   );
   assert.doesNotMatch(contentSource, /scrollTop\s*=/);
   assert.doesNotMatch(contentSource, /scrollTo\(/);
+});
+
+test("snapshots every observed virtualized window before serial merging", () => {
+  assert.match(
+    contentSource,
+    /pendingWindows\.push\(extractCurrentChat\(true\)\.catch\(\(\) => null\)\)/,
+  );
+  assert.match(contentSource, /pendingWindows\.shift\(\)/);
+  assert.doesNotMatch(contentSource, /debounceId/);
+  assert.doesNotMatch(contentSource, /pendingRead/);
 });
 
 test("bounds guided capture and records explicit stop reasons", () => {
