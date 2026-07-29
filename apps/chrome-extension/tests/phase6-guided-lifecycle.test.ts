@@ -48,6 +48,10 @@ test("preserves the requested mode after launcher cancellation renders", () => {
   assert.match(contentSource, /launcherModeChangeGeneration/);
   assert.match(
     contentSource,
+    /function applyPageCaptureMode[\s\S]*if \(input\) input\.checked = selected/,
+  );
+  assert.match(
+    contentSource,
     /reviewPageCapture\(launcherOperation, false\)[\s\S]*\.finally\(\(\) => \{[\s\S]*applyPageCaptureMode\(selectedMode\)/,
   );
 });

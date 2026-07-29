@@ -848,6 +848,7 @@ function applyPageCaptureMode(selectedMode: string): void {
         'input[name="ws-capture-mode"]',
       );
       const selected = input?.value === selectedMode;
+      if (input) input.checked = selected;
       label.classList.toggle("ws-capture-mode-selected", selected);
       const status = label.querySelector("em");
       if (status && input?.value !== "automatic") {
