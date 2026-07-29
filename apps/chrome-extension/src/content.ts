@@ -190,6 +190,7 @@ let legacyQueueCount = 0;
 let launcherSuppressClick = false;
 let launcherAuthRefreshGeneration = 0;
 let launcherOperationRenderGeneration = 0;
+let launcherModeChangeGeneration = 0;
 let launcherCaptureAuthGeneration = 0;
 
 // =============================================================================
@@ -839,8 +840,7 @@ function renderPageCapturePreview(operation: CaptureOperationSnapshot): void {
   review.hidden = false;
 }
 
-function handleCaptureModeChange(event: Event): void {
-  const selectedMode = (event.target as HTMLInputElement).value;
+function applyPageCaptureMode(selectedMode: string): void {
   document
     .querySelectorAll<HTMLElement>(".ws-capture-mode")
     .forEach((label) => {
@@ -854,6 +854,12 @@ function handleCaptureModeChange(event: Event): void {
         status.textContent = selected ? "Selected" : "Available";
       }
     });
+}
+
+function handleCaptureModeChange(event: Event): void {
+  const selectedMode = (event.target as HTMLInputElement).value;
+  const generation = ++launcherModeChangeGeneration;
+  applyPageCaptureMode(selectedMode);
   if (
     launcherOperation &&
     ((launcherOperation.mode === "loaded" && selectedMode !== "loaded") ||
@@ -862,7 +868,13 @@ function handleCaptureModeChange(event: Event): void {
       launcherOperation.state,
     )
   ) {
-    void reviewPageCapture(launcherOperation, false);
+    void reviewPageCapture(launcherOperation, false)
+      .catch((error) => updateStatus(normalizeErrorMessage(error), "error"))
+      .finally(() => {
+        if (generation === launcherModeChangeGeneration) {
+          applyPageCaptureMode(selectedMode);
+        }
+      });
   }
 }
 

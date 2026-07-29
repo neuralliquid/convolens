@@ -43,6 +43,7 @@ const cancelGuidedCapture = document.getElementById("cancelGuidedCapture");
 
 let currentOperation = null;
 let activeWhatsAppTabId = null;
+let captureModeChangeGeneration = 0;
 
 extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
 dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
@@ -603,24 +604,39 @@ async function discardUnconfirmedCaptureForModeChange(selectedMode) {
   guidedProgress.classList.remove("show");
 }
 
-document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
-  input.addEventListener("change", () => {
-    document.querySelectorAll(".capture-mode").forEach((label) => {
-      const modeInput = label.querySelector('input[name="captureMode"]');
-      const selected = modeInput?.value === input.value;
-      label.classList.toggle("selected", selected);
-      const status = label.querySelector("em");
-      if (status && modeInput?.value !== "automatic") {
+function applyPopupCaptureMode(selectedMode) {
+  document
+    .querySelectorAll('input[name="captureMode"]')
+    .forEach((modeInput) => {
+      const selected = modeInput.value === selectedMode;
+      modeInput.checked = selected;
+      const label = modeInput.closest(".capture-mode");
+      label?.classList.toggle("selected", selected);
+      const status = label?.querySelector("em");
+      if (status && modeInput.value !== "automatic") {
         status.textContent = selected ? "Selected" : "Available";
       }
     });
-    extractBtn.textContent =
-      input.value === "scroll"
-        ? "Start guided capture"
-        : "Review loaded messages";
-    void discardUnconfirmedCaptureForModeChange(input.value).catch((error) =>
-      setActionStatus(normalizeExtensionError(error), "error"),
-    );
+  extractBtn.textContent =
+    selectedMode === "scroll"
+      ? "Start guided capture"
+      : "Review loaded messages";
+}
+
+document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    const selectedMode = input.value;
+    const generation = ++captureModeChangeGeneration;
+    applyPopupCaptureMode(selectedMode);
+    void discardUnconfirmedCaptureForModeChange(selectedMode)
+      .catch((error) =>
+        setActionStatus(normalizeExtensionError(error), "error"),
+      )
+      .finally(() => {
+        if (generation === captureModeChangeGeneration) {
+          applyPopupCaptureMode(selectedMode);
+        }
+      });
   });
 });
 

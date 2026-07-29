@@ -36,6 +36,22 @@ test("offers start, running count, stop-and-review, and cancel on both surfaces"
   assert.match(contentSource, /stopPageGuidedCapture/);
 });
 
+test("preserves the requested mode after popup cancellation renders", () => {
+  assert.match(popupSource, /captureModeChangeGeneration/);
+  assert.match(
+    popupSource,
+    /discardUnconfirmedCaptureForModeChange\(selectedMode\)[\s\S]*\.finally\(\(\) => \{[\s\S]*applyPopupCaptureMode\(selectedMode\)/,
+  );
+});
+
+test("preserves the requested mode after launcher cancellation renders", () => {
+  assert.match(contentSource, /launcherModeChangeGeneration/);
+  assert.match(
+    contentSource,
+    /reviewPageCapture\(launcherOperation, false\)[\s\S]*\.finally\(\(\) => \{[\s\S]*applyPageCaptureMode\(selectedMode\)/,
+  );
+});
+
 test("observes user scrolling without programmatically taking scroll control", () => {
   assert.match(contentSource, /new MutationObserver\(queueGuidedWindowRead\)/);
   assert.match(
