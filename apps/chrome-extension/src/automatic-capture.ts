@@ -32,7 +32,19 @@ export function automaticDateCutoff(
   startedAt: Date,
 ): number | null {
   if (boundary.kind !== "days") return null;
-  return startedAt.getTime() - boundary.days * 24 * 60 * 60 * 1_000;
+  // Trusted WhatsApp timestamps encode the displayed, timezone-less calendar
+  // fields with Date.UTC. Put the capture start in that same wall-clock
+  // representation before comparing it with those timestamps.
+  const wallClockStartedAt = Date.UTC(
+    startedAt.getFullYear(),
+    startedAt.getMonth(),
+    startedAt.getDate(),
+    startedAt.getHours(),
+    startedAt.getMinutes(),
+    startedAt.getSeconds(),
+    startedAt.getMilliseconds(),
+  );
+  return wallClockStartedAt - boundary.days * 24 * 60 * 60 * 1_000;
 }
 
 export function automaticDateBoundaryStartIndex(

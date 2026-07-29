@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   AUTOMATIC_CAPTURE_SAFETY_CAP,
   automaticBoundaryStopReason,
+  automaticDateCutoff,
   automaticDateBoundaryStartIndex,
   normalizeAutomaticBoundary,
 } from "../src/automatic-capture";
@@ -15,6 +16,22 @@ test("normalizes automatic message boundaries within the safety cap", () => {
   assert.deepEqual(normalizeAutomaticBoundary(undefined), {
     kind: "verified-top",
   });
+});
+
+test("aligns the cutoff with WhatsApp wall-clock timestamps", () => {
+  const startedAt = new Date("2026-07-28T13:00:00.000Z");
+  startedAt.getFullYear = () => 2026;
+  startedAt.getMonth = () => 6;
+  startedAt.getDate = () => 29;
+  startedAt.getHours = () => 1;
+  startedAt.getMinutes = () => 0;
+  startedAt.getSeconds = () => 0;
+  startedAt.getMilliseconds = () => 0;
+
+  assert.equal(
+    automaticDateCutoff({ kind: "days", days: 7 }, startedAt),
+    Date.UTC(2026, 6, 22, 1, 0, 0, 0),
+  );
 });
 
 test("trims a boundary-spanning window after the last trusted old message", () => {

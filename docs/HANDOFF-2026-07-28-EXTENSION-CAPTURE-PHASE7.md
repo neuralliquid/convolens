@@ -8,6 +8,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Starting automatic capture requires an explicit acknowledgement that WhatsApp will scroll the selected chat.
 - Operators can select the last 7 days, last 30 days, 100/250/500 messages, or a verified top-of-history marker. Every automatic run is capped at 500 retained messages.
 - Date boundaries rely only on trusted date-bearing WhatsApp metadata. Date-less visible times and generated fallback timestamps cannot claim that a date boundary was reached.
+- Date cutoffs use the same timezone-less wall-clock representation as WhatsApp's displayed metadata, preventing browser timezone offsets from widening or narrowing the selected range.
 - A mounted window that crosses a date cutoff is trimmed after its last trusted out-of-scope message before review, so older messages from that window are not included in the selected upload scope.
 - Automatic collection scrolls upward in bounded steps, snapshots the mounted window immediately, waits for DOM/scroll-height stabilization, and reuses the Phase 6 FIFO virtualized-window accumulator.
 - Stabilization accepts early stable samples only after an actual MutationObserver callback. The eager post-scroll snapshot does not advance that generation; when WhatsApp has not begun changing the history DOM, collection waits through the full three-second window before contributing to no-progress detection.
@@ -35,13 +36,13 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 
 ## Validation
 
-- Chrome extension Node tests: 111 passed, 0 failed, including automatic boundary normalization, boundary-spanning cutoff trimming, zero-retained-scope cancellation, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 112 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and boundary-spanning cutoff trimming, zero-retained-scope cancellation, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `DCE2F909DA8800BACE2768945EB33F185486624C3508C63F233E24FF6874C0D8`.
+- Packaged ZIP SHA-256: `3D6604668ECE14DC7E6F2C8036C6F8410DCE45D7295CB52180C80D5B4F9D7B7C`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open
