@@ -44,9 +44,20 @@ test("trims a boundary-spanning window after the last trusted old message", () =
         "2026-07-24T12:00:00.000Z",
       ],
       { kind: "days", days: 7 },
-      new Date("2026-07-29T12:00:00.000Z"),
+      new Date(2026, 6, 29, 12, 0, 0, 0),
     ),
     3,
+  );
+});
+
+test("trims the untrusted gap through the first trusted in-range anchor", () => {
+  assert.equal(
+    automaticDateBoundaryStartIndex(
+      ["2026-07-22T11:00:00.000Z", undefined, "2026-07-22T12:30:00.000Z"],
+      { kind: "days", days: 7 },
+      new Date(2026, 6, 29, 12, 0, 0, 0),
+    ),
+    2,
   );
 });
 

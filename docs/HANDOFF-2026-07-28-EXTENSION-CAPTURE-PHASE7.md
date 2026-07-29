@@ -11,6 +11,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Date cutoffs use the same timezone-less wall-clock representation as WhatsApp's displayed metadata, preventing browser timezone offsets from widening or narrowing the selected range.
 - A date-scoped review fails closed unless the trusted cutoff was crossed or every retained message has a valid trusted in-range metadata date; unproven visible-time/fallback ranges cancel with nothing sent.
 - A mounted window that crosses a date cutoff is trimmed after its last trusted out-of-scope message before review, so older messages from that window are not included in the selected upload scope.
+- Any untrusted gap after that excluded message is also discarded through the first trusted in-range anchor; without an in-range anchor, the scope trims to empty and cancels.
 - The trusted-date trim runs after queued snapshots drain for every automatic finalization, including user stop-and-review while loading or paused.
 - Automatic collection scrolls upward in bounded steps, snapshots the mounted window immediately, waits for DOM/scroll-height stabilization, and reuses the Phase 6 FIFO virtualized-window accumulator.
 - Stabilization accepts early stable samples only after an actual MutationObserver callback. The eager post-scroll snapshot does not advance that generation; when WhatsApp has not begun changing the history DOM, collection waits through the full three-second window before contributing to no-progress detection.
@@ -42,13 +43,13 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 
 ## Validation
 
-- Chrome extension Node tests: 118 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, date-over-cap reason precedence, unproven-date and zero-retained-scope cancellation, retained-scope alignment warnings, activation-gated controls, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 119 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned, untrusted-gap, and every-finalization boundary trimming, date-over-cap reason precedence, unproven-date and zero-retained-scope cancellation, retained-scope alignment warnings, activation-gated controls, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `BEBAF938D6E982206522CBBD2F9625C2847508B942E30F15DE62D1646A00A084`.
+- Packaged ZIP SHA-256: `9505D101363066EBE366850E517ED7B98A828EAC2194BCFB99620BA6C19FF72D`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open

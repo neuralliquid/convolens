@@ -61,7 +61,17 @@ export function automaticDateBoundaryStartIndex(
       lastExcludedIndex = index;
     }
   }
-  return lastExcludedIndex < 0 ? null : lastExcludedIndex + 1;
+  if (lastExcludedIndex < 0) return null;
+  for (
+    let index = lastExcludedIndex + 1;
+    index < trustedTimestamps.length;
+    index += 1
+  ) {
+    const timestamp = trustedTimestamps[index];
+    const parsed = timestamp ? Date.parse(timestamp) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > cutoff) return index;
+  }
+  return trustedTimestamps.length;
 }
 
 export function automaticBoundaryStopReason(options: {
