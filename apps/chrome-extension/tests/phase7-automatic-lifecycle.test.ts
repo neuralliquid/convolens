@@ -228,3 +228,14 @@ test("revalidates date proof whenever the retained item sequence changes", () =>
     /provenItems\.every\(\(item, index\) => item === session\.items\[index\]\)[\s\S]*automaticDateBoundaryStartIndex/,
   );
 });
+
+test("an ambiguous no-add merge cannot claim the selected limit", () => {
+  assert.match(
+    contentSource,
+    /items: session\.items,[\s\S]*addedCount: 0,[\s\S]*ambiguous: true,[\s\S]*limitReached: false/,
+  );
+  assert.match(
+    contentSource,
+    /merge\.limitReached &&[\s\S]*session\.items\.length >= session\.captureLimit[\s\S]*session\.limitReached = true/,
+  );
+});

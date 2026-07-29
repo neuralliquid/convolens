@@ -1740,7 +1740,7 @@ function mergeGuidedPayload(
             addedCount: 0,
             overlapCount: 0,
             ambiguous: true,
-            limitReached: true,
+            limitReached: false,
           }
         : { ...merge, ambiguous: true };
   }
@@ -1754,7 +1754,9 @@ function mergeGuidedPayload(
     }
   }
   reconcileGuidedAlignmentWarnings(session);
-  if (merge.limitReached) session.limitReached = true;
+  if (merge.limitReached && session.items.length >= session.captureLimit) {
+    session.limitReached = true;
+  }
   const incomingSkipped = Math.max(
     0,
     incoming.diagnostics.messageContainerCount -
