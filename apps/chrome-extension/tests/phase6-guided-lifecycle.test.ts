@@ -38,6 +38,26 @@ test("preserves a concurrently finalized review before guided activation", () =>
   );
 });
 
+test("never publishes a stale completion over a replacement capture", () => {
+  const finishBlock = backgroundSource.slice(
+    backgroundSource.indexOf("async function finishCaptureOperation"),
+    backgroundSource.indexOf("async function discardCapturePayload"),
+  );
+  assert.match(finishBlock, /const current = captureOperations\.get/);
+  assert.match(
+    finishBlock,
+    /!current \|\| current\.operationId !== operation\.operationId[\s\S]*data:[\s\S]*current \?\?/,
+  );
+  assert.match(
+    finishBlock,
+    /current\.state !== operation\.state[\s\S]*return \{ success: true, data: current \}/,
+  );
+  assert.match(
+    finishBlock,
+    /completeCaptureOperation\([\s\S]*current,[\s\S]*state/,
+  );
+});
+
 test("offers start, running count, stop-and-review, and cancel on both surfaces", () => {
   for (const surface of [popupHtml, contentSource]) {
     assert.match(surface, /Capture as I scroll/);

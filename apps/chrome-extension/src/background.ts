@@ -928,8 +928,25 @@ async function finishCaptureOperation(
   reason: unknown,
   notifyTab: boolean = true,
 ): Promise<ExtensionResponse<CaptureOperationSnapshot>> {
+  const current = captureOperations.get(operation.tabId);
+  if (!current || current.operationId !== operation.operationId) {
+    if (notifyTab) await discardCapturePayload(operation);
+    return {
+      success: true,
+      data:
+        current ??
+        completeCaptureOperation(
+          operation,
+          state,
+          sanitizeOperationReason(reason),
+        ),
+    };
+  }
+  if (current.state !== operation.state) {
+    return { success: true, data: current };
+  }
   const completed = completeCaptureOperation(
-    operation,
+    current,
     state,
     sanitizeOperationReason(reason),
   );

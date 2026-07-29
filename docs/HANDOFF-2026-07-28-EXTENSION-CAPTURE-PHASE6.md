@@ -9,6 +9,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 - The background service worker remains the single operation owner. It persists aggregate progress only; raw messages, raw WhatsApp message IDs, and fallback alignment evidence remain in tab memory.
 - Background activation occurs only after the initial aggregate snapshot is published, preventing early observer progress from being overwritten by capture startup.
 - Startup rechecks the current background state immediately before guided activation and after activation failure, so an immediate concurrent stop preserves its ready-for-review result instead of being overwritten by stale startup cancellation.
+- Terminal failure/cancellation publication is compare-before-write: it completes the latest same-operation snapshot, preserves a same-operation state transition, and never republishes an obsolete operation over a replacement capture.
 - Progress updates are bound to the originating tab, current operation ID, authentication lifecycle epoch, guided mode, and collecting state.
 - Concurrent stop requests share one in-flight finalization promise, preventing timeout, safety, popup, and launcher stops from racing the retained buffer.
 - Finalization first disconnects observation, then awaits the active FIFO drain so every already-snapshotted window is merged before the review summary is computed. Safety-limit and DOM-failure stops are dispatched only after the drain promise clears, avoiding a content/background stop deadlock.
@@ -36,7 +37,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 
 ## Validation
 
-- Chrome extension Node tests: 99 passed, 0 failed, including deterministic guided-window, repeated-occurrence, stable additions on both sides of a retained window, date-bearing older/newer/ambiguous disjoint-window direction, date-less visible-time exclusion, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, queued-window finalization draining, generated-timestamp normalization, retained diagnostic-map rebuilding, concurrent stop/startup preservation, inspecting and mode-change cancellation preservation, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
+- Chrome extension Node tests: 100 passed, 0 failed, including deterministic guided-window, repeated-occurrence, stable additions on both sides of a retained window, date-bearing older/newer/ambiguous disjoint-window direction, date-less visible-time exclusion, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, queued-window finalization draining, generated-timestamp normalization, retained diagnostic-map rebuilding, concurrent stop/startup preservation, stale terminal-write rejection, inspecting and mode-change cancellation preservation, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
