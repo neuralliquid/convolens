@@ -38,7 +38,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.17`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `D0982F781309C2A5E8257D972F58348E1FA9933102C066AF94B44837E048EAA0`.
+- Packaged ZIP SHA-256: `5975B39582000C493EB457DA15647AD9D0AC28D62CB005AB0336DF4D1A3860AD`.
 - A local Playwright popup screenshot was attempted, but the installed Playwright package had no local Chromium binary. No browser was downloaded solely for this check, and no visual acceptance is claimed.
 
 ## Boundaries still open
