@@ -587,9 +587,12 @@ async function discardUnconfirmedCaptureForModeChange(selectedMode) {
     !currentOperation ||
     !activeWhatsAppTabId ||
     currentOperation.mode === selectedOperationMode ||
-    !["collecting", "ready-for-review", "retry-required"].includes(
-      currentOperation.state,
-    )
+    ![
+      "inspecting",
+      "collecting",
+      "ready-for-review",
+      "retry-required",
+    ].includes(currentOperation.state)
   ) {
     return;
   }

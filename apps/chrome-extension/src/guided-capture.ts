@@ -131,16 +131,66 @@ export function mergeGuidedWindow<T>(
 
   const allStable = [...existing, ...incoming].every((item) => item.stableId);
   if (allStable) {
-    const retainedIds = new Set(existing.map((item) => item.stableId));
-    const additions = incoming.filter(
-      (item) => !retainedIds.has(item.stableId),
+    const retainedIds = new Set(existing.map((item) => item.stableId!));
+    const seenIds = new Set(retainedIds);
+    const additions = incoming.filter((item) => {
+      if (seenIds.has(item.stableId!)) return false;
+      seenIds.add(item.stableId!);
+      return true;
+    });
+    const retainedIndexes = new Map(
+      existing.map((item, index) => [item.stableId!, index]),
     );
+    const sharedIndexes = incoming
+      .filter((item) => retainedIds.has(item.stableId!))
+      .map((item) => retainedIndexes.get(item.stableId!)!);
+    const sharedOrderIsStable = sharedIndexes.every(
+      (index, position) =>
+        position === 0 || index > sharedIndexes[position - 1],
+    );
+    if (!sharedOrderIsStable) {
+      return enforceGuidedLimit(
+        {
+          items:
+            edge === "prepend"
+              ? [...additions, ...existing]
+              : [...existing, ...additions],
+          addedCount: additions.length,
+          overlapCount: incoming.length - additions.length,
+          ambiguous: true,
+        },
+        existing,
+        edge,
+        maxItems,
+      );
+    }
+
+    const items = [...existing];
+    const pendingAdditions: GuidedWindowItem<T>[] = [];
+    let lastSharedId: string | undefined;
+    for (const item of incoming) {
+      if (!retainedIds.has(item.stableId!)) {
+        if (additions.includes(item)) pendingAdditions.push(item);
+        continue;
+      }
+      const anchorIndex = items.findIndex(
+        (retained) => retained.stableId === item.stableId,
+      );
+      items.splice(anchorIndex, 0, ...pendingAdditions);
+      pendingAdditions.length = 0;
+      lastSharedId = item.stableId;
+    }
+    if (pendingAdditions.length > 0) {
+      const insertionIndex = lastSharedId
+        ? items.findIndex((item) => item.stableId === lastSharedId) + 1
+        : edge === "prepend"
+          ? 0
+          : items.length;
+      items.splice(insertionIndex, 0, ...pendingAdditions);
+    }
     return enforceGuidedLimit(
       {
-        items:
-          edge === "prepend"
-            ? [...additions, ...existing]
-            : [...existing, ...additions],
+        items,
         addedCount: additions.length,
         overlapCount: incoming.length - additions.length,
         ambiguous: false,

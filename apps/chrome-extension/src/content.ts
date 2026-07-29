@@ -866,7 +866,7 @@ function handleCaptureModeChange(event: Event): void {
     launcherOperation &&
     ((launcherOperation.mode === "loaded" && selectedMode !== "loaded") ||
       (launcherOperation.mode === "guided" && selectedMode !== "scroll")) &&
-    ["collecting", "ready-for-review", "retry-required"].includes(
+    ["inspecting", "collecting", "ready-for-review", "retry-required"].includes(
       launcherOperation.state,
     )
   ) {

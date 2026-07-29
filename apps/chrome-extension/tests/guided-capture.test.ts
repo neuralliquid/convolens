@@ -95,6 +95,22 @@ test("places a newly appended live-message window at the newer edge", () => {
   assert.equal(result.addedCount, 4);
 });
 
+test("preserves stable additions on both sides of the retained window", () => {
+  const existing = [fixtureItem(3), fixtureItem(4), fixtureItem(5)];
+  const incoming = Array.from({ length: 7 }, (_, index) =>
+    fixtureItem(index + 1),
+  );
+  const result = mergeGuidedWindow(existing, incoming, "prepend");
+
+  assert.deepEqual(
+    result.items.map((item) => item.value.id),
+    [1, 2, 3, 4, 5, 6, 7],
+  );
+  assert.equal(result.addedCount, 4);
+  assert.equal(result.overlapCount, 3);
+  assert.equal(result.ambiguous, false);
+});
+
 test("fallback sequence alignment merges an unambiguous overlap", () => {
   const item = (token: string): GuidedWindowItem<string> => ({
     alignmentToken: token,

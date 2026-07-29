@@ -40,12 +40,20 @@ test("preserves the requested mode after popup cancellation renders", () => {
   assert.match(popupSource, /captureModeChangeGeneration/);
   assert.match(
     popupSource,
+    /\[\s*"inspecting",\s*"collecting",\s*"ready-for-review",\s*"retry-required",?\s*\]/,
+  );
+  assert.match(
+    popupSource,
     /discardUnconfirmedCaptureForModeChange\(selectedMode\)[\s\S]*\.finally\(\(\) => \{[\s\S]*applyPopupCaptureMode\(selectedMode\)/,
   );
 });
 
 test("preserves the requested mode after launcher cancellation renders", () => {
   assert.match(contentSource, /launcherModeChangeGeneration/);
+  assert.match(
+    contentSource,
+    /\[\s*"inspecting",\s*"collecting",\s*"ready-for-review",\s*"retry-required",?\s*\]/,
+  );
   assert.match(
     contentSource,
     /function applyPageCaptureMode[\s\S]*if \(input\) input\.checked = selected/,

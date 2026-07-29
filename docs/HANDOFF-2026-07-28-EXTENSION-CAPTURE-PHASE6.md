@@ -15,9 +15,9 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 - When stable IDs are absent, maximal ordered suffix/prefix alignment uses sender, text, timestamp/metadata, direction, and media evidence.
 - Exact repeated fallback windows and single-message fallback overlaps are treated as occurrence-ambiguous. Longer fallback overlaps must also be sequence-unique; ambiguous overlaps retain all candidate occurrences, increment a review warning, and ask the user to use smaller upward scroll steps rather than silently deleting a possible message.
 - Fallback alignment normalizes extraction-generated timestamps to a stable unavailable marker while preserving the payload timestamp, so repeated observation of a timestamp-less mounted message does not invent a new alignment token each time.
-- The merge direction detects both older prepended windows and newly appended live-message windows.
+- The merge direction detects both older prepended windows and newly appended live-message windows. Stable-ID windows weave additions around retained anchors, preserving chronology when one viewport exposes new messages on both sides of the retained sequence.
 - Running unique count, oldest detected timestamp, overlap warning, `Stop and review`, and `Cancel` are visible on both surfaces.
-- Changing capture mode while an unconfirmed operation is cancelled preserves the user's newest requested selection on both popup and launcher, even when the cancelled operation snapshot renders asynchronously. Launcher mode restoration also awaits any already in-flight confirm/cancel request for the same operation before rechecking the requested radio.
+- Changing capture mode while an inspecting or unconfirmed operation is cancelled preserves the user's newest requested selection on both popup and launcher, even when the cancelled operation snapshot renders asynchronously. Launcher mode restoration also awaits any already in-flight confirm/cancel request for the same operation before rechecking the requested radio.
 - Stop reasons distinguish user stop, an enforced 2,000-message guided safety limit, ten-minute timeout, and three consecutive DOM read failures. Stable additions are capped before the payload is updated; an over-limit ambiguous window is rejected intact rather than partially dropping candidates. Chat changes and tab teardown cancel without sending.
 - Final review preserves the exact-count confirmation gate and identifies the guided stop reason. Cancel discards the tab-memory buffer and sends nothing.
 - A deterministic 200-message fixture collected through overlapping 16-node windows retains all messages in order, preserves two same-sender/same-text/same-minute occurrences, avoids duplicate copies when a window repeats, and covers appended live messages.
@@ -33,7 +33,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 
 ## Validation
 
-- Chrome extension Node tests: 91 passed, 0 failed, including deterministic guided-window, repeated-occurrence, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, queued-window finalization draining, generated-timestamp normalization, mode-change cancellation preservation, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
+- Chrome extension Node tests: 92 passed, 0 failed, including deterministic guided-window, repeated-occurrence, stable additions on both sides of a retained window, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, queued-window finalization draining, generated-timestamp normalization, inspecting and mode-change cancellation preservation, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
