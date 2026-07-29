@@ -15,6 +15,7 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 - When stable IDs are absent, maximal ordered suffix/prefix alignment uses sender, text, timestamp/metadata, direction, and media evidence.
 - Exact repeated fallback windows and single-message fallback overlaps are treated as occurrence-ambiguous. Longer fallback overlaps must also be sequence-unique; ambiguous overlaps retain all candidate occurrences, increment a review warning, and ask the user to use smaller upward scroll steps rather than silently deleting a possible message.
 - Fallback alignment normalizes extraction-generated timestamps to a stable unavailable marker while preserving the payload timestamp, so repeated observation of a timestamp-less mounted message does not invent a new alignment token each time. Timestamp-method evidence remains non-enumerable in tab memory and fallback-generated values are excluded from disjoint-window direction resolution.
+- Metadata-path, sender-method, and timestamp-method evidence also remains non-enumerable in tab memory and is recomputed from the final retained guided buffer, so multi-window and safety-bounded diagnostic maps match the messages actually reviewed and uploaded.
 - The merge direction detects both older prepended windows and newly appended live-message windows. Stable-ID windows weave additions around retained anchors, preserving chronology when one viewport exposes new messages on both sides of the retained sequence.
 - A disjoint zero-overlap window uses valid message timestamps only when they place the entire incoming window clearly before or after the retained range. Equal, overlapping, or unavailable ranges are retained with an ambiguity warning instead of being silently assumed older; an unresolved over-limit window is rejected intact.
 - Running unique count, oldest detected timestamp, overlap warning, `Stop and review`, and `Cancel` are visible on both surfaces.
@@ -34,13 +35,13 @@ Phase 6 enables user-driven `Capture as I scroll` collection without programmati
 
 ## Validation
 
-- Chrome extension Node tests: 96 passed, 0 failed, including deterministic guided-window, repeated-occurrence, stable additions on both sides of a retained window, older/newer/ambiguous disjoint-window direction, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, queued-window finalization draining, generated-timestamp normalization, inspecting and mode-change cancellation preservation, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
+- Chrome extension Node tests: 97 passed, 0 failed, including deterministic guided-window, repeated-occurrence, stable additions on both sides of a retained window, older/newer/ambiguous disjoint-window direction, identical single- and multi-window ambiguity, immediate virtualized-window snapshot queuing, queued-window finalization draining, generated-timestamp normalization, retained diagnostic-map rebuilding, inspecting and mode-change cancellation preservation, enforced limit, retained-participant filtering, lifecycle, controls, privacy, and safety-boundary coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.17`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `17D039244212D793CFC736EC94F1DED7585699B7D0399349F283CF696B1E6101`.
+- Packaged ZIP SHA-256: `A977E9037E554E2B484C0EC505D8041E109FDEB3CD5BEA243E9934357C1E7243`.
 - A local Playwright popup screenshot was attempted, but the installed Playwright package had no local Chromium binary. No browser was downloaded solely for this check, and no visual acceptance is claimed.
 
 ## Boundaries still open
