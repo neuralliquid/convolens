@@ -56,6 +56,21 @@ test("snapshots every observed virtualized window before serial merging", () => 
   assert.doesNotMatch(contentSource, /pendingRead/);
 });
 
+test("stops observing and drains queued windows before final review", () => {
+  assert.match(
+    contentSource,
+    /pauseGuidedCaptureSession\(session\);[\s\S]*if \(session\.drainPromise\) await session\.drainPromise;[\s\S]*summarizeCapturePayload/,
+  );
+  assert.match(contentSource, /session\.drainPromise = drain/);
+});
+
+test("normalizes generated timestamps out of fallback alignment", () => {
+  assert.match(
+    contentSource,
+    /timestamp:[\s\S]*timestamp\.method === "fallback" \? "unavailable" : timestamp\.value/,
+  );
+});
+
 test("bounds guided capture and records explicit stop reasons", () => {
   assert.match(contentSource, /GUIDED_CAPTURE_LIMIT = 2_000/);
   assert.match(contentSource, /GUIDED_CAPTURE_TIMEOUT_MS = 10 \* 60 \* 1_000/);

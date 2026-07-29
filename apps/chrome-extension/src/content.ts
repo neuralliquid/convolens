@@ -170,6 +170,9 @@ interface GuidedCaptureSession {
   unreadableCount: number;
   reading: boolean;
   pendingWindows: Promise<ExtractedChat | null>[];
+  drainPromise?: Promise<void>;
+  pendingStopReason?: "guided-safety-limit" | "guided-dom-failure";
+  finalizing: boolean;
   limitReached: boolean;
 }
 
@@ -1502,20 +1505,50 @@ function mergeGuidedPayload(
 function teardownGuidedCaptureSession(operationId: string): void {
   const session = guidedCaptureSession;
   if (!session || session.operationId !== operationId) return;
+  pauseGuidedCaptureSession(session);
+  guidedCaptureSession = null;
+}
+
+function pauseGuidedCaptureSession(session: GuidedCaptureSession): void {
   session.observer.disconnect();
   session.scrollTarget.removeEventListener("scroll", queueGuidedWindowRead);
   if (session.timeoutId !== undefined) window.clearTimeout(session.timeoutId);
-  guidedCaptureSession = null;
+  session.timeoutId = undefined;
 }
 
 function queueGuidedWindowRead(): void {
   const session = guidedCaptureSession;
-  if (!session) return;
+  if (!session || session.finalizing) return;
   // Start extraction in the observer callback so the current virtualized DOM
   // window is snapshotted before WhatsApp can replace it. The promises are
   // merged in FIFO order to keep progress updates and retained order stable.
   session.pendingWindows.push(extractCurrentChat(true).catch(() => null));
-  void drainGuidedWindowReads(session);
+  startGuidedWindowDrain(session);
+}
+
+function startGuidedWindowDrain(session: GuidedCaptureSession): void {
+  if (session.drainPromise) return;
+  const drain = drainGuidedWindowReads(session);
+  session.drainPromise = drain;
+  const finishDrain = () => {
+    if (session.drainPromise === drain) session.drainPromise = undefined;
+    if (session.pendingWindows.length > 0 && guidedCaptureSession === session) {
+      startGuidedWindowDrain(session);
+    } else if (
+      session.pendingStopReason &&
+      !session.finalizing &&
+      guidedCaptureSession === session
+    ) {
+      const stopReason = session.pendingStopReason;
+      session.pendingStopReason = undefined;
+      void chrome.runtime.sendMessage({
+        action: "STOP_GUIDED_CAPTURE_OPERATION",
+        operationId: session.operationId,
+        stopReason,
+      });
+    }
+  };
+  void drain.then(finishDrain, finishDrain);
 }
 
 async function drainGuidedWindowReads(
@@ -1561,30 +1594,21 @@ async function drainGuidedWindowReads(
           summary,
         });
         if (session.limitReached) {
-          await chrome.runtime.sendMessage({
-            action: "STOP_GUIDED_CAPTURE_OPERATION",
-            operationId: session.operationId,
-            stopReason: "guided-safety-limit",
-          });
+          session.pendingStopReason = "guided-safety-limit";
+          session.pendingWindows.length = 0;
           return;
         }
       } catch {
         session.consecutiveFailures += 1;
         if (session.consecutiveFailures >= 3) {
-          await chrome.runtime.sendMessage({
-            action: "STOP_GUIDED_CAPTURE_OPERATION",
-            operationId: session.operationId,
-            stopReason: "guided-dom-failure",
-          });
+          session.pendingStopReason = "guided-dom-failure";
+          session.pendingWindows.length = 0;
           return;
         }
       }
     }
   } finally {
     session.reading = false;
-    if (session.pendingWindows.length > 0 && guidedCaptureSession === session) {
-      void drainGuidedWindowReads(session);
-    }
   }
 }
 
@@ -1620,6 +1644,7 @@ async function startGuidedCaptureOperation(
     unreadableCount,
     reading: false,
     pendingWindows: [],
+    finalizing: false,
     limitReached: false,
   };
   guidedCaptureSession = session;
@@ -1655,11 +1680,19 @@ function activateGuidedCaptureOperation(operationId: string): void {
   }, GUIDED_CAPTURE_TIMEOUT_MS);
 }
 
-function finalizeGuidedCaptureOperation(
+async function finalizeGuidedCaptureOperation(
   operationId: string,
-): CaptureCollectionSummary {
+): Promise<CaptureCollectionSummary> {
   const session = guidedCaptureSession;
   if (!session || session.operationId !== operationId) {
+    throw new Error("The guided capture buffer is no longer available.");
+  }
+  // Prevent new observations first, then retain every snapshot that was
+  // already queued before computing the review summary.
+  session.finalizing = true;
+  pauseGuidedCaptureSession(session);
+  if (session.drainPromise) await session.drainPromise;
+  if (guidedCaptureSession !== session) {
     throw new Error("The guided capture buffer is no longer available.");
   }
   const summary = summarizeCapturePayload(
@@ -2006,7 +2039,8 @@ function extractMessageData(
     sender: displayLabel || participantIdentity.rawDisplayName || "unknown",
     text,
     mediaType: mediaType || "none",
-    timestamp: timestamp.value,
+    timestamp:
+      timestamp.method === "fallback" ? "unavailable" : timestamp.value,
   });
   Object.defineProperties(message, {
     captureSourceId: {
@@ -2386,17 +2420,20 @@ function handleMessage(
       return true;
 
     case "FINALIZE_GUIDED_CAPTURE_OPERATION":
-      try {
-        sendResponse({
-          success: true,
-          data: {
-            summary: finalizeGuidedCaptureOperation(message.operationId),
-          },
-        });
-      } catch (error) {
-        sendResponse({ success: false, error: normalizeErrorMessage(error) });
-      }
-      break;
+      finalizeGuidedCaptureOperation(message.operationId)
+        .then((summary) =>
+          respondSafely(sendResponse, {
+            success: true,
+            data: { summary },
+          }),
+        )
+        .catch((error) =>
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          }),
+        );
+      return true;
 
     case "ACTIVATE_GUIDED_CAPTURE_OPERATION":
       try {
