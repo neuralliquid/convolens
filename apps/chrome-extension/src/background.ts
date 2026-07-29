@@ -559,6 +559,18 @@ async function startCaptureOperation(
           activation.error || "Collection could not observe this chat.",
         );
       }
+      const activatedOperation = captureOperations.get(tabId);
+      if (
+        activatedOperation?.operationId !== operation.operationId ||
+        activatedOperation.state !== "collecting"
+      ) {
+        return { success: true, data: activatedOperation ?? operation };
+      }
+      operation = activatedOperation;
+      if (operation.mode === "automatic") {
+        operation = { ...operation, automaticControlsReady: true };
+        await publishCaptureOperation(operation);
+      }
     }
     return { success: true, data: operation };
   } catch (error) {
@@ -792,6 +804,9 @@ async function controlAutomaticCaptureOperation(
     return { success: true, data: operation };
   }
   if (message.command === "pause" || message.command === "resume") {
+    if (!operation.automaticControlsReady) {
+      return { success: true, data: operation };
+    }
     const expectedState = message.command === "pause" ? "collecting" : "paused";
     if (operation.state !== expectedState) {
       return { success: true, data: operation };

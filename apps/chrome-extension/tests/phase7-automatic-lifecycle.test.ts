@@ -162,3 +162,22 @@ test("keeps alignment warnings only while their ambiguous candidates remain", ()
     /function retainAutomaticItems[\s\S]*reconcileGuidedAlignmentWarnings\(session\)/,
   );
 });
+
+test("publishes automatic pause controls only after runner activation", () => {
+  assert.match(
+    backgroundSource,
+    /ACTIVATE_AUTOMATIC_CAPTURE_OPERATION[\s\S]*activation\.success[\s\S]*automaticControlsReady: true[\s\S]*publishCaptureOperation\(operation\)/,
+  );
+  assert.match(
+    backgroundSource,
+    /message\.command === "pause" \|\| message\.command === "resume"[\s\S]*!operation\.automaticControlsReady/,
+  );
+  assert.match(
+    popupSource,
+    /pauseAutomaticCapture\.hidden =[\s\S]*!operation\.automaticControlsReady/,
+  );
+  assert.match(
+    contentSource,
+    /pauseButton\.hidden = !automatic \|\| !operation\.automaticControlsReady/,
+  );
+});

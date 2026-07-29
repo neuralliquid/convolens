@@ -38,6 +38,7 @@ export interface CaptureOperationSnapshot {
   initiator: CaptureOperationInitiator;
   mode: CaptureOperationMode;
   automaticBoundary?: AutomaticCaptureBoundary;
+  automaticControlsReady?: boolean;
   state: CaptureOperationState;
   chatKey?: string;
   renderedCount: number;

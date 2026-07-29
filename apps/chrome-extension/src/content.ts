@@ -1321,7 +1321,7 @@ function renderPageGuidedProgress(operation: CaptureOperationSnapshot): void {
       : "Scroll upward in this chat. ConvoLens will retain each message window before WhatsApp removes it.";
   }
   if (pauseButton) {
-    pauseButton.hidden = !automatic;
+    pauseButton.hidden = !automatic || !operation.automaticControlsReady;
     pauseButton.textContent = operation.state === "paused" ? "Resume" : "Pause";
   }
   const count = document.getElementById("ws-guided-count");

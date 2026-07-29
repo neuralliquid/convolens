@@ -17,6 +17,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Three consecutive cycles without count, scroll-position, or scroll-height progress stop with `automatic-no-progress`; this is distinct from a verified WhatsApp top marker.
 - Completion reasons distinguish user stop, date boundary, message limit, verified top, the 500-message safety cap, no progress, and repeated DOM failures.
 - Pause, resume, stop-and-review, and cancel are available from both surfaces. Background control commands are serialized per operation so rapid commands are not collapsed into an unrelated in-flight response.
+- Pause is published only after the content-side automatic runner has activated; pre-activation control messages are inert and cannot strand a capture without a runner.
 - Pause disconnects DOM observation and drains already-snapshotted work before it is acknowledged; resume reconnects observation before automatic scrolling continues.
 - The runner rechecks pause after stabilization and draining, before any boundary or no-progress completion can be emitted.
 - Cancellation, chat change, tab teardown, authentication transition, or background restart remains fail-closed and sends nothing.
@@ -38,13 +39,13 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 
 ## Validation
 
-- Chrome extension Node tests: 114 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, zero-retained-scope cancellation, retained-scope alignment warnings, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 115 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, zero-retained-scope cancellation, retained-scope alignment warnings, activation-gated controls, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `46EA4350A7616E8B9CDE033AADDA2FBC40CCDBC41197C6C44565C7A12EDC02E9`.
+- Packaged ZIP SHA-256: `30112EC254484DDA8110D137E8ED0D23B45A5EFB9EA0BEFD149259F9DCD63610`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open

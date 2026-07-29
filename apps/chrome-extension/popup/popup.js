@@ -255,7 +255,8 @@ function renderCaptureOperation(operation) {
     collectionProgressInstruction.textContent = automatic
       ? "Keep this chat open. ConvoLens is loading older history within the selected boundary."
       : "Scroll upward in this chat. ConvoLens will retain each message window before WhatsApp removes it.";
-    pauseAutomaticCapture.hidden = !automatic;
+    pauseAutomaticCapture.hidden =
+      !automatic || !operation.automaticControlsReady;
     pauseAutomaticCapture.textContent =
       operation.state === "paused" ? "Resume" : "Pause";
     guidedCount.textContent = String(count);
