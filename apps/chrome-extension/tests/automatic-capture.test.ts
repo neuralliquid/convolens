@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   AUTOMATIC_CAPTURE_SAFETY_CAP,
   automaticBoundaryStopReason,
+  automaticDateBoundaryStartIndex,
   normalizeAutomaticBoundary,
 } from "../src/automatic-capture";
 
@@ -16,13 +17,29 @@ test("normalizes automatic message boundaries within the safety cap", () => {
   });
 });
 
+test("trims a boundary-spanning window after the last trusted old message", () => {
+  assert.equal(
+    automaticDateBoundaryStartIndex(
+      [
+        "2026-07-20T12:00:00.000Z",
+        undefined,
+        "2026-07-21T12:00:01.000Z",
+        "2026-07-24T12:00:00.000Z",
+      ],
+      { kind: "days", days: 7 },
+      new Date("2026-07-29T12:00:00.000Z"),
+    ),
+    3,
+  );
+});
+
 test("stops date capture only from a trusted oldest timestamp", () => {
   const startedAt = new Date("2026-07-29T12:00:00.000Z");
   const boundary = { kind: "days", days: 7 } as const;
   assert.equal(
     automaticBoundaryStopReason({
       boundary,
-      extractedCount: 20,
+      extractedCount: AUTOMATIC_CAPTURE_SAFETY_CAP,
       oldestTrustedTimestamp: "2026-07-21T11:59:59.000Z",
       verifiedTop: false,
       startedAt,

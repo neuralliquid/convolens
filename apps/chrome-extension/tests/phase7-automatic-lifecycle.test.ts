@@ -36,6 +36,14 @@ test("keeps automatic control background-owned and serializes every command", ()
     /command === "pause" \|\| message\.command === "resume"/,
   );
   assert.match(
+    contentSource,
+    /if \(paused\) \{[\s\S]*session\.observer\.disconnect\(\)[\s\S]*await session\.drainPromise/,
+  );
+  assert.match(
+    contentSource,
+    /session\.observer\.observe\(session\.scrollTarget/,
+  );
+  assert.match(
     backgroundSource,
     /action: "FINALIZE_AUTOMATIC_CAPTURE_OPERATION"/,
   );

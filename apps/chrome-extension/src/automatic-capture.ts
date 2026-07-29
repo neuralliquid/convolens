@@ -35,6 +35,23 @@ export function automaticDateCutoff(
   return startedAt.getTime() - boundary.days * 24 * 60 * 60 * 1_000;
 }
 
+export function automaticDateBoundaryStartIndex(
+  trustedTimestamps: Array<string | undefined>,
+  boundary: AutomaticCaptureBoundary,
+  startedAt: Date,
+): number | null {
+  const cutoff = automaticDateCutoff(boundary, startedAt);
+  if (cutoff === null) return null;
+  let lastExcludedIndex = -1;
+  for (const [index, timestamp] of trustedTimestamps.entries()) {
+    const parsed = timestamp ? Date.parse(timestamp) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed <= cutoff) {
+      lastExcludedIndex = index;
+    }
+  }
+  return lastExcludedIndex < 0 ? null : lastExcludedIndex + 1;
+}
+
 export function automaticBoundaryStopReason(options: {
   boundary: AutomaticCaptureBoundary;
   extractedCount: number;
@@ -42,14 +59,13 @@ export function automaticBoundaryStopReason(options: {
   verifiedTop: boolean;
   startedAt: Date;
 }): CaptureStopReason | null {
-  if (options.extractedCount >= AUTOMATIC_CAPTURE_SAFETY_CAP) {
-    return "automatic-safety-cap";
-  }
   if (
     options.boundary.kind === "messages" &&
     options.extractedCount >= options.boundary.messageLimit
   ) {
-    return "automatic-message-limit";
+    return options.boundary.messageLimit >= AUTOMATIC_CAPTURE_SAFETY_CAP
+      ? "automatic-safety-cap"
+      : "automatic-message-limit";
   }
   if (options.boundary.kind === "days") {
     const oldest = options.oldestTrustedTimestamp
@@ -59,6 +75,9 @@ export function automaticBoundaryStopReason(options: {
     if (cutoff !== null && Number.isFinite(oldest) && oldest <= cutoff) {
       return "automatic-date-boundary";
     }
+  }
+  if (options.extractedCount >= AUTOMATIC_CAPTURE_SAFETY_CAP) {
+    return "automatic-safety-cap";
   }
   if (options.verifiedTop) {
     return "automatic-verified-top";

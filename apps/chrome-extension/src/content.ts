@@ -36,6 +36,7 @@ import {
   AUTOMATIC_CAPTURE_SAFETY_CAP,
   AUTOMATIC_NO_PROGRESS_LIMIT,
   automaticBoundaryStopReason,
+  automaticDateBoundaryStartIndex,
   normalizeAutomaticBoundary,
 } from "./automatic-capture";
 import { parseWhatsAppMessageMetadata } from "./whatsapp-metadata";
@@ -1615,6 +1616,11 @@ function summarizeCapturePayload(
     .map((message) => message.timestamp)
     .filter(Boolean)
     .sort();
+  const trustedTimestamps = payload.messages
+    .filter((message) => message.captureTimestampMethod === "metadata")
+    .map((message) => message.timestamp)
+    .filter(Boolean)
+    .sort();
   return {
     chatKey: getOpaqueChatKey(chatIdentity),
     renderedCount: payload.messages.length + skippedCount + unreadableCount,
@@ -1634,6 +1640,7 @@ function summarizeCapturePayload(
     alignmentWarningCount,
     mediaCount: payload.messages.filter((message) => message.isMedia).length,
     oldestTimestamp: timestamps[0],
+    oldestTrustedTimestamp: trustedTimestamps[0],
     newestTimestamp: timestamps[timestamps.length - 1],
   };
 }
@@ -1918,6 +1925,44 @@ function automaticBoundaryReason(
   return reason === "loaded-window" ? null : reason;
 }
 
+function retainAutomaticItems(
+  session: GuidedCaptureSession,
+  items: GuidedWindowItem<ExtractedMessage>[],
+): void {
+  session.items = items;
+  session.payload.messages = items.map((item) => item.value);
+  session.payload.messageCount = session.payload.messages.length;
+  session.payload.diagnostics = {
+    ...session.payload.diagnostics,
+    extractedMessageCount: session.payload.messages.length,
+    ...summarizeGuidedDiagnosticMethods(session.payload.messages),
+  };
+  const retainedParticipantRefs = new Set(
+    session.payload.messages.flatMap((message) =>
+      [message.senderRef].filter((value): value is string => Boolean(value)),
+    ),
+  );
+  session.payload.participants = session.payload.participants.filter(
+    (participant) => retainedParticipantRefs.has(participant.ref),
+  );
+}
+
+function trimAutomaticDateBoundary(session: GuidedCaptureSession): void {
+  if (!session.automaticBoundary || !session.automaticStartedAt) return;
+  const startIndex = automaticDateBoundaryStartIndex(
+    session.items.map((item) =>
+      item.value.captureTimestampMethod === "metadata"
+        ? item.value.timestamp
+        : undefined,
+    ),
+    session.automaticBoundary,
+    session.automaticStartedAt,
+  );
+  if (startIndex !== null) {
+    retainAutomaticItems(session, session.items.slice(startIndex));
+  }
+}
+
 async function runAutomaticCapture(
   session: GuidedCaptureSession,
 ): Promise<void> {
@@ -1931,6 +1976,9 @@ async function runAutomaticCapture(
       hasVerifiedTopOfHistory(session.scrollTarget),
     );
     if (existingReason) {
+      if (existingReason === "automatic-date-boundary") {
+        trimAutomaticDateBoundary(session);
+      }
       session.pendingStopReason = existingReason;
       if (!session.drainPromise) startGuidedWindowDrain(session);
       return;
@@ -1952,6 +2000,9 @@ async function runAutomaticCapture(
     const verifiedTop = hasVerifiedTopOfHistory(session.scrollTarget);
     const boundaryReason = automaticBoundaryReason(session, verifiedTop);
     if (boundaryReason) {
+      if (boundaryReason === "automatic-date-boundary") {
+        trimAutomaticDateBoundary(session);
+      }
       session.pendingStopReason = boundaryReason;
       if (!session.drainPromise) startGuidedWindowDrain(session);
       return;
@@ -2186,25 +2237,7 @@ function activateAutomaticCaptureOperation(
       ? Math.min(AUTOMATIC_CAPTURE_SAFETY_CAP, boundary.messageLimit)
       : AUTOMATIC_CAPTURE_SAFETY_CAP;
   if (session.items.length > session.captureLimit) {
-    session.items = session.items.slice(-session.captureLimit);
-    session.payload.messages = session.items.map((item) => item.value);
-    session.payload.messageCount = session.payload.messages.length;
-    const diagnosticMethods = summarizeGuidedDiagnosticMethods(
-      session.payload.messages,
-    );
-    session.payload.diagnostics = {
-      ...session.payload.diagnostics,
-      extractedMessageCount: session.payload.messages.length,
-      ...diagnosticMethods,
-    };
-    const retainedParticipantRefs = new Set(
-      session.payload.messages.flatMap((message) =>
-        [message.senderRef].filter((value): value is string => Boolean(value)),
-      ),
-    );
-    session.payload.participants = session.payload.participants.filter(
-      (participant) => retainedParticipantRefs.has(participant.ref),
-    );
+    retainAutomaticItems(session, session.items.slice(-session.captureLimit));
   }
   session.originalScrollTop = session.scrollTarget.scrollTop;
   session.originalBottomOffset =
@@ -2220,7 +2253,10 @@ function activateAutomaticCaptureOperation(
   });
 }
 
-function setAutomaticCapturePaused(operationId: string, paused: boolean): void {
+async function setAutomaticCapturePaused(
+  operationId: string,
+  paused: boolean,
+): Promise<void> {
   const session = guidedCaptureSession;
   if (
     !session ||
@@ -2231,6 +2267,18 @@ function setAutomaticCapturePaused(operationId: string, paused: boolean): void {
     throw new Error("The automatic capture buffer is no longer available.");
   }
   session.automaticPaused = paused;
+  if (paused) {
+    session.observer.disconnect();
+    if (session.drainPromise) await session.drainPromise;
+    return;
+  }
+  if (guidedCaptureSession !== session || session.finalizing) {
+    throw new Error("The automatic capture buffer is no longer available.");
+  }
+  session.observer.observe(session.scrollTarget, {
+    childList: true,
+    subtree: true,
+  });
 }
 
 async function finalizeGuidedCaptureOperation(
@@ -3020,13 +3068,12 @@ function handleMessage(
       break;
 
     case "SET_AUTOMATIC_CAPTURE_PAUSED":
-      try {
-        setAutomaticCapturePaused(message.operationId, message.paused);
-        sendResponse({ success: true });
-      } catch (error) {
-        sendResponse({ success: false, error: normalizeErrorMessage(error) });
-      }
-      break;
+      setAutomaticCapturePaused(message.operationId, message.paused)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) =>
+          sendResponse({ success: false, error: normalizeErrorMessage(error) }),
+        );
+      return true;
 
     case "FINALIZE_AUTOMATIC_CAPTURE_OPERATION":
       finalizeAutomaticCaptureOperation(message.operationId)
