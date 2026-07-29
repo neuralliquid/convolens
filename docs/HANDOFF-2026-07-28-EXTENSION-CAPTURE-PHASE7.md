@@ -21,6 +21,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - The original bottom-relative scroll position is captured before automatic movement and approximately restored only while the same chat remains selected.
 - The background service worker persists only aggregate operation snapshots, including the selected boundary and progress counts. Raw messages, raw WhatsApp IDs, and alignment evidence remain in the WhatsApp tab's memory.
 - When an automatic boundary deliberately trims retained items, skipped, unreadable, container, diagnostic-method, and participant counts are rebuilt from the retained readable payload rather than leaking counts from the excluded window.
+- If the selected automatic boundary retains zero readable messages, the operation cancels with an explicit nothing-sent result instead of offering an empty review or creating an empty conversation.
 - Final upload still requires exact-count review and explicit confirmation. Automatic completion never uploads by itself.
 - Extension runtime and package metadata are synchronized at `1.0.18`.
 
@@ -29,18 +30,18 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Base: `origin/main` at `f85eac938d9dac746e6c84bfad0063b2141b7cd5` (merged PR #154).
 - Branch: `agent/extension-capture-phase7`.
 - Worktree: `C:/tmp/convolens-extension-phase7`.
-- Pull request: pending.
+- Pull request: [#155](https://github.com/neuralliquid/convolens/pull/155).
 - The primary checkout and its pre-existing untracked handoff remain untouched.
 
 ## Validation
 
-- Chrome extension Node tests: 110 passed, 0 failed, including automatic boundary normalization, boundary-spanning cutoff trimming, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 111 passed, 0 failed, including automatic boundary normalization, boundary-spanning cutoff trimming, zero-retained-scope cancellation, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `AE41F0543FC3DE038643A80A82CFE180A93515A96A0B273C3C413D5B9DCA8A34`.
+- Packaged ZIP SHA-256: `DCE2F909DA8800BACE2768945EB33F185486624C3508C63F233E24FF6874C0D8`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open

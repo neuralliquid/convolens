@@ -129,3 +129,10 @@ test("rebuilds trimmed diagnostics from only the retained readable payload", () 
     /messageContainerCount: session\.payload\.messages\.length[\s\S]*unreadableMessageCount: 0/,
   );
 });
+
+test("cancels rather than offering an empty automatic review", () => {
+  assert.match(
+    contentSource,
+    /finalizeAutomaticCaptureOperation[\s\S]*summary\.extractedCount === 0[\s\S]*No readable messages fall within the selected automatic boundary\. Nothing was sent\./,
+  );
+});

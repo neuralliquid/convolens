@@ -2346,7 +2346,13 @@ async function finalizeAutomaticCaptureOperation(
   ) {
     throw new Error("The automatic capture buffer is no longer available.");
   }
-  return await finalizeGuidedCaptureOperation(operationId);
+  const summary = await finalizeGuidedCaptureOperation(operationId);
+  if (summary.extractedCount === 0) {
+    throw new Error(
+      "No readable messages fall within the selected automatic boundary. Nothing was sent.",
+    );
+  }
+  return summary;
 }
 
 async function collectCaptureOperation(
