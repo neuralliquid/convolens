@@ -74,6 +74,7 @@ interface ExtractedMessage {
   senderRef?: string;
   captureSourceId?: string;
   captureAlignmentToken?: string;
+  captureTimestampMethod?: TimestampMethod;
 }
 
 interface ExtractedParticipant {
@@ -1367,6 +1368,10 @@ function cloneGuidedMessage(
       value: message.captureAlignmentToken,
       enumerable: false,
     },
+    captureTimestampMethod: {
+      value: message.captureTimestampMethod,
+      enumerable: false,
+    },
   });
   return clone;
 }
@@ -1413,8 +1418,16 @@ function guidedMergeEdge(
   }
   if (append.overlapCount > 0) return "prepend";
   return resolveDisjointGuidedEdge(
-    existing.map((item) => item.value.timestamp),
-    incoming.map((item) => item.value.timestamp),
+    existing.flatMap((item) =>
+      item.value.captureTimestampMethod === "fallback"
+        ? []
+        : [item.value.timestamp],
+    ),
+    incoming.flatMap((item) =>
+      item.value.captureTimestampMethod === "fallback"
+        ? []
+        : [item.value.timestamp],
+    ),
   );
 }
 
@@ -2101,6 +2114,10 @@ function extractMessageData(
     },
     captureAlignmentToken: {
       value: captureAlignmentToken,
+      enumerable: false,
+    },
+    captureTimestampMethod: {
+      value: timestamp.method,
       enumerable: false,
     },
   });

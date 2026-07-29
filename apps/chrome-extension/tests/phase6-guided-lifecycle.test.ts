@@ -91,6 +91,10 @@ test("snapshots every observed virtualized window before serial merging", () => 
 test("does not assume a zero-overlap window belongs at the older edge", () => {
   assert.match(contentSource, /resolveDisjointGuidedEdge/);
   assert.match(contentSource, /mergeEdge === null[\s\S]*ambiguous: true/);
+  assert.match(
+    contentSource,
+    /captureTimestampMethod === "fallback"[\s\S]*\? \[\]/,
+  );
 });
 
 test("stops observing and drains queued windows before final review", () => {
@@ -130,8 +134,14 @@ test("uses raw source IDs only as non-enumerable in-tab alignment evidence", () 
   assert.match(contentSource, /messageRecord\.getAttribute\("data-id"\)/);
   assert.match(contentSource, /captureSourceId:[\s\S]*enumerable: false/);
   assert.match(contentSource, /captureAlignmentToken:[\s\S]*enumerable: false/);
+  assert.match(
+    contentSource,
+    /captureTimestampMethod:[\s\S]*enumerable: false/,
+  );
   assert.doesNotMatch(captureSource, /captureSourceId/);
+  assert.doesNotMatch(captureSource, /captureTimestampMethod/);
   assert.doesNotMatch(backgroundSource, /captureSourceId/);
+  assert.doesNotMatch(backgroundSource, /captureTimestampMethod/);
 });
 
 test("commits only participant identities referenced by the bounded merge", () => {
