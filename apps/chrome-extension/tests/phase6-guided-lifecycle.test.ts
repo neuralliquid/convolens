@@ -12,12 +12,15 @@ const popupHtml = read("../popup/popup.html");
 const popupSource = read("../popup/popup.js");
 
 test("keeps the background as owner of guided progress and finalization", () => {
-  assert.match(captureSource, /CaptureOperationMode = "loaded" \| "guided"/);
+  assert.match(
+    captureSource,
+    /CaptureOperationMode = "loaded" \| "guided" \| "automatic"/,
+  );
   assert.match(backgroundSource, /case "UPDATE_GUIDED_CAPTURE_OPERATION"/);
   assert.match(backgroundSource, /case "STOP_GUIDED_CAPTURE_OPERATION"/);
   assert.match(
     backgroundSource,
-    /state: operation\.mode === "guided" \? "collecting"/,
+    /state: operation\.mode === "loaded" \? "ready-for-review" : "collecting"/,
   );
   assert.match(backgroundSource, /action: "FINALIZE_GUIDED_CAPTURE_OPERATION"/);
   assert.match(backgroundSource, /state: "ready-for-review"/);
@@ -65,17 +68,17 @@ test("offers start, running count, stop-and-review, and cancel on both surfaces"
     assert.match(surface, /Stop and review/);
     assert.match(surface, /Guided capture is active/);
   }
-  assert.match(popupSource, /mode === "guided" \? "Start guided capture"/);
-  assert.match(popupSource, /action: "STOP_GUIDED_CAPTURE_OPERATION"/);
+  assert.match(popupSource, /"Start guided capture"/);
+  assert.match(popupSource, /STOP_GUIDED_CAPTURE_OPERATION/);
   assert.match(contentSource, /selectedPageCaptureMode/);
-  assert.match(contentSource, /stopPageGuidedCapture/);
+  assert.match(contentSource, /stopPageCollection/);
 });
 
 test("preserves the requested mode after popup cancellation renders", () => {
   assert.match(popupSource, /captureModeChangeGeneration/);
   assert.match(
     popupSource,
-    /\[\s*"inspecting",\s*"collecting",\s*"ready-for-review",\s*"retry-required",?\s*\]/,
+    /\[\s*"inspecting",\s*"collecting",\s*"paused",\s*"ready-for-review",\s*"retry-required",?\s*\]/,
   );
   assert.match(
     popupSource,
@@ -87,7 +90,7 @@ test("preserves the requested mode after launcher cancellation renders", () => {
   assert.match(contentSource, /launcherModeChangeGeneration/);
   assert.match(
     contentSource,
-    /\[\s*"inspecting",\s*"collecting",\s*"ready-for-review",\s*"retry-required",?\s*\]/,
+    /\[\s*"inspecting",\s*"collecting",\s*"paused",\s*"ready-for-review",\s*"retry-required",?\s*\]/,
   );
   assert.match(
     contentSource,
@@ -103,13 +106,21 @@ test("preserves the requested mode after launcher cancellation renders", () => {
   );
 });
 
-test("observes user scrolling without programmatically taking scroll control", () => {
-  assert.match(contentSource, /new MutationObserver\(queueGuidedWindowRead\)/);
+test("keeps guided capture user-controlled while automatic capture owns its scroll", () => {
+  assert.match(
+    contentSource,
+    /new MutationObserver\(queueObservedGuidedWindowRead\)/,
+  );
   assert.match(
     contentSource,
     /addEventListener\("scroll", queueGuidedWindowRead/,
   );
-  assert.doesNotMatch(contentSource, /scrollTop\s*=/);
+  const guidedActivation = contentSource.slice(
+    contentSource.indexOf("function activateGuidedCaptureOperation"),
+    contentSource.indexOf("function activateAutomaticCaptureOperation"),
+  );
+  assert.doesNotMatch(guidedActivation, /scrollTop\s*=/);
+  assert.match(contentSource, /session\.scrollTarget\.scrollTop = Math\.max/);
   assert.doesNotMatch(contentSource, /scrollTo\(/);
 });
 

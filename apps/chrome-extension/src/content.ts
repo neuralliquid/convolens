@@ -26,10 +26,19 @@ import {
   type AuthStatusData,
 } from "./config";
 import type {
+  AutomaticCaptureBoundary,
   CaptureCollectionSummary,
   CaptureOperationSnapshot,
   CaptureOperationState,
+  CaptureStopReason,
 } from "./capture-operation";
+import {
+  AUTOMATIC_CAPTURE_SAFETY_CAP,
+  AUTOMATIC_NO_PROGRESS_LIMIT,
+  automaticBoundaryStopReason,
+  automaticDateBoundaryStartIndex,
+  normalizeAutomaticBoundary,
+} from "./automatic-capture";
 import { parseWhatsAppMessageMetadata } from "./whatsapp-metadata";
 import {
   combineSenderEvidence,
@@ -126,6 +135,7 @@ interface CapturePreviewSummary {
   chatName: string;
   loadedMessageCount: number;
   oldestTimestamp?: string;
+  oldestTrustedTimestamp?: string;
   newestTimestamp?: string;
   participantLabelCount: number;
   mediaCount: number;
@@ -168,24 +178,38 @@ interface GuidedCaptureSession {
   operationId: string;
   chatIdentity: string;
   payload: ExtractedChat;
+  mode: "guided" | "automatic";
+  captureLimit: number;
   items: GuidedWindowItem<ExtractedMessage>[];
   observer: MutationObserver;
-  scrollTarget: Element;
+  scrollTarget: HTMLElement;
   timeoutId?: number;
   consecutiveFailures: number;
   alignmentWarningCount: number;
+  alignmentWarnings: GuidedWindowItem<ExtractedMessage>[][];
   skippedCount: number;
   unreadableCount: number;
   reading: boolean;
   pendingWindows: Promise<ExtractedChat | null>[];
   drainPromise?: Promise<void>;
-  pendingStopReason?: "guided-safety-limit" | "guided-dom-failure";
+  pendingStopReason?: Exclude<CaptureStopReason, "loaded-window">;
   finalizing: boolean;
   limitReached: boolean;
+  automaticBoundary?: AutomaticCaptureBoundary;
+  automaticStartedAt?: Date;
+  automaticDateBoundaryProofItems?: GuidedWindowItem<ExtractedMessage>[];
+  automaticPaused: boolean;
+  automaticRunner?: Promise<void>;
+  originalScrollTop?: number;
+  originalBottomOffset?: number;
+  noProgressCount: number;
+  observedWindowCount: number;
 }
 
 const GUIDED_CAPTURE_LIMIT = 2_000;
 const GUIDED_CAPTURE_TIMEOUT_MS = 10 * 60 * 1_000;
+const AUTOMATIC_STABILIZATION_TIMEOUT_MS = 3_000;
+const AUTOMATIC_STABILIZATION_INTERVAL_MS = 120;
 
 let activeCaptureOperation: ActiveCaptureOperation | null = null;
 let guidedCaptureSession: GuidedCaptureSession | null = null;
@@ -351,21 +375,37 @@ async function injectUI(): Promise<void> {
           <span><strong>Capture as I scroll</strong><small>Guided collection while you scroll</small></span>
           <em>Available</em>
         </label>
-        <label class="ws-capture-mode ws-capture-mode-disabled">
-          <input type="radio" name="ws-capture-mode" value="automatic" disabled>
+        <label class="ws-capture-mode">
+          <input type="radio" name="ws-capture-mode" value="automatic">
           <span><strong>Load older messages for me</strong><small>Automatic older-history loading</small></span>
-          <em>Soon · Phase 7</em>
+          <em>Available</em>
         </label>
       </fieldset>
+      <div id="ws-automatic-options" class="ws-automatic-options" hidden>
+        <label for="ws-automatic-boundary"><strong>Stop boundary</strong></label>
+        <select id="ws-automatic-boundary">
+          <option value="days-7">Last 7 days</option>
+          <option value="days-30">Last 30 days</option>
+          <option value="messages-100">100 messages</option>
+          <option value="messages-250">250 messages</option>
+          <option value="messages-500">500 messages (safety cap)</option>
+          <option value="verified-top">Verified top of history</option>
+        </select>
+        <label class="ws-automatic-consent">
+          <input id="ws-automatic-consent" type="checkbox">
+          <span>I understand WhatsApp will scroll this chat. I can pause, stop and review, or cancel.</span>
+        </label>
+      </div>
       <button id="ws-extract-btn" class="ws-capture-btn" type="button" disabled>
         Sign in to capture
       </button>
       <section id="ws-guided-progress" class="ws-guided-progress" aria-live="polite" hidden>
-        <strong>Guided capture is active</strong>
-        <span>Scroll upward in this chat. ConvoLens will retain each message window before WhatsApp removes it.</span>
+        <strong id="ws-collection-title">Guided capture is active</strong>
+        <span id="ws-collection-instruction">Scroll upward in this chat. ConvoLens will retain each message window before WhatsApp removes it.</span>
         <p><b id="ws-guided-count">0</b> unique messages · oldest <span id="ws-guided-oldest">Not detected</span></p>
         <p id="ws-guided-warning" class="ws-guided-warning" hidden></p>
         <div class="ws-preview-actions">
+          <button id="ws-pause-automatic" class="ws-secondary-btn" type="button" hidden>Pause</button>
           <button id="ws-stop-guided" class="ws-capture-btn" type="button">Stop and review</button>
           <button id="ws-cancel-guided" class="ws-secondary-btn" type="button">Cancel</button>
         </div>
@@ -433,8 +473,13 @@ async function injectUI(): Promise<void> {
       if (launcherOperation) void reviewPageCapture(launcherOperation, false);
     });
   document.getElementById("ws-stop-guided")?.addEventListener("click", () => {
-    if (launcherOperation) void stopPageGuidedCapture(launcherOperation);
+    if (launcherOperation) void stopPageCollection(launcherOperation);
   });
+  document
+    .getElementById("ws-pause-automatic")
+    ?.addEventListener("click", () => {
+      if (launcherOperation) void togglePageAutomaticCapture(launcherOperation);
+    });
   document.getElementById("ws-cancel-guided")?.addEventListener("click", () => {
     if (launcherOperation) void reviewPageCapture(launcherOperation, false);
   });
@@ -764,11 +809,17 @@ function getCapturePreviewSummary(
     .map((message) => message.timestamp)
     .filter(Boolean)
     .sort();
+  const trustedTimestamps = payload.messages
+    .filter((message) => message.captureTimestampMethod === "metadata")
+    .map((message) => message.timestamp)
+    .filter(Boolean)
+    .sort();
   const unreadableCount = payload.diagnostics.unreadableMessageCount;
   return {
     chatName: payload.chatName,
     loadedMessageCount: payload.messages.length,
     oldestTimestamp: timestamps[0],
+    oldestTrustedTimestamp: trustedTimestamps[0],
     newestTimestamp: timestamps[timestamps.length - 1],
     participantLabelCount: payload.participants.filter(
       (participant) =>
@@ -830,14 +881,16 @@ function renderPageCapturePreview(operation: CaptureOperationSnapshot): void {
   const countLabel = document.getElementById("ws-preview-count-label");
   if (countLabel) {
     countLabel.textContent =
-      operation.mode === "guided" ? "Captured messages" : "Loaded messages";
+      operation.mode === "loaded" ? "Loaded messages" : "Captured messages";
   }
   const scopeCopy = document.getElementById("ws-scope-copy");
   if (scopeCopy) {
     scopeCopy.textContent =
       operation.mode === "guided"
         ? "Only the guided messages counted above will be uploaded. Collection stopped before review, and nothing is sent until you confirm."
-        : "Only the loaded messages counted above will be uploaded. Older messages WhatsApp has not loaded are excluded. Nothing is sent until you confirm.";
+        : operation.mode === "automatic"
+          ? `Only the automatically collected messages counted above will be uploaded. ${automaticStopReasonLabel(operation.stopReason)} Nothing is sent until you confirm.`
+          : "Only the loaded messages counted above will be uploaded. Older messages WhatsApp has not loaded are excluded. Nothing is sent until you confirm.";
   }
   const warning = document.getElementById("ws-preview-warning");
   if (warning) {
@@ -860,10 +913,12 @@ function applyPageCaptureMode(selectedMode: string): void {
       if (input) input.checked = selected;
       label.classList.toggle("ws-capture-mode-selected", selected);
       const status = label.querySelector("em");
-      if (status && input?.value !== "automatic") {
+      if (status) {
         status.textContent = selected ? "Selected" : "Available";
       }
     });
+  const automaticOptions = document.getElementById("ws-automatic-options");
+  if (automaticOptions) automaticOptions.hidden = selectedMode !== "automatic";
 }
 
 function handleCaptureModeChange(event: Event): void {
@@ -873,10 +928,16 @@ function handleCaptureModeChange(event: Event): void {
   if (
     launcherOperation &&
     ((launcherOperation.mode === "loaded" && selectedMode !== "loaded") ||
-      (launcherOperation.mode === "guided" && selectedMode !== "scroll")) &&
-    ["inspecting", "collecting", "ready-for-review", "retry-required"].includes(
-      launcherOperation.state,
-    )
+      (launcherOperation.mode === "guided" && selectedMode !== "scroll") ||
+      (launcherOperation.mode === "automatic" &&
+        selectedMode !== "automatic")) &&
+    [
+      "inspecting",
+      "collecting",
+      "paused",
+      "ready-for-review",
+      "retry-required",
+    ].includes(launcherOperation.state)
   ) {
     void reviewPageCapture(launcherOperation, false)
       .catch((error) => updateStatus(normalizeErrorMessage(error), "error"))
@@ -888,12 +949,27 @@ function handleCaptureModeChange(event: Event): void {
   }
 }
 
-function selectedPageCaptureMode(): "loaded" | "guided" {
-  return document.querySelector<HTMLInputElement>(
+function selectedPageCaptureMode(): "loaded" | "guided" | "automatic" {
+  const selected = document.querySelector<HTMLInputElement>(
     'input[name="ws-capture-mode"]:checked',
-  )?.value === "scroll"
+  )?.value;
+  return selected === "scroll"
     ? "guided"
-    : "loaded";
+    : selected === "automatic"
+      ? "automatic"
+      : "loaded";
+}
+
+function selectedPageAutomaticBoundary(): AutomaticCaptureBoundary {
+  const value = (
+    document.getElementById("ws-automatic-boundary") as HTMLSelectElement | null
+  )?.value;
+  if (value === "days-7") return { kind: "days", days: 7 };
+  if (value === "days-30") return { kind: "days", days: 30 };
+  if (value?.startsWith("messages-")) {
+    return { kind: "messages", messageLimit: Number(value.slice(9)) };
+  }
+  return { kind: "verified-top" };
 }
 
 async function handleExtractClick(): Promise<void> {
@@ -918,7 +994,7 @@ async function handleExtractClick(): Promise<void> {
     }
     if (
       existingOperation &&
-      ["inspecting", "collecting", "uploading"].includes(
+      ["inspecting", "collecting", "paused", "uploading"].includes(
         existingOperation.state,
       )
     ) {
@@ -939,10 +1015,28 @@ async function handleExtractClick(): Promise<void> {
   }
 
   try {
+    const mode = selectedPageCaptureMode();
+    if (
+      mode === "automatic" &&
+      !(
+        document.getElementById(
+          "ws-automatic-consent",
+        ) as HTMLInputElement | null
+      )?.checked
+    ) {
+      updateStatus(
+        "Confirm that WhatsApp may scroll this chat before starting automatic capture.",
+        "error",
+      );
+      return;
+    }
     const response = (await chrome.runtime.sendMessage({
       action: "START_CAPTURE_OPERATION",
       initiator: "page",
-      mode: selectedPageCaptureMode(),
+      mode,
+      ...(mode === "automatic"
+        ? { automaticBoundary: selectedPageAutomaticBoundary() }
+        : {}),
     })) as ExtensionResponse<CaptureOperationSnapshot>;
     if (!response.success || !response.data) {
       updateStatus(
@@ -962,21 +1056,30 @@ async function handleExtractClick(): Promise<void> {
   }
 }
 
-async function stopPageGuidedCapture(
+async function stopPageCollection(
   operation: CaptureOperationSnapshot,
 ): Promise<void> {
-  if (operation.mode !== "guided" || operation.state !== "collecting") return;
+  if (
+    !["guided", "automatic"].includes(operation.mode) ||
+    !["collecting", "paused"].includes(operation.state)
+  )
+    return;
   try {
+    const automatic = operation.mode === "automatic";
     const response = (await chrome.runtime.sendMessage({
-      action: "STOP_GUIDED_CAPTURE_OPERATION",
+      action: automatic
+        ? "CONTROL_AUTOMATIC_CAPTURE_OPERATION"
+        : "STOP_GUIDED_CAPTURE_OPERATION",
       operationId: operation.operationId,
-      stopReason: "guided-user-stopped",
+      ...(automatic
+        ? { command: "stop", stopReason: "automatic-user-stopped" }
+        : { stopReason: "guided-user-stopped" }),
     })) as ExtensionResponse<CaptureOperationSnapshot>;
     if (response.success && response.data) {
       renderCaptureOperation(response.data);
     } else {
       updateStatus(
-        response.success ? "Guided capture could not stop." : response.error,
+        response.success ? "Collection could not stop." : response.error,
         "error",
       );
     }
@@ -1048,7 +1151,7 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   if (operation.authGeneration !== launcherCaptureAuthGeneration) return false;
   launcherOperationRenderGeneration += 1;
   launcherOperation = operation;
-  const modeValue = operation.mode === "guided" ? "scroll" : "loaded";
+  const modeValue = operation.mode === "guided" ? "scroll" : operation.mode;
   document
     .querySelectorAll<HTMLInputElement>('input[name="ws-capture-mode"]')
     .forEach((input) => {
@@ -1057,10 +1160,12 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
         .closest(".ws-capture-mode")
         ?.classList.toggle("ws-capture-mode-selected", input.checked);
       const status = input.closest(".ws-capture-mode")?.querySelector("em");
-      if (status && input.value !== "automatic") {
+      if (status) {
         status.textContent = input.checked ? "Selected" : "Available";
       }
     });
+  const automaticOptions = document.getElementById("ws-automatic-options");
+  if (automaticOptions) automaticOptions.hidden = modeValue !== "automatic";
   updateLauncherBadge(operation);
   renderPageCapturePreview(operation);
   renderPageGuidedProgress(operation);
@@ -1071,9 +1176,12 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
     "ws-extract-btn",
   ) as HTMLButtonElement | null;
   if (button) {
-    button.disabled = ["inspecting", "collecting", "uploading"].includes(
-      operation.state,
-    );
+    button.disabled = [
+      "inspecting",
+      "collecting",
+      "paused",
+      "uploading",
+    ].includes(operation.state);
     button.textContent = getLauncherActionLabel(operation);
   }
 
@@ -1086,17 +1194,28 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
       updateStatus(
         operation.mode === "guided"
           ? `Guided capture active: ${operation.extractedCount} unique message${operation.extractedCount === 1 ? "" : "s"}. Scroll upward, then stop and review.`
-          : "Reading loaded messages…",
+          : operation.mode === "automatic"
+            ? `Automatic capture active: ${operation.extractedCount} unique message${operation.extractedCount === 1 ? "" : "s"}.`
+            : "Reading loaded messages…",
         "loading",
       );
       updateProgress(operation.mode === "guided" ? 0 : 35);
+      break;
+    case "paused":
+      updateStatus(
+        `Automatic capture paused at ${operation.extractedCount} unique message${operation.extractedCount === 1 ? "" : "s"}.`,
+        "info",
+      );
+      updateProgress(0);
       break;
     case "ready-for-review":
       updateProgress(0);
       updateStatus(
         operation.mode === "guided"
           ? `${operation.extractedCount} guided message${operation.extractedCount === 1 ? "" : "s"} ready for review. ${guidedStopReasonLabel(operation.stopReason)}`
-          : `${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} ready for review.`,
+          : operation.mode === "automatic"
+            ? `${operation.extractedCount} automatic message${operation.extractedCount === 1 ? "" : "s"} ready for review. ${automaticStopReasonLabel(operation.stopReason)}`
+            : `${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"} ready for review.`,
         "info",
       );
       break;
@@ -1155,13 +1274,63 @@ function guidedStopReasonLabel(
   }
 }
 
+function automaticStopReasonLabel(
+  reason: CaptureOperationSnapshot["stopReason"],
+): string {
+  switch (reason) {
+    case "automatic-date-boundary":
+      return "The selected date boundary was reached.";
+    case "automatic-message-limit":
+      return "The selected message limit was reached.";
+    case "automatic-verified-top":
+      return "WhatsApp exposed a verified top-of-history marker.";
+    case "automatic-safety-cap":
+      return "The 500-message automatic safety cap was reached.";
+    case "automatic-no-progress":
+      return "WhatsApp made no further progress; the top was not verified.";
+    case "automatic-dom-failure":
+      return "Collection stopped after repeated WhatsApp DOM failures.";
+    default:
+      return "You stopped automatic collection.";
+  }
+}
+
 function renderPageGuidedProgress(operation: CaptureOperationSnapshot): void {
   const panel = document.getElementById("ws-guided-progress");
   if (!panel) return;
   const active =
-    operation.mode === "guided" && operation.state === "collecting";
+    ["guided", "automatic"].includes(operation.mode) &&
+    ["collecting", "paused"].includes(operation.state);
   panel.hidden = !active;
   if (!active) return;
+  const automatic = operation.mode === "automatic";
+  const title = document.getElementById("ws-collection-title");
+  const instruction = document.getElementById("ws-collection-instruction");
+  const pauseButton = document.getElementById(
+    "ws-pause-automatic",
+  ) as HTMLButtonElement | null;
+  const stopButton = document.getElementById(
+    "ws-stop-guided",
+  ) as HTMLButtonElement | null;
+  if (title) {
+    title.textContent = automatic
+      ? operation.state === "paused"
+        ? "Automatic capture is paused"
+        : "Automatic capture is active"
+      : "Guided capture is active";
+  }
+  if (instruction) {
+    instruction.textContent = automatic
+      ? "Keep this chat open. ConvoLens is loading older history within the selected boundary."
+      : "Scroll upward in this chat. ConvoLens will retain each message window before WhatsApp removes it.";
+  }
+  if (pauseButton) {
+    pauseButton.hidden = !automatic || !operation.automaticControlsReady;
+    pauseButton.textContent = operation.state === "paused" ? "Resume" : "Pause";
+  }
+  if (stopButton) {
+    stopButton.hidden = automatic && !operation.automaticControlsReady;
+  }
   const count = document.getElementById("ws-guided-count");
   const oldest = document.getElementById("ws-guided-oldest");
   const warning = document.getElementById("ws-guided-warning");
@@ -1183,7 +1352,11 @@ function getLauncherActionLabel(operation: CaptureOperationSnapshot): string {
     case "collecting":
       return operation.mode === "guided"
         ? `Guided: ${operation.extractedCount} captured`
-        : "Reading loaded messages…";
+        : operation.mode === "automatic"
+          ? `Automatic: ${operation.extractedCount} captured`
+          : "Reading loaded messages…";
+    case "paused":
+      return `Automatic paused: ${operation.extractedCount}`;
     case "ready-for-review":
       return `Review ${operation.extractedCount} loaded message${operation.extractedCount === 1 ? "" : "s"}`;
     case "uploading":
@@ -1452,6 +1625,11 @@ function summarizeCapturePayload(
     .map((message) => message.timestamp)
     .filter(Boolean)
     .sort();
+  const trustedTimestamps = payload.messages
+    .filter((message) => message.captureTimestampMethod === "metadata")
+    .map((message) => message.timestamp)
+    .filter(Boolean)
+    .sort();
   return {
     chatKey: getOpaqueChatKey(chatIdentity),
     renderedCount: payload.messages.length + skippedCount + unreadableCount,
@@ -1471,6 +1649,7 @@ function summarizeCapturePayload(
     alignmentWarningCount,
     mediaCount: payload.messages.filter((message) => message.isMedia).length,
     oldestTimestamp: timestamps[0],
+    oldestTrustedTimestamp: trustedTimestamps[0],
     newestTimestamp: timestamps[timestamps.length - 1],
   };
 }
@@ -1551,23 +1730,33 @@ function mergeGuidedPayload(
     session.items,
     incomingItems,
     mergeEdge || "prepend",
-    mergeEdge ? GUIDED_CAPTURE_LIMIT : undefined,
+    mergeEdge ? session.captureLimit : undefined,
   );
   if (mergeEdge === null) {
     merge =
-      merge.items.length > GUIDED_CAPTURE_LIMIT
+      merge.items.length > session.captureLimit
         ? {
             items: session.items,
             addedCount: 0,
             overlapCount: 0,
             ambiguous: true,
-            limitReached: true,
+            limitReached: false,
           }
         : { ...merge, ambiguous: true };
   }
   session.items = merge.items;
-  if (merge.ambiguous) session.alignmentWarningCount += 1;
-  if (merge.limitReached) session.limitReached = true;
+  if (merge.ambiguous) {
+    const retainedAmbiguousItems = incomingItems.filter((item) =>
+      merge.items.includes(item),
+    );
+    if (retainedAmbiguousItems.length > 0) {
+      session.alignmentWarnings.push(retainedAmbiguousItems);
+    }
+  }
+  reconcileGuidedAlignmentWarnings(session);
+  if (merge.limitReached && session.items.length >= session.captureLimit) {
+    session.limitReached = true;
+  }
   const incomingSkipped = Math.max(
     0,
     incoming.diagnostics.messageContainerCount -
@@ -1620,9 +1809,18 @@ function mergeGuidedPayload(
   );
 }
 
+function reconcileGuidedAlignmentWarnings(session: GuidedCaptureSession): void {
+  const retainedItems = new Set(session.items);
+  session.alignmentWarnings = session.alignmentWarnings.filter((warningItems) =>
+    warningItems.some((item) => retainedItems.has(item)),
+  );
+  session.alignmentWarningCount = session.alignmentWarnings.length;
+}
+
 function teardownGuidedCaptureSession(operationId: string): void {
   const session = guidedCaptureSession;
   if (!session || session.operationId !== operationId) return;
+  restoreAutomaticScrollAnchor(session);
   pauseGuidedCaptureSession(session);
   guidedCaptureSession = null;
 }
@@ -1634,6 +1832,275 @@ function pauseGuidedCaptureSession(session: GuidedCaptureSession): void {
   session.timeoutId = undefined;
 }
 
+function resolveAutomaticScrollTarget(messageList: Element): HTMLElement {
+  let candidate: HTMLElement | null = messageList as HTMLElement;
+  for (let depth = 0; candidate && depth < 8; depth += 1) {
+    if (candidate.scrollHeight > candidate.clientHeight + 1) return candidate;
+    candidate = candidate.parentElement;
+  }
+  return messageList as HTMLElement;
+}
+
+function restoreAutomaticScrollAnchor(session: GuidedCaptureSession): void {
+  if (
+    session.mode !== "automatic" ||
+    session.originalBottomOffset === undefined ||
+    getCurrentChatIdentity() !== session.chatIdentity
+  ) {
+    return;
+  }
+  const targetTop = Math.max(
+    0,
+    session.scrollTarget.scrollHeight - session.originalBottomOffset,
+  );
+  session.scrollTarget.scrollTop = Number.isFinite(targetTop)
+    ? targetTop
+    : session.originalScrollTop || 0;
+}
+
+function hasVerifiedTopOfHistory(scrollTarget: HTMLElement): boolean {
+  if (scrollTarget.scrollTop > 1) return false;
+  return Boolean(
+    scrollTarget.querySelector(
+      '[data-testid="conversation-start"], [data-testid="chat-history-start"], [aria-rowindex="1"]',
+    ),
+  );
+}
+
+async function waitForAutomaticStabilization(
+  session: GuidedCaptureSession,
+  baselineObservedWindowCount: number,
+): Promise<void> {
+  const started = Date.now();
+  let previousTop = session.scrollTarget.scrollTop;
+  let previousHeight = session.scrollTarget.scrollHeight;
+  let stableSamples = 0;
+  while (
+    guidedCaptureSession === session &&
+    !session.finalizing &&
+    Date.now() - started < AUTOMATIC_STABILIZATION_TIMEOUT_MS
+  ) {
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, AUTOMATIC_STABILIZATION_INTERVAL_MS),
+    );
+    const nextTop = session.scrollTarget.scrollTop;
+    const nextHeight = session.scrollTarget.scrollHeight;
+    const observedChange =
+      session.observedWindowCount > baselineObservedWindowCount;
+    if (
+      observedChange &&
+      nextTop === previousTop &&
+      nextHeight === previousHeight
+    ) {
+      stableSamples += 1;
+      if (stableSamples >= 2) return;
+    } else {
+      stableSamples = 0;
+      previousTop = nextTop;
+      previousHeight = nextHeight;
+    }
+  }
+}
+
+async function togglePageAutomaticCapture(
+  operation: CaptureOperationSnapshot,
+): Promise<void> {
+  if (
+    operation.mode !== "automatic" ||
+    !["collecting", "paused"].includes(operation.state)
+  )
+    return;
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      action: "CONTROL_AUTOMATIC_CAPTURE_OPERATION",
+      operationId: operation.operationId,
+      command: operation.state === "paused" ? "resume" : "pause",
+    })) as ExtensionResponse<CaptureOperationSnapshot>;
+    if (response.success && response.data)
+      renderCaptureOperation(response.data);
+    else
+      updateStatus(
+        response.success
+          ? "Automatic capture could not be updated."
+          : response.error,
+        "error",
+      );
+  } catch (error) {
+    updateStatus(normalizeErrorMessage(error), "error");
+  }
+}
+
+function automaticLimitStopReason(
+  session: GuidedCaptureSession,
+): Exclude<CaptureStopReason, "loaded-window"> {
+  return session.automaticBoundary?.kind === "messages" &&
+    session.captureLimit < AUTOMATIC_CAPTURE_SAFETY_CAP
+    ? "automatic-message-limit"
+    : "automatic-safety-cap";
+}
+
+function automaticBoundaryReason(
+  session: GuidedCaptureSession,
+  verifiedTop: boolean,
+): Exclude<CaptureStopReason, "loaded-window"> | null {
+  if (!session.automaticBoundary || !session.automaticStartedAt) return null;
+  const oldestTrustedTimestamp = session.items
+    .filter((item) => item.value.captureTimestampMethod === "metadata")
+    .map((item) => item.value.timestamp)
+    .filter(Boolean)
+    .sort()[0];
+  const reason = automaticBoundaryStopReason({
+    boundary: session.automaticBoundary,
+    extractedCount: session.items.length,
+    oldestTrustedTimestamp,
+    verifiedTop,
+    startedAt: session.automaticStartedAt,
+  });
+  return reason === "loaded-window" ? null : reason;
+}
+
+function retainAutomaticItems(
+  session: GuidedCaptureSession,
+  items: GuidedWindowItem<ExtractedMessage>[],
+): void {
+  session.items = items;
+  reconcileGuidedAlignmentWarnings(session);
+  session.payload.messages = items.map((item) => item.value);
+  session.payload.messageCount = session.payload.messages.length;
+  session.skippedCount = 0;
+  session.unreadableCount = 0;
+  session.payload.diagnostics = {
+    ...session.payload.diagnostics,
+    messageContainerCount: session.payload.messages.length,
+    extractedMessageCount: session.payload.messages.length,
+    unreadableMessageCount: 0,
+    ...summarizeGuidedDiagnosticMethods(session.payload.messages),
+  };
+  const retainedParticipantRefs = new Set(
+    session.payload.messages.flatMap((message) =>
+      [message.senderRef].filter((value): value is string => Boolean(value)),
+    ),
+  );
+  session.payload.participants = session.payload.participants.filter(
+    (participant) => retainedParticipantRefs.has(participant.ref),
+  );
+}
+
+function trimAutomaticDateBoundary(session: GuidedCaptureSession): void {
+  if (!session.automaticBoundary || !session.automaticStartedAt) return;
+  const startIndex = automaticDateBoundaryStartIndex(
+    session.items.map((item) =>
+      item.value.captureTimestampMethod === "metadata"
+        ? item.value.timestamp
+        : undefined,
+    ),
+    session.automaticBoundary,
+    session.automaticStartedAt,
+  );
+  if (startIndex !== null) {
+    retainAutomaticItems(session, session.items.slice(startIndex));
+    session.automaticDateBoundaryProofItems = [...session.items];
+  }
+}
+
+function prepareAutomaticCaptureSummary(session: GuidedCaptureSession): void {
+  if (session.automaticBoundary?.kind !== "days") return;
+  const provenItems = session.automaticDateBoundaryProofItems;
+  if (
+    provenItems?.length === session.items.length &&
+    provenItems.every((item, index) => item === session.items[index])
+  ) {
+    return;
+  }
+  const startedAt = session.automaticStartedAt;
+  const trustedTimestamps = session.items.map((item) =>
+    item.value.captureTimestampMethod === "metadata"
+      ? item.value.timestamp
+      : undefined,
+  );
+  const startIndex = startedAt
+    ? automaticDateBoundaryStartIndex(
+        trustedTimestamps,
+        session.automaticBoundary,
+        startedAt,
+      )
+    : null;
+  const everyRetainedDateIsTrusted = trustedTimestamps.every(
+    (timestamp) =>
+      Boolean(timestamp) && Number.isFinite(Date.parse(timestamp!)),
+  );
+  if (!startedAt || (startIndex === null && !everyRetainedDateIsTrusted)) {
+    throw new Error(
+      "The selected date boundary could not be verified from WhatsApp date metadata. Nothing was sent.",
+    );
+  }
+  if (startIndex !== null) {
+    retainAutomaticItems(session, session.items.slice(startIndex));
+    session.automaticDateBoundaryProofItems = [...session.items];
+  }
+}
+
+async function runAutomaticCapture(
+  session: GuidedCaptureSession,
+): Promise<void> {
+  while (guidedCaptureSession === session && !session.finalizing) {
+    if (session.automaticPaused) {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+      continue;
+    }
+    const existingReason = automaticBoundaryReason(
+      session,
+      hasVerifiedTopOfHistory(session.scrollTarget),
+    );
+    if (existingReason) {
+      if (existingReason === "automatic-date-boundary") {
+        trimAutomaticDateBoundary(session);
+      }
+      session.pendingStopReason = existingReason;
+      if (!session.drainPromise) startGuidedWindowDrain(session);
+      return;
+    }
+
+    const beforeTop = session.scrollTarget.scrollTop;
+    const beforeHeight = session.scrollTarget.scrollHeight;
+    const beforeCount = session.items.length;
+    const beforeObservedWindowCount = session.observedWindowCount;
+    const step = Math.max(
+      320,
+      Math.floor(session.scrollTarget.clientHeight * 0.8),
+    );
+    session.scrollTarget.scrollTop = Math.max(0, beforeTop - step);
+    queueGuidedWindowRead();
+    await waitForAutomaticStabilization(session, beforeObservedWindowCount);
+    if (session.drainPromise) await session.drainPromise;
+    if (guidedCaptureSession !== session || session.finalizing) return;
+    if (session.automaticPaused) continue;
+
+    const verifiedTop = hasVerifiedTopOfHistory(session.scrollTarget);
+    const boundaryReason = automaticBoundaryReason(session, verifiedTop);
+    if (boundaryReason) {
+      if (boundaryReason === "automatic-date-boundary") {
+        trimAutomaticDateBoundary(session);
+      }
+      session.pendingStopReason = boundaryReason;
+      if (!session.drainPromise) startGuidedWindowDrain(session);
+      return;
+    }
+    const progressed =
+      session.items.length > beforeCount ||
+      session.scrollTarget.scrollTop !== beforeTop ||
+      session.scrollTarget.scrollHeight !== beforeHeight;
+    session.noProgressCount = progressed ? 0 : session.noProgressCount + 1;
+    if (session.noProgressCount >= AUTOMATIC_NO_PROGRESS_LIMIT) {
+      session.pendingStopReason = verifiedTop
+        ? "automatic-verified-top"
+        : "automatic-no-progress";
+      if (!session.drainPromise) startGuidedWindowDrain(session);
+      return;
+    }
+  }
+}
+
 function queueGuidedWindowRead(): void {
   const session = guidedCaptureSession;
   if (!session || session.finalizing) return;
@@ -1642,6 +2109,13 @@ function queueGuidedWindowRead(): void {
   // merged in FIFO order to keep progress updates and retained order stable.
   session.pendingWindows.push(extractCurrentChat(true).catch(() => null));
   startGuidedWindowDrain(session);
+}
+
+function queueObservedGuidedWindowRead(): void {
+  const session = guidedCaptureSession;
+  if (!session || session.finalizing) return;
+  session.observedWindowCount += 1;
+  queueGuidedWindowRead();
 }
 
 function startGuidedWindowDrain(session: GuidedCaptureSession): void {
@@ -1659,11 +2133,20 @@ function startGuidedWindowDrain(session: GuidedCaptureSession): void {
     ) {
       const stopReason = session.pendingStopReason;
       session.pendingStopReason = undefined;
-      void chrome.runtime.sendMessage({
-        action: "STOP_GUIDED_CAPTURE_OPERATION",
-        operationId: session.operationId,
-        stopReason,
-      });
+      void chrome.runtime.sendMessage(
+        session.mode === "automatic"
+          ? {
+              action: "CONTROL_AUTOMATIC_CAPTURE_OPERATION",
+              operationId: session.operationId,
+              command: "stop",
+              stopReason,
+            }
+          : {
+              action: "STOP_GUIDED_CAPTURE_OPERATION",
+              operationId: session.operationId,
+              stopReason,
+            },
+      );
     }
   };
   void drain.then(finishDrain, finishDrain);
@@ -1707,19 +2190,29 @@ async function drainGuidedWindowReads(
         session.consecutiveFailures = 0;
         const summary = mergeGuidedPayload(session, incoming);
         await chrome.runtime.sendMessage({
-          action: "UPDATE_GUIDED_CAPTURE_OPERATION",
+          action:
+            session.mode === "automatic"
+              ? "UPDATE_AUTOMATIC_CAPTURE_OPERATION"
+              : "UPDATE_GUIDED_CAPTURE_OPERATION",
           operationId: session.operationId,
           summary,
         });
         if (session.limitReached) {
-          session.pendingStopReason = "guided-safety-limit";
+          session.pendingStopReason =
+            session.mode === "automatic"
+              ? (automaticBoundaryReason(session, false) ??
+                automaticLimitStopReason(session))
+              : "guided-safety-limit";
           session.pendingWindows.length = 0;
           return;
         }
       } catch {
         session.consecutiveFailures += 1;
         if (session.consecutiveFailures >= 3) {
-          session.pendingStopReason = "guided-dom-failure";
+          session.pendingStopReason =
+            session.mode === "automatic"
+              ? "automatic-dom-failure"
+              : "guided-dom-failure";
           session.pendingWindows.length = 0;
           return;
         }
@@ -1734,6 +2227,7 @@ async function startGuidedCaptureOperation(
   operationId: string,
   chatIdentity: string,
   initialPayload: ExtractedChat,
+  mode: "guided" | "automatic",
 ): Promise<CaptureCollectionSummary> {
   const messageList = findConversationRoot(
     document,
@@ -1748,22 +2242,35 @@ async function startGuidedCaptureOperation(
       initialPayload.messages.length -
       unreadableCount,
   );
-  const observer = new MutationObserver(queueGuidedWindowRead);
+  const observer = new MutationObserver(queueObservedGuidedWindowRead);
+  const scrollTarget =
+    mode === "automatic"
+      ? resolveAutomaticScrollTarget(messageList)
+      : (messageList as HTMLElement);
   const session: GuidedCaptureSession = {
     operationId,
     chatIdentity,
     payload: initialPayload,
+    mode,
+    captureLimit:
+      mode === "automatic"
+        ? AUTOMATIC_CAPTURE_SAFETY_CAP
+        : GUIDED_CAPTURE_LIMIT,
     items: guidedItems(initialPayload.messages),
     observer,
-    scrollTarget: messageList,
+    scrollTarget,
     consecutiveFailures: 0,
     alignmentWarningCount: 0,
+    alignmentWarnings: [],
     skippedCount,
     unreadableCount,
     reading: false,
     pendingWindows: [],
     finalizing: false,
     limitReached: false,
+    automaticPaused: false,
+    noProgressCount: 0,
+    observedWindowCount: 0,
   };
   guidedCaptureSession = session;
   return summarizeCapturePayload(
@@ -1798,8 +2305,74 @@ function activateGuidedCaptureOperation(operationId: string): void {
   }, GUIDED_CAPTURE_TIMEOUT_MS);
 }
 
+function activateAutomaticCaptureOperation(
+  operationId: string,
+  requestedBoundary: AutomaticCaptureBoundary,
+): void {
+  const session = guidedCaptureSession;
+  if (
+    !session ||
+    session.operationId !== operationId ||
+    session.mode !== "automatic"
+  ) {
+    throw new Error("The automatic capture buffer is no longer available.");
+  }
+  if (session.automaticRunner) return;
+  const boundary = normalizeAutomaticBoundary(requestedBoundary);
+  session.automaticBoundary = boundary;
+  session.automaticStartedAt = new Date();
+  session.captureLimit =
+    boundary.kind === "messages"
+      ? Math.min(AUTOMATIC_CAPTURE_SAFETY_CAP, boundary.messageLimit)
+      : AUTOMATIC_CAPTURE_SAFETY_CAP;
+  if (session.items.length > session.captureLimit) {
+    retainAutomaticItems(session, session.items.slice(-session.captureLimit));
+  }
+  session.originalScrollTop = session.scrollTarget.scrollTop;
+  session.originalBottomOffset =
+    session.scrollTarget.scrollHeight - session.scrollTarget.scrollTop;
+  session.observer.observe(session.scrollTarget, {
+    childList: true,
+    subtree: true,
+  });
+  session.automaticRunner = runAutomaticCapture(session).catch(() => {
+    if (guidedCaptureSession !== session || session.finalizing) return;
+    session.pendingStopReason = "automatic-dom-failure";
+    if (!session.drainPromise) startGuidedWindowDrain(session);
+  });
+}
+
+async function setAutomaticCapturePaused(
+  operationId: string,
+  paused: boolean,
+): Promise<void> {
+  const session = guidedCaptureSession;
+  if (
+    !session ||
+    session.operationId !== operationId ||
+    session.mode !== "automatic" ||
+    session.finalizing
+  ) {
+    throw new Error("The automatic capture buffer is no longer available.");
+  }
+  session.automaticPaused = paused;
+  if (paused) {
+    session.observer.disconnect();
+    if (session.drainPromise) await session.drainPromise;
+    return;
+  }
+  if (guidedCaptureSession !== session || session.finalizing) {
+    throw new Error("The automatic capture buffer is no longer available.");
+  }
+  session.observer.observe(session.scrollTarget, {
+    childList: true,
+    subtree: true,
+  });
+}
+
 async function finalizeGuidedCaptureOperation(
   operationId: string,
+  prepareSummary?: (session: GuidedCaptureSession) => void,
 ): Promise<CaptureCollectionSummary> {
   const session = guidedCaptureSession;
   if (!session || session.operationId !== operationId) {
@@ -1813,6 +2386,7 @@ async function finalizeGuidedCaptureOperation(
   if (guidedCaptureSession !== session) {
     throw new Error("The guided capture buffer is no longer available.");
   }
+  prepareSummary?.(session);
   const summary = summarizeCapturePayload(
     session.payload,
     session.chatIdentity,
@@ -1830,9 +2404,32 @@ async function finalizeGuidedCaptureOperation(
   return summary;
 }
 
+async function finalizeAutomaticCaptureOperation(
+  operationId: string,
+): Promise<CaptureCollectionSummary> {
+  const session = guidedCaptureSession;
+  if (
+    !session ||
+    session.operationId !== operationId ||
+    session.mode !== "automatic"
+  ) {
+    throw new Error("The automatic capture buffer is no longer available.");
+  }
+  const summary = await finalizeGuidedCaptureOperation(
+    operationId,
+    prepareAutomaticCaptureSummary,
+  );
+  if (summary.extractedCount === 0) {
+    throw new Error(
+      "No readable messages fall within the selected automatic boundary. Nothing was sent.",
+    );
+  }
+  return summary;
+}
+
 async function collectCaptureOperation(
   operationId: string,
-  mode: "loaded" | "guided" = "loaded",
+  mode: "loaded" | "guided" | "automatic" = "loaded",
 ): Promise<CaptureCollectionSummary> {
   if (
     activeCaptureOperation &&
@@ -1879,46 +2476,30 @@ async function collectCaptureOperation(
     activeCaptureOperation = {
       operationId,
       chatIdentity,
-      state: mode === "guided" ? "collecting" : "ready-for-review",
+      state: mode === "loaded" ? "ready-for-review" : "collecting",
       payload,
     };
-    if (mode === "guided") {
+    if (mode !== "loaded") {
       return await startGuidedCaptureOperation(
         operationId,
         chatIdentity,
         payload,
+        mode,
       );
     }
-    const timestamps = payload.messages
-      .map((message) => message.timestamp)
-      .filter(Boolean)
-      .sort();
-    return {
-      chatKey: getOpaqueChatKey(chatIdentity),
-      renderedCount: payload.diagnostics.messageContainerCount,
-      extractedCount: payload.messages.length,
-      skippedCount: Math.max(
+    const unreadableCount = payload.diagnostics.unreadableMessageCount;
+    return summarizeCapturePayload(
+      payload,
+      chatIdentity,
+      Math.max(
         0,
         payload.diagnostics.messageContainerCount -
           payload.messages.length -
-          payload.diagnostics.unreadableMessageCount,
+          unreadableCount,
       ),
-      unreadableCount: payload.diagnostics.unreadableMessageCount,
-      participantLabelCount: payload.participants.filter(
-        (participant) =>
-          participant.isSelf ||
-          Boolean(
-            participant.rawDisplayName ||
-              participant.rawUsername ||
-              participant.normalizedPhone ||
-              participant.platformUserId,
-          ),
-      ).length,
-      alignmentWarningCount: 0,
-      mediaCount: payload.messages.filter((message) => message.isMedia).length,
-      oldestTimestamp: timestamps[0],
-      newestTimestamp: timestamps[timestamps.length - 1],
-    };
+      unreadableCount,
+      0,
+    );
   } catch (error) {
     if (activeCaptureOperation?.operationId === operationId) {
       activeCaptureOperation = null;
@@ -2574,6 +3155,42 @@ function handleMessage(
       }
       break;
 
+    case "ACTIVATE_AUTOMATIC_CAPTURE_OPERATION":
+      try {
+        activateAutomaticCaptureOperation(
+          message.operationId,
+          message.boundary,
+        );
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: normalizeErrorMessage(error) });
+      }
+      break;
+
+    case "SET_AUTOMATIC_CAPTURE_PAUSED":
+      setAutomaticCapturePaused(message.operationId, message.paused)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) =>
+          sendResponse({ success: false, error: normalizeErrorMessage(error) }),
+        );
+      return true;
+
+    case "FINALIZE_AUTOMATIC_CAPTURE_OPERATION":
+      finalizeAutomaticCaptureOperation(message.operationId)
+        .then((summary) =>
+          respondSafely(sendResponse, {
+            success: true,
+            data: { summary },
+          }),
+        )
+        .catch((error) =>
+          respondSafely(sendResponse, {
+            success: false,
+            error: normalizeErrorMessage(error),
+          }),
+        );
+      return true;
+
     case "GET_CAPTURE_PREVIEW": {
       const preview = getCapturePreviewSummary(message.operationId);
       if (!preview) {
@@ -2643,7 +3260,7 @@ function handleMessage(
           state.isExtracting ||
           Boolean(
             activeCaptureOperation &&
-              ["collecting", "uploading"].includes(
+              ["collecting", "paused", "uploading"].includes(
                 activeCaptureOperation.state,
               ),
           ),

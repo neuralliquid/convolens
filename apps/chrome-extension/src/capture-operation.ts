@@ -2,6 +2,7 @@ export type CaptureOperationState =
   | "idle"
   | "inspecting"
   | "collecting"
+  | "paused"
   | "ready-for-review"
   | "uploading"
   | "received"
@@ -11,13 +12,24 @@ export type CaptureOperationState =
   | "cancelled";
 
 export type CaptureOperationInitiator = "popup" | "page";
-export type CaptureOperationMode = "loaded" | "guided";
+export type CaptureOperationMode = "loaded" | "guided" | "automatic";
+export type AutomaticCaptureBoundary =
+  | { kind: "days"; days: 7 | 30 }
+  | { kind: "messages"; messageLimit: number }
+  | { kind: "verified-top" };
 export type CaptureStopReason =
   | "loaded-window"
   | "guided-user-stopped"
   | "guided-safety-limit"
   | "guided-timeout"
-  | "guided-dom-failure";
+  | "guided-dom-failure"
+  | "automatic-user-stopped"
+  | "automatic-date-boundary"
+  | "automatic-message-limit"
+  | "automatic-verified-top"
+  | "automatic-safety-cap"
+  | "automatic-no-progress"
+  | "automatic-dom-failure";
 
 export interface CaptureOperationSnapshot {
   operationId: string;
@@ -25,6 +37,8 @@ export interface CaptureOperationSnapshot {
   tabId: number;
   initiator: CaptureOperationInitiator;
   mode: CaptureOperationMode;
+  automaticBoundary?: AutomaticCaptureBoundary;
+  automaticControlsReady?: boolean;
   state: CaptureOperationState;
   chatKey?: string;
   renderedCount: number;
@@ -36,6 +50,7 @@ export interface CaptureOperationSnapshot {
   alignmentWarningCount: number;
   mediaCount: number;
   oldestTimestamp?: string;
+  oldestTrustedTimestamp?: string;
   newestTimestamp?: string;
   stopReason?: CaptureStopReason;
   resultPath?: string;
@@ -55,6 +70,7 @@ export interface CaptureCollectionSummary {
   alignmentWarningCount: number;
   mediaCount: number;
   oldestTimestamp?: string;
+  oldestTrustedTimestamp?: string;
   newestTimestamp?: string;
 }
 
