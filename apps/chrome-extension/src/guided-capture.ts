@@ -1,5 +1,21 @@
 export type GuidedMergeEdge = "prepend" | "append";
 
+export function resolveDisjointGuidedEdge(
+  existingTimestamps: string[],
+  incomingTimestamps: string[],
+): GuidedMergeEdge | null {
+  const parse = (values: string[]) =>
+    values
+      .map((value) => Date.parse(value))
+      .filter((value) => Number.isFinite(value));
+  const existing = parse(existingTimestamps);
+  const incoming = parse(incomingTimestamps);
+  if (existing.length === 0 || incoming.length === 0) return null;
+  if (Math.min(...incoming) > Math.max(...existing)) return "append";
+  if (Math.max(...incoming) < Math.min(...existing)) return "prepend";
+  return null;
+}
+
 export interface GuidedWindowItem<T> {
   stableId?: string;
   alignmentToken: string;

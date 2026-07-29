@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   mergeGuidedWindow,
+  resolveDisjointGuidedEdge,
   type GuidedWindowItem,
 } from "../src/guided-capture";
 
@@ -109,6 +110,33 @@ test("preserves stable additions on both sides of the retained window", () => {
   assert.equal(result.addedCount, 4);
   assert.equal(result.overlapCount, 3);
   assert.equal(result.ambiguous, false);
+});
+
+test("appends a clearly newer disjoint window", () => {
+  assert.equal(
+    resolveDisjointGuidedEdge(
+      ["2026-07-28T09:00:00.000Z"],
+      ["2026-07-28T10:00:00.000Z"],
+    ),
+    "append",
+  );
+});
+
+test("prepends a clearly older disjoint window", () => {
+  assert.equal(
+    resolveDisjointGuidedEdge(
+      ["2026-07-28T09:00:00.000Z"],
+      ["2026-07-28T08:00:00.000Z"],
+    ),
+    "prepend",
+  );
+});
+
+test("leaves an unresolvable disjoint window ambiguous", () => {
+  assert.equal(
+    resolveDisjointGuidedEdge(["unavailable"], ["unavailable"]),
+    null,
+  );
 });
 
 test("fallback sequence alignment merges an unambiguous overlap", () => {

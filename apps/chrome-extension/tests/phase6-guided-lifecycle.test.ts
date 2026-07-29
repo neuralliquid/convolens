@@ -88,6 +88,11 @@ test("snapshots every observed virtualized window before serial merging", () => 
   assert.doesNotMatch(contentSource, /pendingRead/);
 });
 
+test("does not assume a zero-overlap window belongs at the older edge", () => {
+  assert.match(contentSource, /resolveDisjointGuidedEdge/);
+  assert.match(contentSource, /mergeEdge === null[\s\S]*ambiguous: true/);
+});
+
 test("stops observing and drains queued windows before final review", () => {
   assert.match(
     contentSource,

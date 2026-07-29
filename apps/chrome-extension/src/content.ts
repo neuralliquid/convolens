@@ -51,7 +51,12 @@ import {
   type LauncherPosition,
   type LauncherPreset,
 } from "./launcher-position";
-import { mergeGuidedWindow, type GuidedWindowItem } from "./guided-capture";
+import {
+  mergeGuidedWindow,
+  resolveDisjointGuidedEdge,
+  type GuidedMergeEdge,
+  type GuidedWindowItem,
+} from "./guided-capture";
 
 // =============================================================================
 // Types
@@ -1387,7 +1392,7 @@ function guidedItems(
 function guidedMergeEdge(
   existing: GuidedWindowItem<ExtractedMessage>[],
   incoming: GuidedWindowItem<ExtractedMessage>[],
-): "prepend" | "append" {
+): GuidedMergeEdge | null {
   if (existing.length === 0 || incoming.length === 0) return "prepend";
   const existingIds = new Set(
     existing
@@ -1403,7 +1408,14 @@ function guidedMergeEdge(
   }
   const prepend = mergeGuidedWindow(existing, incoming, "prepend");
   const append = mergeGuidedWindow(existing, incoming, "append");
-  return append.overlapCount > prepend.overlapCount ? "append" : "prepend";
+  if (append.overlapCount !== prepend.overlapCount) {
+    return append.overlapCount > prepend.overlapCount ? "append" : "prepend";
+  }
+  if (append.overlapCount > 0) return "prepend";
+  return resolveDisjointGuidedEdge(
+    existing.map((item) => item.value.timestamp),
+    incoming.map((item) => item.value.timestamp),
+  );
 }
 
 function summarizeCapturePayload(
@@ -1472,12 +1484,25 @@ function mergeGuidedPayload(
     ),
   );
   const incomingItems = guidedItems(remappedMessages);
-  const merge = mergeGuidedWindow(
+  const mergeEdge = guidedMergeEdge(session.items, incomingItems);
+  let merge = mergeGuidedWindow(
     session.items,
     incomingItems,
-    guidedMergeEdge(session.items, incomingItems),
-    GUIDED_CAPTURE_LIMIT,
+    mergeEdge || "prepend",
+    mergeEdge ? GUIDED_CAPTURE_LIMIT : undefined,
   );
+  if (mergeEdge === null) {
+    merge =
+      merge.items.length > GUIDED_CAPTURE_LIMIT
+        ? {
+            items: session.items,
+            addedCount: 0,
+            overlapCount: 0,
+            ambiguous: true,
+            limitReached: true,
+          }
+        : { ...merge, ambiguous: true };
+  }
   session.items = merge.items;
   if (merge.ambiguous) session.alignmentWarningCount += 1;
   if (merge.limitReached) session.limitReached = true;
