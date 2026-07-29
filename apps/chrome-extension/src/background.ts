@@ -27,6 +27,7 @@ import {
   type CancelCaptureOperationMessage,
   type StopGuidedCaptureOperationMessage,
   type ControlAutomaticCaptureOperationMessage,
+  type SetPreferredCaptureModeMessage,
 } from "./config";
 import {
   completeCaptureOperation,
@@ -39,6 +40,14 @@ import {
   type CaptureStopReason,
 } from "./capture-operation";
 import { normalizeAutomaticBoundary } from "./automatic-capture";
+import {
+  deriveToolbarBadge,
+  normalizeCaptureMode,
+  normalizeConversationResultPath,
+  operationalStateForOwner,
+  type CaptureOperationalState,
+  type StoredCaptureOperationalState,
+} from "./capture-operational";
 
 // =============================================================================
 // Types
@@ -83,8 +92,14 @@ let authenticationWriteTail: Promise<void> = Promise.resolve();
 let authenticationIntentGeneration = 0;
 let committedAuthenticationIntentGeneration = 0;
 const activeAuthenticationClearIntents = new Set<number>();
+let captureOperationalStateWriteTail: Promise<void> = Promise.resolve();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  void handleCaptureTabRemoved(tabId);
+});
+
+async function handleCaptureTabRemoved(tabId: number): Promise<void> {
+  await loadCaptureOperations();
   const operation = captureOperations.get(tabId);
   if (
     operation &&
@@ -103,7 +118,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
       false,
     );
   }
-});
+}
 
 // =============================================================================
 // Message Handler
@@ -165,6 +180,14 @@ async function handleMessage(
 
     case "GET_LEGACY_QUEUE_SUMMARY":
       return await getLegacyQueueSummary();
+
+    case "GET_CAPTURE_OPERATIONAL_STATE":
+      return await getCaptureOperationalState();
+
+    case "SET_PREFERRED_CAPTURE_MODE":
+      return await setPreferredCaptureMode(
+        (message as SetPreferredCaptureModeMessage).mode,
+      );
 
     case "REFRESH_LAUNCHER_STATE":
       await notifyLauncherStateRefresh();
@@ -265,6 +288,7 @@ async function handleMessage(
     case "VALIDATE_CAPTURE_OPERATION_CONTEXT":
     case "DISCARD_CAPTURE_OPERATION":
     case "CAPTURE_OPERATION_UPDATED":
+    case "EXPORT_CAPTURE_OPERATION_PAYLOAD":
       // These are handled by content script, not background
       return { success: false, error: "Action handled by content script" };
 
@@ -288,10 +312,14 @@ function resolveCaptureTabId(
 async function loadCaptureOperations(): Promise<void> {
   if (captureOperationsLoadPromise) return await captureOperationsLoadPromise;
   captureOperationsLoadPromise = (async () => {
-    const stored = await chrome.storage.session.get([
-      STORAGE_KEYS.captureOperations,
-      STORAGE_KEYS.captureLifecycleEpoch,
+    const [stored, ownerState] = await Promise.all([
+      chrome.storage.session.get([
+        STORAGE_KEYS.captureOperations,
+        STORAGE_KEYS.captureLifecycleEpoch,
+      ]),
+      chrome.storage.local.get([STORAGE_KEYS.user]),
     ]);
+    const restoredOwnerId = ownerState[STORAGE_KEYS.user]?.id;
     const persistedEpoch = stored[STORAGE_KEYS.captureLifecycleEpoch];
     captureLifecycleEpoch =
       Number.isInteger(persistedEpoch) && persistedEpoch >= 0
@@ -337,15 +365,22 @@ async function loadCaptureOperations(): Promise<void> {
           ? (value as CaptureOperationSnapshot).alignmentWarningCount
           : 0,
       };
-      const restored = isActiveCaptureState(operation.state)
-        ? completeCaptureOperation(
-            operation,
-            "cancelled",
-            "The extension background restarted. Recapture and review the loaded messages.",
-          )
-        : operation;
+      const canRestoreReviewedRetry =
+        operation.state === "retry-required" &&
+        typeof restoredOwnerId === "string";
+      const restored =
+        isActiveCaptureState(operation.state) && !canRestoreReviewedRetry
+          ? completeCaptureOperation(
+              operation,
+              "cancelled",
+              "The extension background restarted. Recapture and review the loaded messages.",
+            )
+          : operation;
       captureOperations.set(tabId, restored);
       captureOperationEpochs.set(restored.operationId, captureLifecycleEpoch);
+      if (canRestoreReviewedRetry) {
+        captureOperationOwnerIds.set(restored.operationId, restoredOwnerId);
+      }
       if (restored !== operation) interrupted.push(restored);
     }
     await persistCaptureOperations();
@@ -365,11 +400,28 @@ async function loadCaptureOperations(): Promise<void> {
   return await captureOperationsLoadPromise;
 }
 
+async function updateToolbarBadge(): Promise<void> {
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.pendingUploads]);
+  const pending = stored[STORAGE_KEYS.pendingUploads];
+  const badge = deriveToolbarBadge(
+    captureOperations.values(),
+    Array.isArray(pending) ? pending.length : 0,
+  );
+  await Promise.all([
+    chrome.action.setBadgeText({ text: badge.text }),
+    chrome.action.setBadgeBackgroundColor({ color: badge.color }),
+    chrome.action.setTitle({ title: badge.title }),
+  ]);
+}
+
 async function persistCaptureOperations(): Promise<void> {
   await chrome.storage.session.set({
     [STORAGE_KEYS.captureOperations]: Object.fromEntries(captureOperations),
     [STORAGE_KEYS.captureLifecycleEpoch]: captureLifecycleEpoch,
   });
+  await updateToolbarBadge().catch((error) =>
+    console.warn("[Background] Toolbar badge update failed:", error),
+  );
 }
 
 async function publishCaptureOperation(
@@ -1066,11 +1118,14 @@ async function uploadCaptureOperation(
       {
         ...operation,
         reconciliationRequired: Boolean(result?.reconciliationRequired),
-        resultPath: result?.data?.dashboardUrl,
+        resultPath: normalizeConversationResultPath(result?.data?.dashboardUrl),
       },
       duplicate ? "duplicate" : "received",
     );
     await publishCaptureOperation(operation);
+    await recordSuccessfulCapture(operation, expectedOwnerId).catch((error) =>
+      console.warn("[Background] Last capture metadata update failed:", error),
+    );
     await discardCapturePayload(operation);
     return { success: true, data: operation };
   } catch (error) {
@@ -1824,6 +1879,105 @@ async function updateSettings(
   return { success: true, data: settings };
 }
 
+async function getCurrentOwnerId(): Promise<string | null> {
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.user]);
+  const ownerId = stored[STORAGE_KEYS.user]?.id;
+  return typeof ownerId === "string" ? ownerId : null;
+}
+
+async function getCaptureOperationalState(): Promise<
+  ExtensionResponse<CaptureOperationalState>
+> {
+  const ownerId = await getCurrentOwnerId();
+  if (!ownerId) {
+    return {
+      success: false,
+      error: "Sign in to read capture preferences.",
+    };
+  }
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEYS.captureOperationalState,
+  ]);
+  return {
+    success: true,
+    data: operationalStateForOwner(
+      stored[STORAGE_KEYS.captureOperationalState],
+      ownerId,
+    ),
+  };
+}
+
+async function setPreferredCaptureMode(
+  requestedMode: SetPreferredCaptureModeMessage["mode"],
+): Promise<ExtensionResponse<CaptureOperationalState>> {
+  const ownerId = await getCurrentOwnerId();
+  if (!ownerId) {
+    return {
+      success: false,
+      error: "Sign in before saving a capture preference.",
+    };
+  }
+  const state = await mutateCaptureOperationalState(ownerId, (current) => ({
+    ...current,
+    preferredMode: normalizeCaptureMode(requestedMode),
+  }));
+  return { success: true, data: state };
+}
+
+async function mutateCaptureOperationalState(
+  ownerId: string,
+  update: (current: CaptureOperationalState) => CaptureOperationalState,
+): Promise<CaptureOperationalState> {
+  let releaseWrite: () => void = () => undefined;
+  const previousWrite = captureOperationalStateWriteTail;
+  captureOperationalStateWriteTail = new Promise<void>((resolve) => {
+    releaseWrite = resolve;
+  });
+  await previousWrite;
+  try {
+    const stored = await chrome.storage.local.get([
+      STORAGE_KEYS.captureOperationalState,
+    ]);
+    const state = update(
+      operationalStateForOwner(
+        stored[STORAGE_KEYS.captureOperationalState],
+        ownerId,
+      ),
+    );
+    const persisted: StoredCaptureOperationalState = { ownerId, ...state };
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.captureOperationalState]: persisted,
+    });
+    return state;
+  } finally {
+    releaseWrite();
+  }
+}
+
+async function recordSuccessfulCapture(
+  operation: CaptureOperationSnapshot,
+  ownerId: string,
+): Promise<void> {
+  if (
+    (operation.state !== "received" && operation.state !== "duplicate") ||
+    !operation.completedAt
+  ) {
+    return;
+  }
+  const completedAt = operation.completedAt;
+  const resultState = operation.state;
+  await mutateCaptureOperationalState(ownerId, (current) => ({
+    preferredMode: current.preferredMode,
+    lastCapture: {
+      count: operation.extractedCount,
+      completedAt,
+      state: resultState,
+      resultPath: normalizeConversationResultPath(operation.resultPath),
+      reconciliationRequired: Boolean(operation.reconciliationRequired),
+    },
+  }));
+}
+
 async function getApiConfig() {
   const stored = await chrome.storage.local.get([STORAGE_KEYS.settings]);
   const settings = stored[STORAGE_KEYS.settings] || {};
@@ -1843,6 +1997,10 @@ async function getApiConfig() {
 
 async function clearPendingUploads(): Promise<ExtensionResponse> {
   await chrome.storage.local.remove(STORAGE_KEYS.pendingUploads);
+  await updateToolbarBadge().catch((error) =>
+    console.warn("[Background] Toolbar badge update failed:", error),
+  );
+  await notifyLauncherStateRefresh();
   return { success: true };
 }
 
@@ -1944,7 +2102,14 @@ async function checkApiRateLimit(): Promise<boolean> {
 
 async function openDashboard(path?: string): Promise<ExtensionResponse> {
   const config = await getApiConfig();
-  const url = `${config.dashboardUrl}${path || "/dashboard"}`;
+  const safePath = path ? normalizeConversationResultPath(path) : "/dashboard";
+  if (!safePath) {
+    return {
+      success: false,
+      error: "The received conversation link is not valid.",
+    };
+  }
+  const url = `${config.dashboardUrl}${safePath}`;
   await chrome.tabs.create({ url });
   return { success: true };
 }
@@ -1973,3 +2138,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 });
 
 console.log("[Background] Service worker initialized");
+void loadCaptureOperations().catch((error) =>
+  console.warn("[Background] Capture state initialization failed:", error),
+);

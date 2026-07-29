@@ -50,10 +50,16 @@ const collectionProgressTitle = document.getElementById(
 const collectionProgressInstruction = document.getElementById(
   "collectionProgressInstruction",
 );
+const exportCapture = document.getElementById("exportCapture");
+const operationalActions = document.getElementById("operationalActions");
+const captureResult = document.getElementById("captureResult");
+const lastCapture = document.getElementById("lastCapture");
+const openConversation = document.getElementById("openConversation");
 
 let currentOperation = null;
 let activeWhatsAppTabId = null;
 let captureModeChangeGeneration = 0;
+let operationalState = { preferredMode: "loaded" };
 
 extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
 dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
@@ -116,6 +122,43 @@ function formatPreviewTimestamp(value) {
   if (!value) return "Not detected";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not detected" : date.toLocaleString();
+}
+
+function currentResultPath() {
+  if (
+    currentOperation &&
+    ["received", "duplicate"].includes(currentOperation.state) &&
+    currentOperation.resultPath
+  ) {
+    return currentOperation.resultPath;
+  }
+  return operationalState.lastCapture?.resultPath;
+}
+
+function renderOperationalActions() {
+  operationalActions.hidden = false;
+  const terminalOperation =
+    currentOperation &&
+    ["received", "duplicate"].includes(currentOperation.state)
+      ? currentOperation
+      : null;
+  const resultState =
+    terminalOperation?.state || operationalState.lastCapture?.state;
+  const reconciliationRequired =
+    terminalOperation?.reconciliationRequired ||
+    operationalState.lastCapture?.reconciliationRequired;
+  captureResult.textContent = reconciliationRequired
+    ? "New conversation stored separately — reconciliation needed"
+    : resultState === "duplicate"
+      ? "Existing conversation found — no duplicate created"
+      : resultState === "received"
+        ? "New conversation received"
+        : "No capture result yet";
+  const last = operationalState.lastCapture;
+  lastCapture.textContent = last
+    ? `Last capture: ${last.count} message${last.count === 1 ? "" : "s"} · ${formatPreviewTimestamp(last.completedAt)}`
+    : "Last capture: none yet";
+  openConversation.hidden = !currentResultPath();
 }
 
 function guidedStopReasonLabel(reason) {
@@ -213,7 +256,34 @@ async function renderCapturePreview(operation) {
 function renderCaptureOperation(operation) {
   if (!operation) return;
   currentOperation = operation;
-  const modeValue = operation.mode === "guided" ? "scroll" : operation.mode;
+  if (
+    ["received", "duplicate"].includes(operation.state) &&
+    operation.completedAt
+  ) {
+    operationalState = {
+      ...operationalState,
+      lastCapture: {
+        count: operation.extractedCount,
+        completedAt: operation.completedAt,
+        state: operation.state,
+        resultPath: operation.resultPath,
+        reconciliationRequired: Boolean(operation.reconciliationRequired),
+      },
+    };
+  }
+  renderOperationalActions();
+  const operationOwnsMode = [
+    "inspecting",
+    "collecting",
+    "paused",
+    "ready-for-review",
+    "uploading",
+    "retry-required",
+  ].includes(operation.state);
+  const selectedMode = operationOwnsMode
+    ? operation.mode
+    : operationalState.preferredMode;
+  const modeValue = selectedMode === "guided" ? "scroll" : selectedMode;
   document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
     input.checked = input.value === modeValue;
     input.closest(".capture-mode")?.classList.toggle("selected", input.checked);
@@ -231,12 +301,13 @@ function renderCaptureOperation(operation) {
   confirmCapture.disabled = operation.state === "uploading";
   cancelCapture.disabled = operation.state === "uploading";
   extractBtn.textContent =
-    operation.mode === "guided"
-      ? operation.state === "collecting"
+    selectedMode === "guided"
+      ? operationOwnsMode && operation.state === "collecting"
         ? `Guided: ${count} captured`
         : "Start guided capture"
-      : operation.mode === "automatic"
-        ? ["collecting", "paused"].includes(operation.state)
+      : selectedMode === "automatic"
+        ? operationOwnsMode &&
+          ["collecting", "paused"].includes(operation.state)
           ? `Automatic: ${count} captured`
           : "Load older messages"
         : "Review loaded messages";
@@ -387,8 +458,21 @@ async function init() {
 
   if (authStatus.data?.isAuthenticated) {
     showLoggedIn(authStatus.data.user);
+    const operationalResponse = await sendRuntimeMessage({
+      action: "GET_CAPTURE_OPERATIONAL_STATE",
+    });
+    if (operationalResponse.success && operationalResponse.data) {
+      operationalState = operationalResponse.data;
+      applyPopupCaptureMode(
+        operationalState.preferredMode === "guided"
+          ? "scroll"
+          : operationalState.preferredMode,
+      );
+    }
+    renderOperationalActions();
   } else {
     showLoggedOut();
+    operationalActions.hidden = true;
   }
 
   // Check WhatsApp Web connection
@@ -757,6 +841,17 @@ document.querySelectorAll('input[name="captureMode"]').forEach((input) => {
     const selectedMode = input.value;
     const generation = ++captureModeChangeGeneration;
     applyPopupCaptureMode(selectedMode);
+    const preferredMode =
+      selectedMode === "scroll"
+        ? "guided"
+        : selectedMode === "automatic"
+          ? "automatic"
+          : "loaded";
+    operationalState = { ...operationalState, preferredMode };
+    void sendRuntimeMessage({
+      action: "SET_PREFERRED_CAPTURE_MODE",
+      mode: preferredMode,
+    }).catch(() => undefined);
     void discardUnconfirmedCaptureForModeChange(selectedMode)
       .catch((error) =>
         setActionStatus(normalizeExtensionError(error), "error"),
@@ -780,6 +875,40 @@ chrome.runtime.onMessage.addListener((message) => {
 
 openDashboard.addEventListener("click", () => {
   openTab(`${DASHBOARD_URL}/dashboard`);
+});
+
+openConversation.addEventListener("click", async () => {
+  try {
+    const path = currentResultPath();
+    if (!path) return;
+    const response = await sendRuntimeMessage({
+      action: "OPEN_DASHBOARD",
+      path,
+    });
+    if (!response.success) setActionStatus(response.error, "error");
+  } catch (error) {
+    setActionStatus(normalizeExtensionError(error), "error");
+  }
+});
+
+exportCapture.addEventListener("click", async () => {
+  try {
+    if (!activeWhatsAppTabId || !currentOperation) return;
+    const response = await sendToWhatsApp(activeWhatsAppTabId, {
+      action: "EXPORT_CAPTURE_OPERATION_PAYLOAD",
+      operationId: currentOperation.operationId,
+    });
+    if (response.success) {
+      setActionStatus(
+        `Exported ${response.data?.filename || "reviewed capture"}.`,
+        "success",
+      );
+    } else {
+      setActionStatus(response.error, "error");
+    }
+  } catch (error) {
+    setActionStatus(normalizeExtensionError(error), "error");
+  }
 });
 
 // Initialize

@@ -139,6 +139,7 @@
 
 .ws-launcher-panel[hidden],
 .ws-capture-review[hidden],
+.ws-operational-actions[hidden],
 .ws-legacy-attention[hidden] {
   display: none !important;
 }
@@ -450,6 +451,10 @@
   margin-top: 0;
 }
 
+.ws-wide-action {
+  grid-column: 1 / -1;
+}
+
 .ws-secondary-btn {
   min-height: 40px;
   padding: 9px 12px;
@@ -475,6 +480,29 @@
   border-radius: 10px;
   background: #fff7e8;
   color: #7a2e0e;
+}
+
+.ws-operational-actions,
+.ws-roadmap-preview {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  background: var(--ws-surface-muted);
+  font-size: 12px;
+}
+
+.ws-operational-actions span,
+.ws-roadmap-preview span {
+  color: var(--ws-text-muted);
+}
+
+.ws-roadmap-preview b {
+  color: var(--ws-accent-strong);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 
 .ws-legacy-attention strong {

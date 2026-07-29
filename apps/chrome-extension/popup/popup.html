@@ -367,6 +367,37 @@
         font-size: 12px;
       }
 
+      .preview-actions .wide-action {
+        grid-column: 1 / -1;
+      }
+
+      .operational-actions,
+      .roadmap-preview {
+        display: grid;
+        gap: 6px;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        background: #f9fafb;
+        color: #374151;
+        font-size: 12px;
+      }
+
+      .operational-actions[hidden] {
+        display: none;
+      }
+
+      .operational-actions span,
+      .roadmap-preview span {
+        color: #6b7280;
+      }
+
+      .roadmap-preview b {
+        color: #166534;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
       .user-info {
         display: flex;
         align-items: center;
@@ -587,8 +618,31 @@
                   Confirm upload
                 </button>
                 <button class="btn-secondary" id="cancelCapture">Cancel</button>
+                <button class="btn-secondary wide-action" id="exportCapture">
+                  Export reviewed JSON
+                </button>
               </div>
             </div>
+            <section
+              class="operational-actions"
+              id="operationalActions"
+              aria-label="Capture result"
+              hidden
+            >
+              <strong id="captureResult">No capture result yet</strong>
+              <span id="lastCapture">Last capture: none yet</span>
+              <button class="btn-secondary" id="openConversation" hidden>
+                Open received conversation
+              </button>
+            </section>
+            <section
+              class="roadmap-preview"
+              aria-label="Planned capture actions"
+            >
+              <strong>Coming next</strong>
+              <span>Select individual messages — <b>Soon</b></span>
+              <span>Match participants — <b>Soon</b></span>
+            </section>
             <button class="btn-secondary" id="logoutBtn">Sign Out</button>
             <div
               class="action-status"
