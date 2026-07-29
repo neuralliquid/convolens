@@ -93,8 +93,20 @@ test("does not assume a zero-overlap window belongs at the older edge", () => {
   assert.match(contentSource, /mergeEdge === null[\s\S]*ambiguous: true/);
   assert.match(
     contentSource,
-    /captureTimestampMethod === "fallback"[\s\S]*\? \[\]/,
+    /captureTimestampMethod === "metadata"[\s\S]*\? \[item\.value\.timestamp\][\s\S]*: \[\]/,
   );
+});
+
+test("does not order disjoint windows from date-less visible times", () => {
+  const edgeResolver = contentSource.slice(
+    contentSource.indexOf("function guidedMergeEdge"),
+    contentSource.indexOf("function summarizeCapturePayload"),
+  );
+  assert.doesNotMatch(
+    edgeResolver,
+    /captureTimestampMethod === "visible-time"/,
+  );
+  assert.doesNotMatch(edgeResolver, /captureTimestampMethod === "fallback"/);
 });
 
 test("stops observing and drains queued windows before final review", () => {

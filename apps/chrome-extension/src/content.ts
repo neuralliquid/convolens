@@ -1429,14 +1429,14 @@ function guidedMergeEdge(
   if (append.overlapCount > 0) return "prepend";
   return resolveDisjointGuidedEdge(
     existing.flatMap((item) =>
-      item.value.captureTimestampMethod === "fallback"
-        ? []
-        : [item.value.timestamp],
+      item.value.captureTimestampMethod === "metadata"
+        ? [item.value.timestamp]
+        : [],
     ),
     incoming.flatMap((item) =>
-      item.value.captureTimestampMethod === "fallback"
-        ? []
-        : [item.value.timestamp],
+      item.value.captureTimestampMethod === "metadata"
+        ? [item.value.timestamp]
+        : [],
     ),
   );
 }
