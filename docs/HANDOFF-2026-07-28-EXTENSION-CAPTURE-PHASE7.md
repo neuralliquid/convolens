@@ -16,9 +16,11 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Completion reasons distinguish user stop, date boundary, message limit, verified top, the 500-message safety cap, no progress, and repeated DOM failures.
 - Pause, resume, stop-and-review, and cancel are available from both surfaces. Background control commands are serialized per operation so rapid commands are not collapsed into an unrelated in-flight response.
 - Pause disconnects DOM observation and drains already-snapshotted work before it is acknowledged; resume reconnects observation before automatic scrolling continues.
+- The runner rechecks pause after stabilization and draining, before any boundary or no-progress completion can be emitted.
 - Cancellation, chat change, tab teardown, authentication transition, or background restart remains fail-closed and sends nothing.
 - The original bottom-relative scroll position is captured before automatic movement and approximately restored only while the same chat remains selected.
 - The background service worker persists only aggregate operation snapshots, including the selected boundary and progress counts. Raw messages, raw WhatsApp IDs, and alignment evidence remain in the WhatsApp tab's memory.
+- When an automatic boundary deliberately trims retained items, skipped, unreadable, container, diagnostic-method, and participant counts are rebuilt from the retained readable payload rather than leaking counts from the excluded window.
 - Final upload still requires exact-count review and explicit confirmation. Automatic completion never uploads by itself.
 - Extension runtime and package metadata are synchronized at `1.0.18`.
 
@@ -32,13 +34,13 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 
 ## Validation
 
-- Chrome extension Node tests: 109 passed, 0 failed, including automatic boundary normalization, boundary-spanning cutoff trimming, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 110 passed, 0 failed, including automatic boundary normalization, boundary-spanning cutoff trimming, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `D275B45B15C3A53A97B1CE53EA13186530BE5AD0FE6F1C7C34ED5695D220BC5C`.
+- Packaged ZIP SHA-256: `AE41F0543FC3DE038643A80A82CFE180A93515A96A0B273C3C413D5B9DCA8A34`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open

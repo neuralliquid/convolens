@@ -44,6 +44,10 @@ test("keeps automatic control background-owned and serializes every command", ()
     /session\.observer\.observe\(session\.scrollTarget/,
   );
   assert.match(
+    contentSource,
+    /if \(session\.drainPromise\) await session\.drainPromise;[\s\S]*if \(session\.automaticPaused\) continue/,
+  );
+  assert.match(
     backgroundSource,
     /action: "FINALIZE_AUTOMATIC_CAPTURE_OPERATION"/,
   );
@@ -113,4 +117,15 @@ test("restores an approximate anchor and retains raw messages only in tab memory
     /\[STORAGE_KEYS\.captureOperations\]: Object\.fromEntries\(captureOperations\)/,
   );
   assert.doesNotMatch(captureSource, /messages:/);
+});
+
+test("rebuilds trimmed diagnostics from only the retained readable payload", () => {
+  assert.match(
+    contentSource,
+    /function retainAutomaticItems[\s\S]*session\.skippedCount = 0[\s\S]*session\.unreadableCount = 0/,
+  );
+  assert.match(
+    contentSource,
+    /messageContainerCount: session\.payload\.messages\.length[\s\S]*unreadableMessageCount: 0/,
+  );
 });

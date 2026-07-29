@@ -1940,9 +1940,13 @@ function retainAutomaticItems(
   session.items = items;
   session.payload.messages = items.map((item) => item.value);
   session.payload.messageCount = session.payload.messages.length;
+  session.skippedCount = 0;
+  session.unreadableCount = 0;
   session.payload.diagnostics = {
     ...session.payload.diagnostics,
+    messageContainerCount: session.payload.messages.length,
     extractedMessageCount: session.payload.messages.length,
+    unreadableMessageCount: 0,
     ...summarizeGuidedDiagnosticMethods(session.payload.messages),
   };
   const retainedParticipantRefs = new Set(
@@ -2005,6 +2009,7 @@ async function runAutomaticCapture(
     await waitForAutomaticStabilization(session, beforeObservedWindowCount);
     if (session.drainPromise) await session.drainPromise;
     if (guidedCaptureSession !== session || session.finalizing) return;
+    if (session.automaticPaused) continue;
 
     const verifiedTop = hasVerifiedTopOfHistory(session.scrollTarget);
     const boundaryReason = automaticBoundaryReason(session, verifiedTop);
