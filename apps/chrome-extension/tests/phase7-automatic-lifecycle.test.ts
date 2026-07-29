@@ -147,3 +147,18 @@ test("trims date boundaries after queued work drains on every finalization", () 
     /finalizeAutomaticCaptureOperation[\s\S]*finalizeGuidedCaptureOperation\(\s*operationId,\s*trimAutomaticDateBoundary/,
   );
 });
+
+test("keeps alignment warnings only while their ambiguous candidates remain", () => {
+  assert.match(
+    contentSource,
+    /retainedAmbiguousItems = incomingItems\.filter[\s\S]*session\.alignmentWarnings\.push\(retainedAmbiguousItems\)/,
+  );
+  assert.match(
+    contentSource,
+    /function reconcileGuidedAlignmentWarnings[\s\S]*warningItems\.some\(\(item\) => retainedItems\.has\(item\)\)[\s\S]*alignmentWarningCount = session\.alignmentWarnings\.length/,
+  );
+  assert.match(
+    contentSource,
+    /function retainAutomaticItems[\s\S]*reconcileGuidedAlignmentWarnings\(session\)/,
+  );
+});

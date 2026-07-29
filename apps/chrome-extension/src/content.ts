@@ -186,6 +186,7 @@ interface GuidedCaptureSession {
   timeoutId?: number;
   consecutiveFailures: number;
   alignmentWarningCount: number;
+  alignmentWarnings: GuidedWindowItem<ExtractedMessage>[][];
   skippedCount: number;
   unreadableCount: number;
   reading: boolean;
@@ -1737,7 +1738,15 @@ function mergeGuidedPayload(
         : { ...merge, ambiguous: true };
   }
   session.items = merge.items;
-  if (merge.ambiguous) session.alignmentWarningCount += 1;
+  if (merge.ambiguous) {
+    const retainedAmbiguousItems = incomingItems.filter((item) =>
+      merge.items.includes(item),
+    );
+    if (retainedAmbiguousItems.length > 0) {
+      session.alignmentWarnings.push(retainedAmbiguousItems);
+    }
+  }
+  reconcileGuidedAlignmentWarnings(session);
   if (merge.limitReached) session.limitReached = true;
   const incomingSkipped = Math.max(
     0,
@@ -1789,6 +1798,14 @@ function mergeGuidedPayload(
     session.unreadableCount,
     session.alignmentWarningCount,
   );
+}
+
+function reconcileGuidedAlignmentWarnings(session: GuidedCaptureSession): void {
+  const retainedItems = new Set(session.items);
+  session.alignmentWarnings = session.alignmentWarnings.filter((warningItems) =>
+    warningItems.some((item) => retainedItems.has(item)),
+  );
+  session.alignmentWarningCount = session.alignmentWarnings.length;
 }
 
 function teardownGuidedCaptureSession(operationId: string): void {
@@ -1938,6 +1955,7 @@ function retainAutomaticItems(
   items: GuidedWindowItem<ExtractedMessage>[],
 ): void {
   session.items = items;
+  reconcileGuidedAlignmentWarnings(session);
   session.payload.messages = items.map((item) => item.value);
   session.payload.messageCount = session.payload.messages.length;
   session.skippedCount = 0;
@@ -2195,6 +2213,7 @@ async function startGuidedCaptureOperation(
     scrollTarget,
     consecutiveFailures: 0,
     alignmentWarningCount: 0,
+    alignmentWarnings: [],
     skippedCount,
     unreadableCount,
     reading: false,

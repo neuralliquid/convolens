@@ -23,6 +23,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - The original bottom-relative scroll position is captured before automatic movement and approximately restored only while the same chat remains selected.
 - The background service worker persists only aggregate operation snapshots, including the selected boundary and progress counts. Raw messages, raw WhatsApp IDs, and alignment evidence remain in the WhatsApp tab's memory.
 - When an automatic boundary deliberately trims retained items, skipped, unreadable, container, diagnostic-method, and participant counts are rebuilt from the retained readable payload rather than leaking counts from the excluded window.
+- Ambiguous-alignment warnings retain in-tab candidate provenance and are removed when all affected candidates leave the retained upload scope.
 - If the selected automatic boundary retains zero readable messages, the operation cancels with an explicit nothing-sent result instead of offering an empty review or creating an empty conversation.
 - Final upload still requires exact-count review and explicit confirmation. Automatic completion never uploads by itself.
 - Extension runtime and package metadata are synchronized at `1.0.18`.
@@ -37,13 +38,13 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 
 ## Validation
 
-- Chrome extension Node tests: 113 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, zero-retained-scope cancellation, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
+- Chrome extension Node tests: 114 passed, 0 failed, including automatic boundary normalization, wall-clock-aligned and every-finalization boundary trimming, zero-retained-scope cancellation, retained-scope alignment warnings, trusted-date gating, consent and controls on both surfaces, serialized background controls, paused-observer suspension and post-await recheck, trimmed diagnostic rebuilding, truthful completion, anchor restoration, accumulator reuse, privacy, and all prior capture safety coverage.
 - Chrome extension TypeScript: passed.
 - Prettier and `git diff --check`: passed.
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `C796ED87BEC3546947DC62385EEA5852C33D6C6960F1DA366EFA8EB68916E2E6`.
+- Packaged ZIP SHA-256: `46EA4350A7616E8B9CDE033AADDA2FBC40CCDBC41197C6C44565C7A12EDC02E9`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open
