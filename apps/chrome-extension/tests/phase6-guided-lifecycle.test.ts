@@ -134,14 +134,32 @@ test("uses raw source IDs only as non-enumerable in-tab alignment evidence", () 
   assert.match(contentSource, /messageRecord\.getAttribute\("data-id"\)/);
   assert.match(contentSource, /captureSourceId:[\s\S]*enumerable: false/);
   assert.match(contentSource, /captureAlignmentToken:[\s\S]*enumerable: false/);
+  assert.match(contentSource, /captureMetadataPath:[\s\S]*enumerable: false/);
+  assert.match(contentSource, /captureSenderMethod:[\s\S]*enumerable: false/);
   assert.match(
     contentSource,
     /captureTimestampMethod:[\s\S]*enumerable: false/,
   );
   assert.doesNotMatch(captureSource, /captureSourceId/);
   assert.doesNotMatch(captureSource, /captureTimestampMethod/);
+  assert.doesNotMatch(captureSource, /captureMetadataPath/);
+  assert.doesNotMatch(captureSource, /captureSenderMethod/);
   assert.doesNotMatch(backgroundSource, /captureSourceId/);
   assert.doesNotMatch(backgroundSource, /captureTimestampMethod/);
+  assert.doesNotMatch(backgroundSource, /captureMetadataPath/);
+  assert.doesNotMatch(backgroundSource, /captureSenderMethod/);
+});
+
+test("rebuilds diagnostic method counts from the retained guided buffer", () => {
+  assert.match(contentSource, /function summarizeGuidedDiagnosticMethods/);
+  assert.match(
+    contentSource,
+    /for \(const message of messages\)[\s\S]*metadataPathCounts\[message\.captureMetadataPath\] \+= 1[\s\S]*senderMethodCounts\[message\.captureSenderMethod\] \+= 1[\s\S]*timestampMethodCounts\[message\.captureTimestampMethod\] \+= 1/,
+  );
+  assert.match(
+    contentSource,
+    /const diagnosticMethods = summarizeGuidedDiagnosticMethods\([\s\S]*session\.payload\.messages[\s\S]*\.\.\.diagnosticMethods/,
+  );
 });
 
 test("commits only participant identities referenced by the bounded merge", () => {

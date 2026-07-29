@@ -74,6 +74,8 @@ interface ExtractedMessage {
   senderRef?: string;
   captureSourceId?: string;
   captureAlignmentToken?: string;
+  captureMetadataPath?: MetadataPath;
+  captureSenderMethod?: ExtractedParticipant["extractionMethod"];
   captureTimestampMethod?: TimestampMethod;
 }
 
@@ -1368,6 +1370,14 @@ function cloneGuidedMessage(
       value: message.captureAlignmentToken,
       enumerable: false,
     },
+    captureMetadataPath: {
+      value: message.captureMetadataPath,
+      enumerable: false,
+    },
+    captureSenderMethod: {
+      value: message.captureSenderMethod,
+      enumerable: false,
+    },
     captureTimestampMethod: {
       value: message.captureTimestampMethod,
       enumerable: false,
@@ -1465,6 +1475,45 @@ function summarizeCapturePayload(
   };
 }
 
+function summarizeGuidedDiagnosticMethods(
+  messages: ExtractedMessage[],
+): Pick<
+  ExtractionDiagnostics,
+  "metadataPathCounts" | "senderMethodCounts" | "timestampMethodCounts"
+> {
+  const metadataPathCounts: ExtractionDiagnostics["metadataPathCounts"] = {
+    container: 0,
+    ancestor: 0,
+    descendant: 0,
+    none: 0,
+  };
+  const senderMethodCounts: ExtractionDiagnostics["senderMethodCounts"] = {
+    metadata: 0,
+    "sender-element": 0,
+    "conversation-header": 0,
+    outgoing: 0,
+    fallback: 0,
+  };
+  const timestampMethodCounts: ExtractionDiagnostics["timestampMethodCounts"] =
+    {
+      metadata: 0,
+      "visible-time": 0,
+      fallback: 0,
+    };
+  for (const message of messages) {
+    if (message.captureMetadataPath) {
+      metadataPathCounts[message.captureMetadataPath] += 1;
+    }
+    if (message.captureSenderMethod) {
+      senderMethodCounts[message.captureSenderMethod] += 1;
+    }
+    if (message.captureTimestampMethod) {
+      timestampMethodCounts[message.captureTimestampMethod] += 1;
+    }
+  }
+  return { metadataPathCounts, senderMethodCounts, timestampMethodCounts };
+}
+
 function mergeGuidedPayload(
   session: GuidedCaptureSession,
   incoming: ExtractedChat,
@@ -1544,6 +1593,9 @@ function mergeGuidedPayload(
   );
   session.payload.messageCount = session.payload.messages.length;
   session.payload.extractedAt = new Date().toISOString();
+  const diagnosticMethods = summarizeGuidedDiagnosticMethods(
+    session.payload.messages,
+  );
   session.payload.diagnostics = {
     ...session.payload.diagnostics,
     messageContainerCount:
@@ -1552,6 +1604,7 @@ function mergeGuidedPayload(
       session.unreadableCount,
     extractedMessageCount: session.payload.messages.length,
     unreadableMessageCount: session.unreadableCount,
+    ...diagnosticMethods,
   };
   if (activeCaptureOperation?.operationId === session.operationId) {
     activeCaptureOperation.payload = session.payload;
@@ -2114,6 +2167,14 @@ function extractMessageData(
     },
     captureAlignmentToken: {
       value: captureAlignmentToken,
+      enumerable: false,
+    },
+    captureMetadataPath: {
+      value: metadata.path,
+      enumerable: false,
+    },
+    captureSenderMethod: {
+      value: participantIdentity.extractionMethod,
       enumerable: false,
     },
     captureTimestampMethod: {
