@@ -201,6 +201,7 @@ interface GuidedCaptureSession {
   originalScrollTop?: number;
   originalBottomOffset?: number;
   noProgressCount: number;
+  observedWindowCount: number;
 }
 
 const GUIDED_CAPTURE_LIMIT = 2_000;
@@ -1842,6 +1843,7 @@ function hasVerifiedTopOfHistory(scrollTarget: HTMLElement): boolean {
 
 async function waitForAutomaticStabilization(
   session: GuidedCaptureSession,
+  baselineObservedWindowCount: number,
 ): Promise<void> {
   const started = Date.now();
   let previousTop = session.scrollTarget.scrollTop;
@@ -1857,7 +1859,13 @@ async function waitForAutomaticStabilization(
     );
     const nextTop = session.scrollTarget.scrollTop;
     const nextHeight = session.scrollTarget.scrollHeight;
-    if (nextTop === previousTop && nextHeight === previousHeight) {
+    const observedChange =
+      session.observedWindowCount > baselineObservedWindowCount;
+    if (
+      observedChange &&
+      nextTop === previousTop &&
+      nextHeight === previousHeight
+    ) {
       stableSamples += 1;
       if (stableSamples >= 2) return;
     } else {
@@ -1987,13 +1995,14 @@ async function runAutomaticCapture(
     const beforeTop = session.scrollTarget.scrollTop;
     const beforeHeight = session.scrollTarget.scrollHeight;
     const beforeCount = session.items.length;
+    const beforeObservedWindowCount = session.observedWindowCount;
     const step = Math.max(
       320,
       Math.floor(session.scrollTarget.clientHeight * 0.8),
     );
     session.scrollTarget.scrollTop = Math.max(0, beforeTop - step);
     queueGuidedWindowRead();
-    await waitForAutomaticStabilization(session);
+    await waitForAutomaticStabilization(session, beforeObservedWindowCount);
     if (session.drainPromise) await session.drainPromise;
     if (guidedCaptureSession !== session || session.finalizing) return;
 
@@ -2025,6 +2034,7 @@ async function runAutomaticCapture(
 function queueGuidedWindowRead(): void {
   const session = guidedCaptureSession;
   if (!session || session.finalizing) return;
+  session.observedWindowCount += 1;
   // Start extraction in the observer callback so the current virtualized DOM
   // window is snapshotted before WhatsApp can replace it. The promises are
   // merged in FIFO order to keep progress updates and retained order stable.
@@ -2182,6 +2192,7 @@ async function startGuidedCaptureOperation(
     limitReached: false,
     automaticPaused: false,
     noProgressCount: 0,
+    observedWindowCount: 0,
   };
   guidedCaptureSession = session;
   return summarizeCapturePayload(

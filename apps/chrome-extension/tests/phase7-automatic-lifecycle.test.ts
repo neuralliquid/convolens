@@ -73,6 +73,10 @@ test("bounds automatic collection and distinguishes truthful completion", () => 
   assert.match(contentSource, /AUTOMATIC_NO_PROGRESS_LIMIT/);
   assert.match(contentSource, /hasVerifiedTopOfHistory/);
   assert.match(contentSource, /waitForAutomaticStabilization/);
+  assert.match(
+    contentSource,
+    /session\.observedWindowCount > baselineObservedWindowCount/,
+  );
   for (const reason of [
     "automatic-date-boundary",
     "automatic-message-limit",

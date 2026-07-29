@@ -10,6 +10,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Date boundaries rely only on trusted date-bearing WhatsApp metadata. Date-less visible times and generated fallback timestamps cannot claim that a date boundary was reached.
 - A mounted window that crosses a date cutoff is trimmed after its last trusted out-of-scope message before review, so older messages from that window are not included in the selected upload scope.
 - Automatic collection scrolls upward in bounded steps, snapshots the mounted window immediately, waits for DOM/scroll-height stabilization, and reuses the Phase 6 FIFO virtualized-window accumulator.
+- Stabilization accepts early stable samples only after a DOM-window observation; when WhatsApp has not begun changing the history DOM, it waits through the full three-second window before contributing to no-progress detection.
 - Automatic scroll events are not separately subscribed, preventing the programmatic step and its scroll event from double-enqueuing the same fallback-only window.
 - Three consecutive cycles without count, scroll-position, or scroll-height progress stop with `automatic-no-progress`; this is distinct from a verified WhatsApp top marker.
 - Completion reasons distinguish user stop, date boundary, message limit, verified top, the 500-message safety cap, no progress, and repeated DOM failures.
@@ -37,7 +38,7 @@ Phase 7 enables explicitly confirmed automatic older-history loading while retai
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.18`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `CDF61C5798670ADBE9E888B274020E0D693F8F57C0EE21DE2DE5BCB92D3E5B98`.
+- Packaged ZIP SHA-256: `13AE9CDFB561B5EF1AE830F019CCADA7FAC5630662A60F5A19D6666FCED0136D`.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open
