@@ -54,6 +54,10 @@ test("preserves the requested mode after launcher cancellation renders", () => {
     contentSource,
     /reviewPageCapture\(launcherOperation, false\)[\s\S]*\.finally\(\(\) => \{[\s\S]*applyPageCaptureMode\(selectedMode\)/,
   );
+  assert.match(
+    contentSource,
+    /pageConfirmationOperationId === operation\.operationId[\s\S]*if \(pageConfirmationPromise\) await pageConfirmationPromise/,
+  );
 });
 
 test("observes user scrolling without programmatically taking scroll control", () => {

@@ -182,6 +182,7 @@ const GUIDED_CAPTURE_TIMEOUT_MS = 10 * 60 * 1_000;
 let activeCaptureOperation: ActiveCaptureOperation | null = null;
 let guidedCaptureSession: GuidedCaptureSession | null = null;
 let pageConfirmationOperationId: string | null = null;
+let pageConfirmationPromise: Promise<void> | null = null;
 let lastCountedTerminalOperationId: string | null = null;
 const chatIdentityTokens = new Map<string, string>();
 let launcherPosition: LauncherPosition = DEFAULT_LAUNCHER_POSITION;
@@ -981,7 +982,10 @@ async function reviewPageCapture(
   confirmed: boolean,
 ): Promise<void> {
   if (operation.authGeneration !== launcherCaptureAuthGeneration) return;
-  if (pageConfirmationOperationId === operation.operationId) return;
+  if (pageConfirmationOperationId === operation.operationId) {
+    if (pageConfirmationPromise) await pageConfirmationPromise;
+    return;
+  }
   if (confirmed) {
     const preview = getCapturePreviewSummary(operation.operationId);
     if (!preview || preview.loadedMessageCount !== operation.extractedCount) {
@@ -996,29 +1000,39 @@ async function reviewPageCapture(
   const action = confirmed
     ? "CONFIRM_CAPTURE_OPERATION"
     : "CANCEL_CAPTURE_OPERATION";
-  try {
-    const response = (await chrome.runtime.sendMessage({
-      action,
-      operationId: operation.operationId,
-      reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
-    })) as ExtensionResponse<CaptureOperationSnapshot>;
-    if (response.success && response.data) {
-      if (response.data.state === "retry-required") {
-        pageConfirmationOperationId = null;
+  const confirmation = (async () => {
+    try {
+      const response = (await chrome.runtime.sendMessage({
+        action,
+        operationId: operation.operationId,
+        reason: confirmed ? undefined : "Upload cancelled. Nothing was sent.",
+      })) as ExtensionResponse<CaptureOperationSnapshot>;
+      if (response.success && response.data) {
+        if (response.data.state === "retry-required") {
+          pageConfirmationOperationId = null;
+        }
+        if (!renderCaptureOperation(response.data)) {
+          pageConfirmationOperationId = null;
+        }
+        return;
       }
-      if (!renderCaptureOperation(response.data)) {
-        pageConfirmationOperationId = null;
-      }
-      return;
+      pageConfirmationOperationId = null;
+      updateStatus(
+        response.success ? "Capture could not continue." : response.error,
+        "error",
+      );
+    } catch (error) {
+      pageConfirmationOperationId = null;
+      throw error;
     }
-    pageConfirmationOperationId = null;
-    updateStatus(
-      response.success ? "Capture could not continue." : response.error,
-      "error",
-    );
-  } catch (error) {
-    pageConfirmationOperationId = null;
-    throw error;
+  })();
+  pageConfirmationPromise = confirmation;
+  try {
+    await confirmation;
+  } finally {
+    if (pageConfirmationPromise === confirmation) {
+      pageConfirmationPromise = null;
+    }
   }
 }
 
