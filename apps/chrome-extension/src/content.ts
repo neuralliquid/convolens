@@ -197,6 +197,7 @@ interface GuidedCaptureSession {
   limitReached: boolean;
   automaticBoundary?: AutomaticCaptureBoundary;
   automaticStartedAt?: Date;
+  automaticDateBoundaryProven: boolean;
   automaticPaused: boolean;
   automaticRunner?: Promise<void>;
   originalScrollTop?: number;
@@ -1995,12 +1996,14 @@ function trimAutomaticDateBoundary(session: GuidedCaptureSession): void {
     session.automaticStartedAt,
   );
   if (startIndex !== null) {
+    session.automaticDateBoundaryProven = true;
     retainAutomaticItems(session, session.items.slice(startIndex));
   }
 }
 
 function prepareAutomaticCaptureSummary(session: GuidedCaptureSession): void {
   if (session.automaticBoundary?.kind !== "days") return;
+  if (session.automaticDateBoundaryProven) return;
   const startedAt = session.automaticStartedAt;
   const trustedTimestamps = session.items.map((item) =>
     item.value.captureTimestampMethod === "metadata"
@@ -2024,6 +2027,7 @@ function prepareAutomaticCaptureSummary(session: GuidedCaptureSession): void {
     );
   }
   if (startIndex !== null) {
+    session.automaticDateBoundaryProven = true;
     retainAutomaticItems(session, session.items.slice(startIndex));
   }
 }
@@ -2257,6 +2261,7 @@ async function startGuidedCaptureOperation(
     finalizing: false,
     limitReached: false,
     automaticPaused: false,
+    automaticDateBoundaryProven: false,
     noProgressCount: 0,
     observedWindowCount: 0,
   };

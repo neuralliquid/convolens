@@ -210,3 +210,15 @@ test("prefers a proven date boundary when the same merge reaches the cap", () =>
     /if \(session\.limitReached\)[\s\S]*automaticBoundaryReason\(session, false\) \?\?[\s\S]*automaticLimitStopReason\(session\)/,
   );
 });
+
+test("preserves trusted date-boundary proof through early trimming", () => {
+  assert.match(
+    contentSource,
+    /function trimAutomaticDateBoundary[\s\S]*automaticDateBoundaryProven = true[\s\S]*retainAutomaticItems/,
+  );
+  assert.match(
+    contentSource,
+    /function prepareAutomaticCaptureSummary[\s\S]*if \(session\.automaticDateBoundaryProven\) return/,
+  );
+  assert.match(contentSource, /automaticDateBoundaryProven: false/);
+});
