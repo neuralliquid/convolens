@@ -2305,6 +2305,7 @@ async function setAutomaticCapturePaused(
 
 async function finalizeGuidedCaptureOperation(
   operationId: string,
+  prepareSummary?: (session: GuidedCaptureSession) => void,
 ): Promise<CaptureCollectionSummary> {
   const session = guidedCaptureSession;
   if (!session || session.operationId !== operationId) {
@@ -2318,6 +2319,7 @@ async function finalizeGuidedCaptureOperation(
   if (guidedCaptureSession !== session) {
     throw new Error("The guided capture buffer is no longer available.");
   }
+  prepareSummary?.(session);
   const summary = summarizeCapturePayload(
     session.payload,
     session.chatIdentity,
@@ -2346,7 +2348,10 @@ async function finalizeAutomaticCaptureOperation(
   ) {
     throw new Error("The automatic capture buffer is no longer available.");
   }
-  const summary = await finalizeGuidedCaptureOperation(operationId);
+  const summary = await finalizeGuidedCaptureOperation(
+    operationId,
+    trimAutomaticDateBoundary,
+  );
   if (summary.extractedCount === 0) {
     throw new Error(
       "No readable messages fall within the selected automatic boundary. Nothing was sent.",

@@ -136,3 +136,14 @@ test("cancels rather than offering an empty automatic review", () => {
     /finalizeAutomaticCaptureOperation[\s\S]*summary\.extractedCount === 0[\s\S]*No readable messages fall within the selected automatic boundary\. Nothing was sent\./,
   );
 });
+
+test("trims date boundaries after queued work drains on every finalization", () => {
+  assert.match(
+    contentSource,
+    /if \(session\.drainPromise\) await session\.drainPromise;[\s\S]*prepareSummary\?\.\(session\);[\s\S]*summarizeCapturePayload/,
+  );
+  assert.match(
+    contentSource,
+    /finalizeAutomaticCaptureOperation[\s\S]*finalizeGuidedCaptureOperation\(\s*operationId,\s*trimAutomaticDateBoundary/,
+  );
+});
