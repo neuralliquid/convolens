@@ -23,6 +23,21 @@ test("keeps the background as owner of guided progress and finalization", () => 
   assert.match(backgroundSource, /state: "ready-for-review"/);
 });
 
+test("preserves a concurrently finalized review before guided activation", () => {
+  assert.match(
+    backgroundSource,
+    /const currentBeforeActivation = captureOperations\.get\(tabId\)[\s\S]*!isCurrentCaptureOperation\(operation, operationEpoch, "collecting"\)[\s\S]*return \{ success: true, data: currentBeforeActivation \}/,
+  );
+  assert.match(
+    backgroundSource,
+    /if \(!activation\.success\)[\s\S]*currentAfterActivation\.state !== "collecting"[\s\S]*return \{ success: true, data: currentAfterActivation \}/,
+  );
+  assert.match(
+    backgroundSource,
+    /catch \(error\)[\s\S]*const concurrentResult = captureOperations\.get\(tabId\)[\s\S]*return \{ success: true, data: concurrentResult \}/,
+  );
+});
+
 test("offers start, running count, stop-and-review, and cancel on both surfaces", () => {
   for (const surface of [popupHtml, contentSource]) {
     assert.match(surface, /Capture as I scroll/);

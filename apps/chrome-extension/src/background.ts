@@ -476,11 +476,28 @@ async function startCaptureOperation(
     };
     await publishCaptureOperation(operation);
     if (operation.mode === "guided") {
+      const currentBeforeActivation = captureOperations.get(tabId);
+      if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+        if (currentBeforeActivation?.operationId === operation.operationId) {
+          return { success: true, data: currentBeforeActivation };
+        }
+        return await abandonCaptureOperation(
+          operation,
+          "The capture was replaced before guided observation could start.",
+        );
+      }
       const activation = (await chrome.tabs.sendMessage(tabId, {
         action: "ACTIVATE_GUIDED_CAPTURE_OPERATION",
         operationId: operation.operationId,
       })) as ExtensionResponse;
       if (!activation.success) {
+        const currentAfterActivation = captureOperations.get(tabId);
+        if (
+          currentAfterActivation?.operationId === operation.operationId &&
+          currentAfterActivation.state !== "collecting"
+        ) {
+          return { success: true, data: currentAfterActivation };
+        }
         return await finishCaptureOperation(
           operation,
           "cancelled",
@@ -491,6 +508,10 @@ async function startCaptureOperation(
     return { success: true, data: operation };
   } catch (error) {
     if (!isCurrentCaptureOperation(operation, operationEpoch, "collecting")) {
+      const concurrentResult = captureOperations.get(tabId);
+      if (concurrentResult?.operationId === operation.operationId) {
+        return { success: true, data: concurrentResult };
+      }
       return await abandonCaptureOperation(
         operation,
         "The capture was cancelled while messages were being read.",
