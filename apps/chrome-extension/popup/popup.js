@@ -144,9 +144,9 @@ function renderOperationalActions() {
       : null;
   const resultState =
     terminalOperation?.state || operationalState.lastCapture?.state;
-  const reconciliationRequired =
-    terminalOperation?.reconciliationRequired ||
-    operationalState.lastCapture?.reconciliationRequired;
+  const reconciliationRequired = terminalOperation
+    ? Boolean(terminalOperation.reconciliationRequired)
+    : Boolean(operationalState.lastCapture?.reconciliationRequired);
   captureResult.textContent = reconciliationRequired
     ? "New conversation stored separately — reconciliation needed"
     : resultState === "duplicate"

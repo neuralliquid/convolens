@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { CaptureOperationSnapshot } from "../src/capture-operation";
 import {
   canRestoreReviewedRetry,
+  captureOwnerMatches,
   deriveToolbarBadge,
   normalizeConversationResultPath,
   operationalStateForOwner,
@@ -117,6 +118,8 @@ test("preserves only retry metadata across worker restart and fails closed witho
   assert.equal(canRestoreReviewedRetry(retry, "owner-a", "owner-a"), true);
   assert.equal(canRestoreReviewedRetry(retry, "owner-a", "owner-b"), false);
   assert.equal(canRestoreReviewedRetry(retry, undefined, "owner-a"), false);
+  assert.equal(captureOwnerMatches("owner-a", "owner-a"), true);
+  assert.equal(captureOwnerMatches("owner-a", "owner-b"), false);
   assert.match(backgroundSource, /STORAGE_KEYS\.captureOperationOwners/);
   assert.match(
     backgroundSource,
@@ -171,6 +174,30 @@ test("removes closed-tab captures without leaving permanent badge attention", ()
   assert.equal(deriveToolbarBadge([operation("cancelled")], 0).text, "");
   assert.match(
     backgroundSource,
-    /handleCaptureTabRemoved[\s\S]*captureOperations\.delete\(tabId\)[\s\S]*captureOperationOwnerIds\.delete\(operation\.operationId\)/,
+    /handleCaptureTabRemoved[\s\S]*operation\.state === "uploading"[\s\S]*closedCaptureTabIds\.add\(tabId\)[\s\S]*removeCaptureOperation\(operation\)/,
   );
+  assert.match(
+    backgroundSource,
+    /closedCaptureTabIds\.has\(operation\.tabId\)[\s\S]*operation\.state !== "uploading"[\s\S]*removeCaptureOperation\(operation\)/,
+  );
+});
+
+test("drops every restored snapshot that does not belong to the current owner", () => {
+  assert.match(
+    backgroundSource,
+    /if \(!captureOwnerMatches\(persistedOwnerId, restoredOwnerId\)\) \{\s*discarded\.push\(operation\);\s*continue;/,
+  );
+  assert.match(
+    backgroundSource,
+    /for \(const operation of discarded\) \{\s*await discardCapturePayload\(operation\);/,
+  );
+});
+
+test("ties reconciliation state to the same result shown and opened", () => {
+  for (const source of [popupSource, contentSource]) {
+    assert.match(
+      source,
+      /const reconciliationRequired = terminalOperation\s*\? Boolean\(terminalOperation\.reconciliationRequired\)\s*:/,
+    );
+  }
 });

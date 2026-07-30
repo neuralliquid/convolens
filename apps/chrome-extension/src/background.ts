@@ -42,6 +42,7 @@ import {
 import { normalizeAutomaticBoundary } from "./automatic-capture";
 import {
   canRestoreReviewedRetry,
+  captureOwnerMatches,
   deriveToolbarBadge,
   normalizeCaptureMode,
   normalizeConversationResultPath,
@@ -74,6 +75,7 @@ const RATE_LIMIT_STORAGE_KEY = "ws_rate_limit_state";
 const captureOperations = new Map<number, CaptureOperationSnapshot>();
 const captureOperationEpochs = new Map<string, number>();
 const captureOperationOwnerIds = new Map<string, string>();
+const closedCaptureTabIds = new Set<number>();
 const captureUploadPromises = new Map<
   string,
   Promise<ExtensionResponse<CaptureOperationSnapshot>>
@@ -102,8 +104,12 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function handleCaptureTabRemoved(tabId: number): Promise<void> {
   await loadCaptureOperations();
   const operation = captureOperations.get(tabId);
+  if (!operation) return;
+  if (operation.state === "uploading") {
+    closedCaptureTabIds.add(tabId);
+    return;
+  }
   if (
-    operation &&
     [
       "inspecting",
       "collecting",
@@ -118,13 +124,8 @@ async function handleCaptureTabRemoved(tabId: number): Promise<void> {
       "The WhatsApp tab was closed.",
       false,
     );
-    if (captureOperations.get(tabId)?.operationId === operation.operationId) {
-      captureOperations.delete(tabId);
-      captureOperationEpochs.delete(operation.operationId);
-      captureOperationOwnerIds.delete(operation.operationId);
-      await persistCaptureOperations();
-    }
   }
+  await removeCaptureOperation(operation);
 }
 
 // =============================================================================
@@ -337,6 +338,7 @@ async function loadCaptureOperations(): Promise<void> {
     const persistedOwners = stored[STORAGE_KEYS.captureOperationOwners];
 
     const interrupted: CaptureOperationSnapshot[] = [];
+    const discarded: CaptureOperationSnapshot[] = [];
     for (const [tabIdValue, value] of Object.entries(
       persisted && typeof persisted === "object" ? persisted : {},
     )) {
@@ -378,6 +380,10 @@ async function loadCaptureOperations(): Promise<void> {
         persistedOwners && typeof persistedOwners === "object"
           ? (persistedOwners as Record<string, unknown>)[operation.operationId]
           : undefined;
+      if (!captureOwnerMatches(persistedOwnerId, restoredOwnerId)) {
+        discarded.push(operation);
+        continue;
+      }
       const restoreReviewedRetry = canRestoreReviewedRetry(
         operation,
         persistedOwnerId,
@@ -393,15 +399,16 @@ async function loadCaptureOperations(): Promise<void> {
           : operation;
       captureOperations.set(tabId, restored);
       captureOperationEpochs.set(restored.operationId, captureLifecycleEpoch);
-      if (restoreReviewedRetry) {
-        captureOperationOwnerIds.set(
-          restored.operationId,
-          persistedOwnerId as string,
-        );
-      }
+      captureOperationOwnerIds.set(
+        restored.operationId,
+        persistedOwnerId as string,
+      );
       if (restored !== operation) interrupted.push(restored);
     }
     await persistCaptureOperations();
+    for (const operation of discarded) {
+      await discardCapturePayload(operation);
+    }
     for (const operation of interrupted) {
       chrome.runtime
         .sendMessage({ action: "CAPTURE_OPERATION_UPDATED", operation })
@@ -453,11 +460,34 @@ async function persistCaptureOperations(): Promise<void> {
   );
 }
 
+async function removeCaptureOperation(
+  operation: CaptureOperationSnapshot,
+): Promise<void> {
+  if (
+    captureOperations.get(operation.tabId)?.operationId !==
+    operation.operationId
+  ) {
+    return;
+  }
+  captureOperations.delete(operation.tabId);
+  captureOperationEpochs.delete(operation.operationId);
+  captureOperationOwnerIds.delete(operation.operationId);
+  closedCaptureTabIds.delete(operation.tabId);
+  await persistCaptureOperations();
+}
+
 async function publishCaptureOperation(
   operation: CaptureOperationSnapshot,
   notifyTab: boolean = true,
 ): Promise<void> {
   captureOperations.set(operation.tabId, operation);
+  if (
+    closedCaptureTabIds.has(operation.tabId) &&
+    operation.state !== "uploading"
+  ) {
+    await removeCaptureOperation(operation);
+    return;
+  }
   await persistCaptureOperations();
 
   chrome.runtime

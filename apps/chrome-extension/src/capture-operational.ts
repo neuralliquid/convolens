@@ -123,6 +123,15 @@ export function canRestoreReviewedRetry(
   );
 }
 
+export function captureOwnerMatches(
+  persistedOwnerId: unknown,
+  currentOwnerId: unknown,
+): boolean {
+  return (
+    typeof persistedOwnerId === "string" && persistedOwnerId === currentOwnerId
+  );
+}
+
 export function deriveToolbarBadge(
   operations: Iterable<CaptureOperationSnapshot>,
   legacyQueueCount: number,
