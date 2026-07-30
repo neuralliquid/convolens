@@ -5,8 +5,19 @@ import { resolve } from "node:path";
 
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
-const hasAuthoredPreload = (source: string) =>
-  /\brel\s*=\s*(?:["']preload["']|\{\s*["']preload["']\s*\})/i.test(source);
+const hasAuthoredPreload = (source: string) => {
+  const attributes =
+    /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\}|([^\s>]+))/gi;
+  for (const match of source.matchAll(attributes)) {
+    const value = match.slice(1).find((candidate) => candidate !== undefined);
+    if (
+      value?.split(/\s+/).some((token) => token.toLowerCase() === "preload")
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
 
 test("keeps release versions aligned and package inspection mandatory", () => {
   const manifest = JSON.parse(read("../manifest.json"));
@@ -35,9 +46,12 @@ test("records the authored web preload inventory deterministically", () => {
     '<link rel = "preload">',
     '<link rel={"preload"}>',
     "<link rel = {'preload'}>",
+    "<link rel=preload>",
+    '<link rel="stylesheet preload">',
   ]) {
     assert.equal(hasAuthoredPreload(source), true);
   }
+  assert.equal(hasAuthoredPreload('<link rel="preloader">'), false);
   const webRoot = new URL("../../web/src/", import.meta.url);
   const files = readdirSync(webRoot, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
