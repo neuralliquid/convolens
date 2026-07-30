@@ -38,12 +38,19 @@ const jsxHasAuthoredPreload = (source: string) => {
       (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
       node.tagName.getText(sourceFile).toLowerCase() === "link"
     ) {
+      if (node.attributes.properties.some(ts.isJsxSpreadAttribute)) {
+        found = true;
+        return;
+      }
       const rel = node.attributes.properties.find(
         (attribute): attribute is ts.JsxAttribute =>
           ts.isJsxAttribute(attribute) &&
           attribute.name.getText(sourceFile).toLowerCase() === "rel",
       );
-      if (rel && includesPreloadToken(jsxRelValue(rel) ?? "")) found = true;
+      if (rel) {
+        const value = jsxRelValue(rel);
+        if (value === undefined || includesPreloadToken(value)) found = true;
+      }
     }
     if (!found) ts.forEachChild(node, visit);
   };
@@ -53,7 +60,7 @@ const jsxHasAuthoredPreload = (source: string) => {
 
 const htmlHasAuthoredPreload = (source: string) => {
   const withoutComments = source.replace(/<!--[\s\S]*?-->/g, "");
-  for (const [tag] of withoutComments.matchAll(/<link\b[^>]*>/gi)) {
+  for (const [tag] of withoutComments.matchAll(/<link(?=[\s/>])[^>]*>/gi)) {
     const rel = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
     const value = rel?.slice(1).find((candidate) => candidate !== undefined);
     if (value && includesPreloadToken(value)) return true;
@@ -94,8 +101,12 @@ test("records the authored web preload inventory deterministically", () => {
     assert.equal(jsxHasAuthoredPreload(source), true);
   }
   assert.equal(htmlHasAuthoredPreload("<link rel=preload>"), true);
+  assert.equal(jsxHasAuthoredPreload('<link {...{ rel: "preload" }} />'), true);
+  assert.equal(jsxHasAuthoredPreload("<link {...linkProps} />"), true);
+  assert.equal(jsxHasAuthoredPreload("<link rel={relation} />"), true);
   assert.equal(jsxHasAuthoredPreload('<link rel="preloader" />'), false);
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
+  assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
   assert.equal(
     jsxHasAuthoredPreload(`const fixture = '<link rel="preload">';`),
     false,
