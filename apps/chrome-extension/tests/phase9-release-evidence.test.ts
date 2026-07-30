@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
+const hasAuthoredPreload = (source: string) =>
+  /\brel\s*=\s*(?:["']preload["']|\{\s*["']preload["']\s*\})/i.test(source);
 
 test("keeps release versions aligned and package inspection mandatory", () => {
   const manifest = JSON.parse(read("../manifest.json"));
@@ -28,13 +30,21 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
 });
 
 test("records the authored web preload inventory deterministically", () => {
+  for (const source of [
+    '<link rel="preload">',
+    '<link rel = "preload">',
+    '<link rel={"preload"}>',
+    "<link rel = {'preload'}>",
+  ]) {
+    assert.equal(hasAuthoredPreload(source), true);
+  }
   const webRoot = new URL("../../web/src/", import.meta.url);
   const files = readdirSync(webRoot, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .filter((entry) => /\.(?:tsx?|jsx?|html)$/.test(entry.name));
   const authoredPreloads = files.filter((entry) => {
     const source = readFileSync(resolve(entry.parentPath, entry.name), "utf8");
-    return /rel=["']preload["']/i.test(source);
+    return hasAuthoredPreload(source);
   });
   assert.deepEqual(authoredPreloads, []);
 });

@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { inflateRawSync } from "node:zlib";
 
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
+const ZIP_LOCAL_SIGNATURE = 0x04034b50;
 const EXPECTED_ENTRIES = [
   "dist/background.js",
   "dist/content.css",
@@ -27,6 +29,70 @@ function findEndOfCentralDirectory(buffer) {
   throw new Error("ZIP end-of-central-directory record is missing.");
 }
 
+const crcTable = Array.from({ length: 256 }, (_, value) => {
+  let crc = value;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = (crc & 1) !== 0 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  }
+  return crc >>> 0;
+});
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function verifyEntryPayload(buffer, entry) {
+  const offset = entry.localHeaderOffset;
+  if (
+    offset + 30 > buffer.length ||
+    buffer.readUInt32LE(offset) !== ZIP_LOCAL_SIGNATURE
+  ) {
+    throw new Error(`ZIP entry has an invalid local header: ${entry.name}`);
+  }
+  const localFlags = buffer.readUInt16LE(offset + 6);
+  const localMethod = buffer.readUInt16LE(offset + 8);
+  const nameLength = buffer.readUInt16LE(offset + 26);
+  const extraLength = buffer.readUInt16LE(offset + 28);
+  const nameStart = offset + 30;
+  const dataStart = nameStart + nameLength + extraLength;
+  const dataEnd = dataStart + entry.compressedSize;
+  if (
+    buffer.toString("utf8", nameStart, nameStart + nameLength) !== entry.name ||
+    localFlags !== entry.flags ||
+    localMethod !== entry.compressionMethod ||
+    dataEnd > buffer.length
+  ) {
+    throw new Error(`ZIP local entry metadata is inconsistent: ${entry.name}`);
+  }
+  if ((entry.flags & 1) !== 0) {
+    throw new Error(`ZIP entry must not be encrypted: ${entry.name}`);
+  }
+
+  const compressed = buffer.subarray(dataStart, dataEnd);
+  const payload =
+    entry.compressionMethod === 0
+      ? compressed
+      : entry.compressionMethod === 8
+        ? inflateRawSync(compressed)
+        : null;
+  if (!payload) {
+    throw new Error(
+      `ZIP entry uses unsupported compression method ${entry.compressionMethod}: ${entry.name}`,
+    );
+  }
+  if (
+    payload.length !== entry.uncompressedSize ||
+    payload.length === 0 ||
+    crc32(payload) !== entry.crc
+  ) {
+    throw new Error(
+      `ZIP entry payload failed size or CRC verification: ${entry.name}`,
+    );
+  }
+}
+
 export function inspectZip(buffer) {
   const eocdOffset = findEndOfCentralDirectory(buffer);
   const diskNumber = buffer.readUInt16LE(eocdOffset + 4);
@@ -48,14 +114,21 @@ export function inspectZip(buffer) {
     if (buffer.readUInt32LE(cursor) !== ZIP_CENTRAL_SIGNATURE) {
       throw new Error(`ZIP central entry ${index + 1} is malformed.`);
     }
-    const uncompressedSize = buffer.readUInt32LE(cursor + 24);
+    const entry = {
+      flags: buffer.readUInt16LE(cursor + 8),
+      compressionMethod: buffer.readUInt16LE(cursor + 10),
+      crc: buffer.readUInt32LE(cursor + 16),
+      compressedSize: buffer.readUInt32LE(cursor + 20),
+      uncompressedSize: buffer.readUInt32LE(cursor + 24),
+      localHeaderOffset: buffer.readUInt32LE(cursor + 42),
+    };
     const nameLength = buffer.readUInt16LE(cursor + 28);
     const extraLength = buffer.readUInt16LE(cursor + 30);
     const commentLength = buffer.readUInt16LE(cursor + 32);
     const nameStart = cursor + 46;
     const nameEnd = nameStart + nameLength;
     const name = buffer.toString("utf8", nameStart, nameEnd);
-    if (!name || uncompressedSize === 0) {
+    if (!name || entry.uncompressedSize === 0) {
       throw new Error(`ZIP entry ${name || index + 1} is empty.`);
     }
     if (
@@ -65,6 +138,7 @@ export function inspectZip(buffer) {
     ) {
       throw new Error(`ZIP entry has an unsafe path: ${name}`);
     }
+    verifyEntryPayload(buffer, { ...entry, name });
     entries.push(name);
     cursor = nameEnd + extraLength + commentLength;
   }
@@ -95,5 +169,5 @@ if (JSON.stringify(entries) !== JSON.stringify(EXPECTED_ENTRIES)) {
 }
 
 console.log(
-  `Verified extension ${manifest.version} ZIP: ${entries.length} expected non-empty entries, no duplicates or unsafe paths.`,
+  `Verified extension ${manifest.version} ZIP: ${entries.length} expected payloads decompressed with matching sizes and CRCs, no duplicates or unsafe paths.`,
 );
