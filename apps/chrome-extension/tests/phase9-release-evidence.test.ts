@@ -2,19 +2,61 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { resolve } from "node:path";
+import ts from "typescript";
 
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
-const hasAuthoredPreload = (source: string) => {
-  const attributes =
-    /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\}|\{\s*`([^`]*)`\s*\}|([^\s>]+))/gi;
-  for (const match of source.matchAll(attributes)) {
-    const value = match.slice(1).find((candidate) => candidate !== undefined);
+const includesPreloadToken = (value: string) =>
+  value.split(/\s+/).some((token) => token.toLowerCase() === "preload");
+
+const jsxRelValue = (attribute: ts.JsxAttribute): string | undefined => {
+  const initializer = attribute.initializer;
+  if (!initializer) return undefined;
+  if (ts.isStringLiteral(initializer)) return initializer.text;
+  if (
+    ts.isJsxExpression(initializer) &&
+    initializer.expression &&
+    (ts.isStringLiteral(initializer.expression) ||
+      ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+  ) {
+    return initializer.expression.text;
+  }
+  return undefined;
+};
+
+const jsxHasAuthoredPreload = (source: string) => {
+  const sourceFile = ts.createSourceFile(
+    "inventory.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let found = false;
+  const visit = (node: ts.Node) => {
     if (
-      value?.split(/\s+/).some((token) => token.toLowerCase() === "preload")
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      node.tagName.getText(sourceFile).toLowerCase() === "link"
     ) {
-      return true;
+      const rel = node.attributes.properties.find(
+        (attribute): attribute is ts.JsxAttribute =>
+          ts.isJsxAttribute(attribute) &&
+          attribute.name.getText(sourceFile).toLowerCase() === "rel",
+      );
+      if (rel && includesPreloadToken(jsxRelValue(rel) ?? "")) found = true;
     }
+    if (!found) ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+};
+
+const htmlHasAuthoredPreload = (source: string) => {
+  const withoutComments = source.replace(/<!--[\s\S]*?-->/g, "");
+  for (const [tag] of withoutComments.matchAll(/<link\b[^>]*>/gi)) {
+    const rel = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    const value = rel?.slice(1).find((candidate) => candidate !== undefined);
+    if (value && includesPreloadToken(value)) return true;
   }
   return false;
 };
@@ -42,24 +84,33 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
 
 test("records the authored web preload inventory deterministically", () => {
   for (const source of [
-    '<link rel="preload">',
-    '<link rel = "preload">',
-    '<link rel={"preload"}>',
-    "<link rel = {'preload'}>",
+    '<link rel="preload" />',
+    '<link rel = "preload" />',
+    '<link rel={"preload"} />',
+    "<link rel = {'preload'} />",
     "<link rel={`preload`} />",
-    "<link rel=preload>",
-    '<link rel="stylesheet preload">',
+    '<link rel="stylesheet preload" />',
   ]) {
-    assert.equal(hasAuthoredPreload(source), true);
+    assert.equal(jsxHasAuthoredPreload(source), true);
   }
-  assert.equal(hasAuthoredPreload('<link rel="preloader">'), false);
+  assert.equal(htmlHasAuthoredPreload("<link rel=preload>"), true);
+  assert.equal(jsxHasAuthoredPreload('<link rel="preloader" />'), false);
+  assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
+  assert.equal(
+    jsxHasAuthoredPreload(`const fixture = '<link rel="preload">';`),
+    false,
+  );
+  assert.equal(jsxHasAuthoredPreload(`{/* <link rel="preload" /> */}`), false);
+  assert.equal(htmlHasAuthoredPreload(`<!-- <link rel="preload"> -->`), false);
   const webRoot = new URL("../../web/src/", import.meta.url);
   const files = readdirSync(webRoot, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .filter((entry) => /\.(?:tsx?|jsx?|html)$/.test(entry.name));
   const authoredPreloads = files.filter((entry) => {
     const source = readFileSync(resolve(entry.parentPath, entry.name), "utf8");
-    return hasAuthoredPreload(source);
+    return entry.name.endsWith(".html")
+      ? htmlHasAuthoredPreload(source)
+      : jsxHasAuthoredPreload(source);
   });
   assert.deepEqual(authoredPreloads, []);
 });
