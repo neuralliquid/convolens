@@ -7,7 +7,7 @@ const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 const hasAuthoredPreload = (source: string) => {
   const attributes =
-    /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\}|([^\s>]+))/gi;
+    /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\}|\{\s*`([^`]*)`\s*\}|([^\s>]+))/gi;
   for (const match of source.matchAll(attributes)) {
     const value = match.slice(1).find((candidate) => candidate !== undefined);
     if (
@@ -46,6 +46,7 @@ test("records the authored web preload inventory deterministically", () => {
     '<link rel = "preload">',
     '<link rel={"preload"}>',
     "<link rel = {'preload'}>",
+    "<link rel={`preload`} />",
     "<link rel=preload>",
     '<link rel="stylesheet preload">',
   ]) {
