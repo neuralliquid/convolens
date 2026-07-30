@@ -27,7 +27,7 @@ Phase 8 completes the practical post-capture loop while preserving the prior rev
 
 ## Validation
 
-- Chrome extension Node tests: 135 passed, 0 failed.
+- Chrome extension Node tests: 136 passed, 0 failed.
 - Chrome extension TypeScript: passed.
 - Popup JavaScript syntax: passed.
 - Prettier and `git diff --check`: passed.
@@ -35,8 +35,8 @@ Phase 8 completes the practical post-capture loop while preserving the prior rev
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.19`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `E5393DFB29F631861B702DE54254A1843780D84709AD359F02FEF64B7EBD54CF`.
-- Exact-head Codex review identified and prompted fixes for restored retry ownership, rejecting every cross-owner restored snapshot, closed-tab and post-upload terminal badge cleanup, immediate post-sign-in operational-state refresh, retaining separate aggregate preferences/results for each owner that uses the browser profile, keeping reconciliation truth tied to the result displayed for the active tab, refreshing every open launcher after a successful capture without overwriting a newer aggregate result, recalculating the toolbar badge after Options removes the legacy queue, and broadcasting preferred-mode changes to every live launcher. Regression coverage is included; the remediated head requires a fresh exact-head review before merge.
+- Packaged ZIP SHA-256: `56A4E9BABDD8D00E6271E9DBFB2459207F1782953795182C3F6EDB9D8057F017`.
+- Exact-head Codex review identified and prompted fixes for restored retry ownership, rejecting every cross-owner restored snapshot, closed-tab and post-upload terminal badge cleanup, immediate post-sign-in operational-state refresh, retaining separate aggregate preferences/results for each owner that uses the browser profile, keeping reconciliation truth tied to the result displayed for the active tab, refreshing every open launcher after a successful capture without overwriting a newer aggregate result, preserving the newest aggregate result inside the serialized storage mutation, recalculating the toolbar badge after Options removes the legacy queue, and broadcasting preferred-mode changes to every live launcher. Regression coverage is included; the remediated head requires a fresh exact-head review before merge.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open

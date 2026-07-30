@@ -225,6 +225,13 @@ test("preserves a newer aggregate result when an older tab operation renders", (
   }
 });
 
+test("preserves the newest aggregate result inside the serialized storage mutation", () => {
+  assert.match(
+    backgroundSource,
+    /current\.lastCapture[\s\S]*Date\.parse\(current\.lastCapture\.completedAt\) >= Date\.parse\(completedAt\)[\s\S]*return current/,
+  );
+});
+
 test("broadcasts preferred-mode changes to every live launcher", () => {
   assert.match(
     backgroundSource,

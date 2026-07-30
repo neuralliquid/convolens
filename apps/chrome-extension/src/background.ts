@@ -2033,16 +2033,24 @@ async function recordSuccessfulCapture(
   }
   const completedAt = operation.completedAt;
   const resultState = operation.state;
-  await mutateCaptureOperationalState(ownerId, (current) => ({
-    preferredMode: current.preferredMode,
-    lastCapture: {
-      count: operation.extractedCount,
-      completedAt,
-      state: resultState,
-      resultPath: normalizeConversationResultPath(operation.resultPath),
-      reconciliationRequired: Boolean(operation.reconciliationRequired),
-    },
-  }));
+  await mutateCaptureOperationalState(ownerId, (current) => {
+    if (
+      current.lastCapture &&
+      Date.parse(current.lastCapture.completedAt) >= Date.parse(completedAt)
+    ) {
+      return current;
+    }
+    return {
+      preferredMode: current.preferredMode,
+      lastCapture: {
+        count: operation.extractedCount,
+        completedAt,
+        state: resultState,
+        resultPath: normalizeConversationResultPath(operation.resultPath),
+        reconciliationRequired: Boolean(operation.reconciliationRequired),
+      },
+    };
+  });
   await notifyLauncherStateRefresh();
 }
 
