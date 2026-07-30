@@ -92,6 +92,7 @@ export const STORAGE_KEYS = {
   extractionHistory: "extractionHistory",
   pendingUploads: "pendingUploads",
   captureOperations: "captureOperations",
+  captureOperationOwners: "captureOperationOwners",
   captureLifecycleEpoch: "captureLifecycleEpoch",
   launcherPosition: "launcherPosition",
   captureOperationalState: "captureOperationalState",

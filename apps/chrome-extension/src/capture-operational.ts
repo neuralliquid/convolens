@@ -80,6 +80,18 @@ export function operationalStateForOwner(
   };
 }
 
+export function canRestoreReviewedRetry(
+  operation: CaptureOperationSnapshot,
+  persistedOwnerId: unknown,
+  currentOwnerId: unknown,
+): boolean {
+  return (
+    operation.state === "retry-required" &&
+    typeof persistedOwnerId === "string" &&
+    persistedOwnerId === currentOwnerId
+  );
+}
+
 export function deriveToolbarBadge(
   operations: Iterable<CaptureOperationSnapshot>,
   legacyQueueCount: number,
@@ -104,7 +116,6 @@ export function deriveToolbarBadge(
       (operation) =>
         operation.state === "ready-for-review" ||
         operation.state === "failed" ||
-        operation.state === "cancelled" ||
         Boolean(operation.reconciliationRequired),
     )
   ) {

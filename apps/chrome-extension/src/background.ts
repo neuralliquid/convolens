@@ -41,6 +41,7 @@ import {
 } from "./capture-operation";
 import { normalizeAutomaticBoundary } from "./automatic-capture";
 import {
+  canRestoreReviewedRetry,
   deriveToolbarBadge,
   normalizeCaptureMode,
   normalizeConversationResultPath,
@@ -111,12 +112,18 @@ async function handleCaptureTabRemoved(tabId: number): Promise<void> {
       "retry-required",
     ].includes(operation.state)
   ) {
-    void finishCaptureOperation(
+    await finishCaptureOperation(
       operation,
       "cancelled",
       "The WhatsApp tab was closed.",
       false,
     );
+    if (captureOperations.get(tabId)?.operationId === operation.operationId) {
+      captureOperations.delete(tabId);
+      captureOperationEpochs.delete(operation.operationId);
+      captureOperationOwnerIds.delete(operation.operationId);
+      await persistCaptureOperations();
+    }
   }
 }
 
@@ -315,6 +322,7 @@ async function loadCaptureOperations(): Promise<void> {
     const [stored, ownerState] = await Promise.all([
       chrome.storage.session.get([
         STORAGE_KEYS.captureOperations,
+        STORAGE_KEYS.captureOperationOwners,
         STORAGE_KEYS.captureLifecycleEpoch,
       ]),
       chrome.storage.local.get([STORAGE_KEYS.user]),
@@ -326,6 +334,7 @@ async function loadCaptureOperations(): Promise<void> {
         ? persistedEpoch
         : 0;
     const persisted = stored[STORAGE_KEYS.captureOperations];
+    const persistedOwners = stored[STORAGE_KEYS.captureOperationOwners];
 
     const interrupted: CaptureOperationSnapshot[] = [];
     for (const [tabIdValue, value] of Object.entries(
@@ -365,11 +374,17 @@ async function loadCaptureOperations(): Promise<void> {
           ? (value as CaptureOperationSnapshot).alignmentWarningCount
           : 0,
       };
-      const canRestoreReviewedRetry =
-        operation.state === "retry-required" &&
-        typeof restoredOwnerId === "string";
+      const persistedOwnerId =
+        persistedOwners && typeof persistedOwners === "object"
+          ? (persistedOwners as Record<string, unknown>)[operation.operationId]
+          : undefined;
+      const restoreReviewedRetry = canRestoreReviewedRetry(
+        operation,
+        persistedOwnerId,
+        restoredOwnerId,
+      );
       const restored =
-        isActiveCaptureState(operation.state) && !canRestoreReviewedRetry
+        isActiveCaptureState(operation.state) && !restoreReviewedRetry
           ? completeCaptureOperation(
               operation,
               "cancelled",
@@ -378,8 +393,11 @@ async function loadCaptureOperations(): Promise<void> {
           : operation;
       captureOperations.set(tabId, restored);
       captureOperationEpochs.set(restored.operationId, captureLifecycleEpoch);
-      if (canRestoreReviewedRetry) {
-        captureOperationOwnerIds.set(restored.operationId, restoredOwnerId);
+      if (restoreReviewedRetry) {
+        captureOperationOwnerIds.set(
+          restored.operationId,
+          persistedOwnerId as string,
+        );
       }
       if (restored !== operation) interrupted.push(restored);
     }
@@ -415,8 +433,19 @@ async function updateToolbarBadge(): Promise<void> {
 }
 
 async function persistCaptureOperations(): Promise<void> {
+  const retainedOperationIds = new Set(
+    [...captureOperations.values()].map((operation) => operation.operationId),
+  );
+  for (const operationId of captureOperationOwnerIds.keys()) {
+    if (!retainedOperationIds.has(operationId)) {
+      captureOperationOwnerIds.delete(operationId);
+    }
+  }
   await chrome.storage.session.set({
     [STORAGE_KEYS.captureOperations]: Object.fromEntries(captureOperations),
+    [STORAGE_KEYS.captureOperationOwners]: Object.fromEntries(
+      captureOperationOwnerIds,
+    ),
     [STORAGE_KEYS.captureLifecycleEpoch]: captureLifecycleEpoch,
   });
   await updateToolbarBadge().catch((error) =>

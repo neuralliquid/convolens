@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { CaptureOperationSnapshot } from "../src/capture-operation";
 import {
+  canRestoreReviewedRetry,
   deriveToolbarBadge,
   normalizeConversationResultPath,
   operationalStateForOwner,
@@ -99,13 +100,14 @@ test("prioritizes retry, legacy migration, then other attention in the toolbar",
 });
 
 test("preserves only retry metadata across worker restart and fails closed without tab payload", () => {
+  const retry = operation("retry-required");
+  assert.equal(canRestoreReviewedRetry(retry, "owner-a", "owner-a"), true);
+  assert.equal(canRestoreReviewedRetry(retry, "owner-a", "owner-b"), false);
+  assert.equal(canRestoreReviewedRetry(retry, undefined, "owner-a"), false);
+  assert.match(backgroundSource, /STORAGE_KEYS\.captureOperationOwners/);
   assert.match(
     backgroundSource,
-    /canRestoreReviewedRetry[\s\S]*operation\.state === "retry-required"/,
-  );
-  assert.match(
-    backgroundSource,
-    /captureOperationOwnerIds\.set\(restored\.operationId, restoredOwnerId\)/,
+    /captureOperationOwnerIds\.set\([\s\S]*persistedOwnerId as string/,
   );
   assert.match(
     contentSource,
@@ -143,7 +145,19 @@ test("shows results, last capture, remembered mode, and exactly two planned acti
     assert.match(source, /SET_PREFERRED_CAPTURE_MODE/);
   }
   assert.match(popupSource, /GET_CAPTURE_OPERATIONAL_STATE/);
+  assert.match(
+    popupSource,
+    /showLoggedIn\(result\.data\?\.user\);\s*await refreshOperationalState\(\)/,
+  );
   assert.match(contentSource, /GET_CAPTURE_OPERATIONAL_STATE/);
   assert.equal((popupHtml.match(/— <b>Soon<\/b>/g) || []).length, 2);
   assert.equal((contentSource.match(/— <b>Soon<\/b>/g) || []).length, 2);
+});
+
+test("removes closed-tab captures without leaving permanent badge attention", () => {
+  assert.equal(deriveToolbarBadge([operation("cancelled")], 0).text, "");
+  assert.match(
+    backgroundSource,
+    /handleCaptureTabRemoved[\s\S]*captureOperations\.delete\(tabId\)[\s\S]*captureOperationOwnerIds\.delete\(operation\.operationId\)/,
+  );
 });

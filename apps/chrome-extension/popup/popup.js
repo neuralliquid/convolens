@@ -458,18 +458,7 @@ async function init() {
 
   if (authStatus.data?.isAuthenticated) {
     showLoggedIn(authStatus.data.user);
-    const operationalResponse = await sendRuntimeMessage({
-      action: "GET_CAPTURE_OPERATIONAL_STATE",
-    });
-    if (operationalResponse.success && operationalResponse.data) {
-      operationalState = operationalResponse.data;
-      applyPopupCaptureMode(
-        operationalState.preferredMode === "guided"
-          ? "scroll"
-          : operationalState.preferredMode,
-      );
-    }
-    renderOperationalActions();
+    await refreshOperationalState();
   } else {
     showLoggedOut();
     operationalActions.hidden = true;
@@ -486,6 +475,21 @@ async function init() {
       renderCaptureOperation(operationResponse.data);
     }
   }
+}
+
+async function refreshOperationalState() {
+  const operationalResponse = await sendRuntimeMessage({
+    action: "GET_CAPTURE_OPERATIONAL_STATE",
+  });
+  if (operationalResponse.success && operationalResponse.data) {
+    operationalState = operationalResponse.data;
+    applyPopupCaptureMode(
+      operationalState.preferredMode === "guided"
+        ? "scroll"
+        : operationalState.preferredMode,
+    );
+  }
+  renderOperationalActions();
 }
 
 // Show logged in state
@@ -547,6 +551,7 @@ loginBtn.addEventListener("click", async () => {
     const result = await sendRuntimeMessage({ action: "SYNC_MYSTIRA_AUTH" });
     if (result.success) {
       showLoggedIn(result.data?.user);
+      await refreshOperationalState();
       loginError.textContent = "";
       setActionStatus(
         "Connected. Choose a WhatsApp chat and review its loaded messages.",

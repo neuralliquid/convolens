@@ -27,7 +27,7 @@ Phase 8 completes the practical post-capture loop while preserving the prior rev
 
 ## Validation
 
-- Chrome extension Node tests: 128 passed, 0 failed.
+- Chrome extension Node tests: 129 passed, 0 failed.
 - Chrome extension TypeScript: passed.
 - Popup JavaScript syntax: passed.
 - Prettier and `git diff --check`: passed.
@@ -35,7 +35,8 @@ Phase 8 completes the practical post-capture loop while preserving the prior rev
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.19`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `C0FB47800051336212DD356F98FBF0BBD805C26C74E5B0F08E2B0C4E84DFC686`.
+- Packaged ZIP SHA-256: `FCA8D4BC01C98AA65A588129455A2523F059E7E296CE55F08862F4D4A047B5ED`.
+- Exact-head Codex review identified and prompted fixes for restored retry ownership, closed-tab badge cleanup, and immediate post-sign-in operational-state refresh. Regression coverage is included; the remediated head requires a fresh exact-head review before merge.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open
