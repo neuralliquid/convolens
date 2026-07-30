@@ -35,8 +35,8 @@ Phase 8 completes the practical post-capture loop while preserving the prior rev
 - Repository Turbo build: 8 of 8 packages passed.
 - Production extension build and package: passed.
 - Packaged manifest: version `1.0.19`; permissions remain `storage`, `activeTab`, `scripting`, and `notifications`.
-- Packaged ZIP SHA-256: `FCA8D4BC01C98AA65A588129455A2523F059E7E296CE55F08862F4D4A047B5ED`.
-- Exact-head Codex review identified and prompted fixes for restored retry ownership, closed-tab badge cleanup, and immediate post-sign-in operational-state refresh. Regression coverage is included; the remediated head requires a fresh exact-head review before merge.
+- Packaged ZIP SHA-256: `D541BD8074329DD3B7B275FDC1B0AE40C1AE03938C60392616A2C8CF0BA6BB7E`.
+- Exact-head Codex review identified and prompted fixes for restored retry ownership, closed-tab badge cleanup, immediate post-sign-in operational-state refresh, and retaining separate aggregate preferences/results for each owner that uses the browser profile. Regression coverage is included; the remediated head requires a fresh exact-head review before merge.
 - No visual or authentic WhatsApp acceptance is claimed.
 
 ## Boundaries still open

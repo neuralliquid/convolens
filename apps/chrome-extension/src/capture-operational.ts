@@ -16,9 +16,10 @@ export interface CaptureOperationalState {
   lastCapture?: LastCaptureSummary;
 }
 
-export interface StoredCaptureOperationalState extends CaptureOperationalState {
-  ownerId: string;
-}
+export type StoredCaptureOperationalStates = Record<
+  string,
+  CaptureOperationalState
+>;
 
 export interface ToolbarBadgeState {
   text: "" | "!";
@@ -67,17 +68,47 @@ export function operationalStateForOwner(
   value: unknown,
   ownerId: string,
 ): CaptureOperationalState {
-  if (!value || typeof value !== "object") {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !Object.prototype.hasOwnProperty.call(value, ownerId)
+  ) {
     return { preferredMode: "loaded" };
   }
-  const candidate = value as Partial<StoredCaptureOperationalState>;
-  if (candidate.ownerId !== ownerId) {
+  const candidate = (value as Record<string, unknown>)[ownerId];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     return { preferredMode: "loaded" };
   }
+  const state = candidate as Partial<CaptureOperationalState>;
   return {
-    preferredMode: normalizeCaptureMode(candidate.preferredMode),
-    lastCapture: normalizeLastCapture(candidate.lastCapture),
+    preferredMode: normalizeCaptureMode(state.preferredMode),
+    lastCapture: normalizeLastCapture(state.lastCapture),
   };
+}
+
+export function withOperationalStateForOwner(
+  value: unknown,
+  ownerId: string,
+  state: CaptureOperationalState,
+): StoredCaptureOperationalStates {
+  const records: StoredCaptureOperationalStates = {};
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [storedOwnerId, candidate] of Object.entries(value)) {
+      if (
+        candidate &&
+        typeof candidate === "object" &&
+        !Array.isArray(candidate)
+      ) {
+        records[storedOwnerId] = operationalStateForOwner(value, storedOwnerId);
+      }
+    }
+  }
+  records[ownerId] = {
+    preferredMode: normalizeCaptureMode(state.preferredMode),
+    lastCapture: normalizeLastCapture(state.lastCapture),
+  };
+  return records;
 }
 
 export function canRestoreReviewedRetry(

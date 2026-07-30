@@ -46,8 +46,8 @@ import {
   normalizeCaptureMode,
   normalizeConversationResultPath,
   operationalStateForOwner,
+  withOperationalStateForOwner,
   type CaptureOperationalState,
-  type StoredCaptureOperationalState,
 } from "./capture-operational";
 
 // =============================================================================
@@ -1973,7 +1973,11 @@ async function mutateCaptureOperationalState(
         ownerId,
       ),
     );
-    const persisted: StoredCaptureOperationalState = { ownerId, ...state };
+    const persisted = withOperationalStateForOwner(
+      stored[STORAGE_KEYS.captureOperationalState],
+      ownerId,
+      state,
+    );
     await chrome.storage.local.set({
       [STORAGE_KEYS.captureOperationalState]: persisted,
     });

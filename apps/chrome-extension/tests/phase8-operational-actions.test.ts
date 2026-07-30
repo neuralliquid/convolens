@@ -7,6 +7,7 @@ import {
   deriveToolbarBadge,
   normalizeConversationResultPath,
   operationalStateForOwner,
+  withOperationalStateForOwner,
 } from "../src/capture-operational";
 
 const read = (path: string) =>
@@ -56,15 +57,16 @@ test("accepts only exact persisted conversation result paths", () => {
 
 test("keeps preferences and last capture scoped to the authenticated owner", () => {
   const stored = {
-    ownerId: "owner-a",
-    preferredMode: "automatic",
-    lastCapture: {
-      count: 42,
-      completedAt: "2026-07-29T12:01:00.000Z",
-      state: "received",
-      resultPath:
-        "/dashboard/conversations/1d3e4567-e89b-42d3-a456-426614174000",
-      reconciliationRequired: false,
+    "owner-a": {
+      preferredMode: "automatic",
+      lastCapture: {
+        count: 42,
+        completedAt: "2026-07-29T12:01:00.000Z",
+        state: "received",
+        resultPath:
+          "/dashboard/conversations/1d3e4567-e89b-42d3-a456-426614174000",
+        reconciliationRequired: false,
+      },
     },
   };
   assert.equal(
@@ -74,6 +76,17 @@ test("keeps preferences and last capture scoped to the authenticated owner", () 
   assert.deepEqual(operationalStateForOwner(stored, "owner-b"), {
     preferredMode: "loaded",
   });
+  const withOwnerB = withOperationalStateForOwner(stored, "owner-b", {
+    preferredMode: "guided",
+  });
+  assert.equal(
+    operationalStateForOwner(withOwnerB, "owner-a").preferredMode,
+    "automatic",
+  );
+  assert.equal(
+    operationalStateForOwner(withOwnerB, "owner-b").preferredMode,
+    "guided",
+  );
   assert.match(backgroundSource, /STORAGE_KEYS\.captureOperationalState/);
   assert.doesNotMatch(
     read("../src/capture-operational.ts"),
