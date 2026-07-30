@@ -232,6 +232,17 @@ test("preserves the newest aggregate result inside the serialized storage mutati
   );
 });
 
+test("does not open an older aggregate link for a terminal result without a path", () => {
+  assert.match(
+    popupSource,
+    /\["received", "duplicate"\]\.includes\(currentOperation\.state\)\s*\) \{\s*return currentOperation\.resultPath;/,
+  );
+  assert.match(
+    contentSource,
+    /\["received", "duplicate"\]\.includes\(launcherOperation\.state\)\s*\) \{\s*return launcherOperation\.resultPath;/,
+  );
+});
+
 test("broadcasts preferred-mode changes to every live launcher", () => {
   assert.match(
     backgroundSource,

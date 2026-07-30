@@ -127,8 +127,7 @@ function formatPreviewTimestamp(value) {
 function currentResultPath() {
   if (
     currentOperation &&
-    ["received", "duplicate"].includes(currentOperation.state) &&
-    currentOperation.resultPath
+    ["received", "duplicate"].includes(currentOperation.state)
   ) {
     return currentOperation.resultPath;
   }

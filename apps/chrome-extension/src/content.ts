@@ -702,8 +702,7 @@ function updateLegacyQueueState(count: number): void {
 function currentResultPath(): string | undefined {
   if (
     launcherOperation &&
-    ["received", "duplicate"].includes(launcherOperation.state) &&
-    launcherOperation.resultPath
+    ["received", "duplicate"].includes(launcherOperation.state)
   ) {
     return launcherOperation.resultPath;
   }
