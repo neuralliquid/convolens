@@ -258,7 +258,10 @@ function renderCaptureOperation(operation) {
   currentOperation = operation;
   if (
     ["received", "duplicate"].includes(operation.state) &&
-    operation.completedAt
+    operation.completedAt &&
+    (!operationalState.lastCapture ||
+      Date.parse(operation.completedAt) >=
+        Date.parse(operationalState.lastCapture.completedAt))
   ) {
     operationalState = {
       ...operationalState,

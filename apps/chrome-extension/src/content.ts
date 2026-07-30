@@ -1310,7 +1310,10 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   launcherOperation = operation;
   if (
     (operation.state === "received" || operation.state === "duplicate") &&
-    operation.completedAt
+    operation.completedAt &&
+    (!launcherOperationalState.lastCapture ||
+      Date.parse(operation.completedAt) >=
+        Date.parse(launcherOperationalState.lastCapture.completedAt))
   ) {
     launcherOperationalState = {
       ...launcherOperationalState,

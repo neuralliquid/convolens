@@ -215,3 +215,19 @@ test("recalculates the toolbar badge when options refreshes legacy state", () =>
     /case "REFRESH_LAUNCHER_STATE":[\s\S]*await updateToolbarBadge\(\)[\s\S]*await notifyLauncherStateRefresh\(\)/,
   );
 });
+
+test("preserves a newer aggregate result when an older tab operation renders", () => {
+  for (const source of [popupSource, contentSource]) {
+    assert.match(
+      source,
+      /Date\.parse\(operation\.completedAt\) >=\s*Date\.parse\([^)]*lastCapture\.completedAt\)/,
+    );
+  }
+});
+
+test("broadcasts preferred-mode changes to every live launcher", () => {
+  assert.match(
+    backgroundSource,
+    /async function setPreferredCaptureMode[\s\S]*mutateCaptureOperationalState[\s\S]*await notifyLauncherStateRefresh\(\)[\s\S]*return \{ success: true, data: state \}/,
+  );
+});

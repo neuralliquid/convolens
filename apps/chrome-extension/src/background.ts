@@ -1983,6 +1983,7 @@ async function setPreferredCaptureMode(
     ...current,
     preferredMode: normalizeCaptureMode(requestedMode),
   }));
+  await notifyLauncherStateRefresh();
   return { success: true, data: state };
 }
 
