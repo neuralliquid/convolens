@@ -32,6 +32,7 @@ import type {
   CaptureOperationState,
   CaptureStopReason,
 } from "./capture-operation";
+import type { CaptureOperationalState } from "./capture-operational";
 import {
   AUTOMATIC_CAPTURE_SAFETY_CAP,
   AUTOMATIC_NO_PROGRESS_LIMIT,
@@ -219,6 +220,9 @@ let lastCountedTerminalOperationId: string | null = null;
 const chatIdentityTokens = new Map<string, string>();
 let launcherPosition: LauncherPosition = DEFAULT_LAUNCHER_POSITION;
 let launcherOperation: CaptureOperationSnapshot | null = null;
+let launcherOperationalState: CaptureOperationalState = {
+  preferredMode: "loaded",
+};
 let legacyQueueCount = 0;
 let launcherSuppressClick = false;
 let launcherAuthRefreshGeneration = 0;
@@ -426,7 +430,18 @@ async function injectUI(): Promise<void> {
         <div class="ws-preview-actions">
           <button id="ws-confirm-capture" class="ws-capture-btn" type="button">Confirm upload</button>
           <button id="ws-cancel-capture" class="ws-secondary-btn" type="button">Cancel</button>
+          <button id="ws-export-capture" class="ws-secondary-btn ws-wide-action" type="button">Export reviewed JSON</button>
         </div>
+      </section>
+      <section id="ws-operational-actions" class="ws-operational-actions" aria-label="Capture result" hidden>
+        <strong id="ws-result-label">No capture result yet</strong>
+        <span id="ws-last-capture">Last capture: none yet</span>
+        <button id="ws-open-conversation" class="ws-secondary-btn" type="button" hidden>Open received conversation</button>
+      </section>
+      <section class="ws-roadmap-preview" aria-label="Planned capture actions">
+        <strong>Coming next</strong>
+        <span>Select individual messages — <b>Soon</b></span>
+        <span>Match participants — <b>Soon</b></span>
       </section>
       <div id="ws-legacy-attention" class="ws-legacy-attention" hidden>
         <strong>Legacy local captures need review</strong>
@@ -471,6 +486,25 @@ async function injectUI(): Promise<void> {
     .getElementById("ws-cancel-capture")
     ?.addEventListener("click", () => {
       if (launcherOperation) void reviewPageCapture(launcherOperation, false);
+    });
+  document
+    .getElementById("ws-export-capture")
+    ?.addEventListener("click", () => {
+      if (!launcherOperation) return;
+      try {
+        const filename = exportCaptureOperationPayload(
+          launcherOperation.operationId,
+        );
+        updateStatus(`Exported ${filename}.`, "success");
+      } catch (error) {
+        updateStatus(normalizeErrorMessage(error), "error");
+      }
+    });
+  document
+    .getElementById("ws-open-conversation")
+    ?.addEventListener("click", () => {
+      const path = currentResultPath();
+      if (path) void openReceivedConversation(path);
     });
   document.getElementById("ws-stop-guided")?.addEventListener("click", () => {
     if (launcherOperation) void stopPageCollection(launcherOperation);
@@ -665,13 +699,71 @@ function updateLegacyQueueState(count: number): void {
   updateLauncherBadge(launcherOperation);
 }
 
+function currentResultPath(): string | undefined {
+  if (
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state)
+  ) {
+    return launcherOperation.resultPath;
+  }
+  return launcherOperationalState.lastCapture?.resultPath;
+}
+
+function renderOperationalActions(): void {
+  const section = document.getElementById("ws-operational-actions");
+  const result = document.getElementById("ws-result-label");
+  const last = document.getElementById("ws-last-capture");
+  const open = document.getElementById(
+    "ws-open-conversation",
+  ) as HTMLButtonElement | null;
+  if (!section || !result || !last || !open) return;
+  section.hidden = authToken === null;
+  if (section.hidden) return;
+
+  const lastCapture = launcherOperationalState.lastCapture;
+  const terminalOperation =
+    launcherOperation &&
+    ["received", "duplicate"].includes(launcherOperation.state)
+      ? launcherOperation
+      : null;
+  const resultState = terminalOperation?.state || lastCapture?.state;
+  const reconciliationRequired = terminalOperation
+    ? Boolean(terminalOperation.reconciliationRequired)
+    : Boolean(lastCapture?.reconciliationRequired);
+  result.textContent = reconciliationRequired
+    ? "New conversation stored separately — reconciliation needed"
+    : resultState === "duplicate"
+      ? "Existing conversation found — no duplicate created"
+      : resultState === "received"
+        ? "New conversation received"
+        : "No capture result yet";
+  last.textContent = lastCapture
+    ? `Last capture: ${lastCapture.count} message${lastCapture.count === 1 ? "" : "s"} · ${formatPreviewTimestamp(lastCapture.completedAt)}`
+    : "Last capture: none yet";
+  open.hidden = !currentResultPath();
+}
+
+async function openReceivedConversation(path: string): Promise<void> {
+  try {
+    const response = (await chrome.runtime.sendMessage({
+      action: "OPEN_DASHBOARD",
+      path,
+    })) as ExtensionResponse;
+    if (!response.success) updateStatus(response.error, "error");
+  } catch (error) {
+    updateStatus(normalizeErrorMessage(error), "error");
+  }
+}
+
 function resetLauncherAccountState(authenticated: boolean): void {
   launcherOperationRenderGeneration += 1;
   launcherOperation = null;
+  launcherOperationalState = { preferredMode: "loaded" };
   pageConfirmationOperationId = null;
   const review = document.getElementById("ws-capture-review");
   if (review) review.hidden = true;
   updateLegacyQueueState(0);
+  renderOperationalActions();
   updateProgress(0);
   updateStatus(
     authenticated
@@ -722,14 +814,28 @@ async function refreshLauncherAuthenticationState(
   const operationRenderGeneration = launcherOperationRenderGeneration;
 
   try {
-    const [operationResponse, legacyResponse] = (await Promise.all([
-      chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
-      chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
-    ])) as [
-      ExtensionResponse<CaptureOperationSnapshot>,
-      ExtensionResponse<{ count: number }>,
-    ];
+    const [operationResponse, legacyResponse, operationalResponse] =
+      (await Promise.all([
+        chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATION" }),
+        chrome.runtime.sendMessage({ action: "GET_LEGACY_QUEUE_SUMMARY" }),
+        chrome.runtime.sendMessage({ action: "GET_CAPTURE_OPERATIONAL_STATE" }),
+      ])) as [
+        ExtensionResponse<CaptureOperationSnapshot>,
+        ExtensionResponse<{ count: number }>,
+        ExtensionResponse<CaptureOperationalState>,
+      ];
     if (refreshGeneration !== launcherAuthRefreshGeneration) return;
+    if (operationalResponse.success && operationalResponse.data) {
+      launcherOperationalState = operationalResponse.data;
+      if (!(operationResponse.success && operationResponse.data)) {
+        applyPageCaptureMode(
+          operationalResponse.data.preferredMode === "guided"
+            ? "scroll"
+            : operationalResponse.data.preferredMode,
+        );
+      }
+      renderOperationalActions();
+    }
     if (
       operationRenderGeneration === launcherOperationRenderGeneration &&
       operationResponse.success &&
@@ -902,6 +1008,43 @@ function renderPageCapturePreview(operation: CaptureOperationSnapshot): void {
   review.hidden = false;
 }
 
+function exportCaptureOperationPayload(operationId: string): string {
+  const operation = activeCaptureOperation;
+  if (
+    !operation ||
+    operation.operationId !== operationId ||
+    !operation.payload ||
+    !["ready-for-review", "retry-required"].includes(operation.state) ||
+    operation.chatIdentity !== getCurrentChatIdentity()
+  ) {
+    throw new Error(
+      "The reviewed capture is no longer available in this tab. Recapture before exporting.",
+    );
+  }
+  const safeName =
+    operation.payload.chatName
+      .normalize("NFKD")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "whatsapp-capture";
+  const filename = `convolens-${safeName}-${new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")}.json`;
+  const blob = new Blob([JSON.stringify(operation.payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return filename;
+}
+
 function applyPageCaptureMode(selectedMode: string): void {
   document
     .querySelectorAll<HTMLElement>(".ws-capture-mode")
@@ -925,6 +1068,19 @@ function handleCaptureModeChange(event: Event): void {
   const selectedMode = (event.target as HTMLInputElement).value;
   const generation = ++launcherModeChangeGeneration;
   applyPageCaptureMode(selectedMode);
+  const preferredMode =
+    selectedMode === "scroll"
+      ? "guided"
+      : selectedMode === "automatic"
+        ? "automatic"
+        : "loaded";
+  launcherOperationalState = {
+    ...launcherOperationalState,
+    preferredMode,
+  };
+  void chrome.runtime
+    .sendMessage({ action: "SET_PREFERRED_CAPTURE_MODE", mode: preferredMode })
+    .catch(() => undefined);
   if (
     launcherOperation &&
     ((launcherOperation.mode === "loaded" && selectedMode !== "loaded") ||
@@ -1151,7 +1307,36 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   if (operation.authGeneration !== launcherCaptureAuthGeneration) return false;
   launcherOperationRenderGeneration += 1;
   launcherOperation = operation;
-  const modeValue = operation.mode === "guided" ? "scroll" : operation.mode;
+  if (
+    (operation.state === "received" || operation.state === "duplicate") &&
+    operation.completedAt &&
+    (!launcherOperationalState.lastCapture ||
+      Date.parse(operation.completedAt) >=
+        Date.parse(launcherOperationalState.lastCapture.completedAt))
+  ) {
+    launcherOperationalState = {
+      ...launcherOperationalState,
+      lastCapture: {
+        count: operation.extractedCount,
+        completedAt: operation.completedAt,
+        state: operation.state,
+        resultPath: operation.resultPath,
+        reconciliationRequired: Boolean(operation.reconciliationRequired),
+      },
+    };
+  }
+  const operationOwnsMode = [
+    "inspecting",
+    "collecting",
+    "paused",
+    "ready-for-review",
+    "uploading",
+    "retry-required",
+  ].includes(operation.state);
+  const selectedMode = operationOwnsMode
+    ? operation.mode
+    : launcherOperationalState.preferredMode;
+  const modeValue = selectedMode === "guided" ? "scroll" : selectedMode;
   document
     .querySelectorAll<HTMLInputElement>('input[name="ws-capture-mode"]')
     .forEach((input) => {
@@ -1167,6 +1352,7 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
   const automaticOptions = document.getElementById("ws-automatic-options");
   if (automaticOptions) automaticOptions.hidden = modeValue !== "automatic";
   updateLauncherBadge(operation);
+  renderOperationalActions();
   renderPageCapturePreview(operation);
   renderPageGuidedProgress(operation);
   if (activeCaptureOperation?.operationId === operation.operationId) {
@@ -1182,7 +1368,13 @@ function renderCaptureOperation(operation: CaptureOperationSnapshot): boolean {
       "paused",
       "uploading",
     ].includes(operation.state);
-    button.textContent = getLauncherActionLabel(operation);
+    button.textContent = operationOwnsMode
+      ? getLauncherActionLabel(operation)
+      : selectedMode === "guided"
+        ? "Start guided capture"
+        : selectedMode === "automatic"
+          ? "Load older messages"
+          : "Review loaded messages";
   }
 
   switch (operation.state) {
@@ -3215,6 +3407,15 @@ function handleMessage(
         });
       } else {
         sendResponse({ success: true, data: activeCaptureOperation.payload });
+      }
+      break;
+
+    case "EXPORT_CAPTURE_OPERATION_PAYLOAD":
+      try {
+        const filename = exportCaptureOperationPayload(message.operationId);
+        sendResponse({ success: true, data: { filename } });
+      } catch (error) {
+        sendResponse({ success: false, error: normalizeErrorMessage(error) });
       }
       break;
 

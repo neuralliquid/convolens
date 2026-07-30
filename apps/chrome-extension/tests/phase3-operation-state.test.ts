@@ -225,7 +225,14 @@ test("keeps in-flight upload truth across logout and tab closure", () => {
     backgroundSource.indexOf("// Message Handler"),
   );
   assert.doesNotMatch(tabRemoval, /isActiveCaptureState/);
-  assert.doesNotMatch(tabRemoval, /"uploading"/);
+  assert.match(
+    tabRemoval,
+    /operation\.state === "uploading"[\s\S]*closedCaptureTabIds\.add\(tabId\)[\s\S]*return;/,
+  );
+  assert.ok(
+    tabRemoval.indexOf('operation.state === "uploading"') <
+      tabRemoval.indexOf("finishCaptureOperation"),
+  );
 });
 
 test("rejects late collection responses after background cancellation", () => {

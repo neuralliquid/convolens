@@ -1,0 +1,251 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import type { CaptureOperationSnapshot } from "../src/capture-operation";
+import {
+  canRestoreReviewedRetry,
+  captureOwnerMatches,
+  deriveToolbarBadge,
+  normalizeConversationResultPath,
+  operationalStateForOwner,
+  withOperationalStateForOwner,
+} from "../src/capture-operational";
+
+const read = (path: string) =>
+  readFileSync(new URL(path, import.meta.url), "utf8");
+const backgroundSource = read("../src/background.ts");
+const contentSource = read("../src/content.ts");
+const popupSource = read("../popup/popup.js");
+const popupHtml = read("../popup/popup.html");
+const manifest = JSON.parse(read("../manifest.json"));
+
+function operation(
+  state: CaptureOperationSnapshot["state"],
+  reconciliationRequired = false,
+): CaptureOperationSnapshot {
+  return {
+    operationId: crypto.randomUUID(),
+    authGeneration: 1,
+    tabId: 1,
+    initiator: "popup",
+    mode: "loaded",
+    state,
+    renderedCount: 12,
+    collectedCount: 12,
+    extractedCount: 12,
+    skippedCount: 0,
+    unreadableCount: 0,
+    participantLabelCount: 2,
+    alignmentWarningCount: 0,
+    mediaCount: 0,
+    reconciliationRequired,
+    startedAt: "2026-07-29T12:00:00.000Z",
+  };
+}
+
+test("accepts only exact persisted conversation result paths", () => {
+  const path = "/dashboard/conversations/1d3e4567-e89b-42d3-a456-426614174000";
+  assert.equal(normalizeConversationResultPath(path), path);
+  assert.equal(
+    normalizeConversationResultPath("https://evil.example/x"),
+    undefined,
+  );
+  assert.equal(normalizeConversationResultPath("/dashboard"), undefined);
+  assert.match(backgroundSource, /normalizeConversationResultPath\(path\)/);
+  assert.match(popupHtml, /id="openConversation"/);
+  assert.match(contentSource, /id="ws-open-conversation"/);
+});
+
+test("keeps preferences and last capture scoped to the authenticated owner", () => {
+  const stored = {
+    "owner-a": {
+      preferredMode: "automatic",
+      lastCapture: {
+        count: 42,
+        completedAt: "2026-07-29T12:01:00.000Z",
+        state: "received",
+        resultPath:
+          "/dashboard/conversations/1d3e4567-e89b-42d3-a456-426614174000",
+        reconciliationRequired: false,
+      },
+    },
+  };
+  assert.equal(
+    operationalStateForOwner(stored, "owner-a").preferredMode,
+    "automatic",
+  );
+  assert.deepEqual(operationalStateForOwner(stored, "owner-b"), {
+    preferredMode: "loaded",
+  });
+  const withOwnerB = withOperationalStateForOwner(stored, "owner-b", {
+    preferredMode: "guided",
+  });
+  assert.equal(
+    operationalStateForOwner(withOwnerB, "owner-a").preferredMode,
+    "automatic",
+  );
+  assert.equal(
+    operationalStateForOwner(withOwnerB, "owner-b").preferredMode,
+    "guided",
+  );
+  assert.match(backgroundSource, /STORAGE_KEYS\.captureOperationalState/);
+  assert.doesNotMatch(
+    read("../src/capture-operational.ts"),
+    /messages|payload/,
+  );
+});
+
+test("prioritizes retry, legacy migration, then other attention in the toolbar", () => {
+  assert.equal(
+    deriveToolbarBadge([operation("retry-required")], 2).title,
+    "ConvoLens: reviewed capture needs retry",
+  );
+  assert.equal(
+    deriveToolbarBadge([], 2).title,
+    "ConvoLens: legacy captures need export or deletion",
+  );
+  assert.equal(
+    deriveToolbarBadge([operation("ready-for-review")], 0).title,
+    "ConvoLens: capture needs attention",
+  );
+  assert.equal(deriveToolbarBadge([operation("received")], 0).text, "");
+  assert.match(backgroundSource, /chrome\.action\.setBadgeText/);
+  assert.ok(!manifest.permissions.includes("downloads"));
+});
+
+test("preserves only retry metadata across worker restart and fails closed without tab payload", () => {
+  const retry = operation("retry-required");
+  assert.equal(canRestoreReviewedRetry(retry, "owner-a", "owner-a"), true);
+  assert.equal(canRestoreReviewedRetry(retry, "owner-a", "owner-b"), false);
+  assert.equal(canRestoreReviewedRetry(retry, undefined, "owner-a"), false);
+  assert.equal(captureOwnerMatches("owner-a", "owner-a"), true);
+  assert.equal(captureOwnerMatches("owner-a", "owner-b"), false);
+  assert.match(backgroundSource, /STORAGE_KEYS\.captureOperationOwners/);
+  assert.match(
+    backgroundSource,
+    /captureOperationOwnerIds\.set\([\s\S]*persistedOwnerId as string/,
+  );
+  assert.match(
+    contentSource,
+    /EXPORT_CAPTURE_OPERATION_PAYLOAD[\s\S]*exportCaptureOperationPayload/,
+  );
+  assert.match(
+    contentSource,
+    /The reviewed capture is no longer available in this tab\. Recapture before exporting\./,
+  );
+  assert.match(
+    backgroundSource,
+    /GET_CAPTURE_OPERATION_PAYLOAD[\s\S]*The reviewed capture is no longer available in this tab/,
+  );
+});
+
+test("exports the exact reviewed in-tab payload without a raw background queue", () => {
+  assert.match(contentSource, /JSON\.stringify\(operation\.payload, null, 2\)/);
+  assert.match(contentSource, /URL\.createObjectURL\(blob\)/);
+  assert.match(
+    contentSource,
+    /operation\.chatIdentity !== getCurrentChatIdentity\(\)/,
+  );
+  assert.doesNotMatch(
+    backgroundSource,
+    /queuePendingUpload|retryPendingUploads/,
+  );
+  assert.ok(!manifest.permissions.includes("downloads"));
+});
+
+test("shows results, last capture, remembered mode, and exactly two planned actions", () => {
+  for (const source of [popupSource, contentSource]) {
+    assert.match(source, /Existing conversation found — no duplicate created/);
+    assert.match(source, /New conversation received/);
+    assert.match(source, /Last capture:/);
+    assert.match(source, /SET_PREFERRED_CAPTURE_MODE/);
+  }
+  assert.match(popupSource, /GET_CAPTURE_OPERATIONAL_STATE/);
+  assert.match(
+    popupSource,
+    /showLoggedIn\(result\.data\?\.user\);\s*await refreshOperationalState\(\)/,
+  );
+  assert.match(contentSource, /GET_CAPTURE_OPERATIONAL_STATE/);
+  assert.equal((popupHtml.match(/— <b>Soon<\/b>/g) || []).length, 2);
+  assert.equal((contentSource.match(/— <b>Soon<\/b>/g) || []).length, 2);
+});
+
+test("removes closed-tab captures without leaving permanent badge attention", () => {
+  assert.equal(deriveToolbarBadge([operation("cancelled")], 0).text, "");
+  assert.match(
+    backgroundSource,
+    /handleCaptureTabRemoved[\s\S]*operation\.state === "uploading"[\s\S]*closedCaptureTabIds\.add\(tabId\)[\s\S]*removeCaptureOperation\(operation\)/,
+  );
+  assert.match(
+    backgroundSource,
+    /closedCaptureTabIds\.has\(operation\.tabId\)[\s\S]*operation\.state !== "uploading"[\s\S]*removeCaptureOperation\(operation\)/,
+  );
+});
+
+test("drops every restored snapshot that does not belong to the current owner", () => {
+  assert.match(
+    backgroundSource,
+    /if \(!captureOwnerMatches\(persistedOwnerId, restoredOwnerId\)\) \{\s*discarded\.push\(operation\);\s*continue;/,
+  );
+  assert.match(
+    backgroundSource,
+    /for \(const operation of discarded\) \{\s*await discardCapturePayload\(operation\);/,
+  );
+});
+
+test("ties reconciliation state to the same result shown and opened", () => {
+  for (const source of [popupSource, contentSource]) {
+    assert.match(
+      source,
+      /const reconciliationRequired = terminalOperation\s*\? Boolean\(terminalOperation\.reconciliationRequired\)\s*:/,
+    );
+  }
+});
+
+test("refreshes every launcher after successful aggregate metadata changes", () => {
+  assert.match(
+    backgroundSource,
+    /async function recordSuccessfulCapture[\s\S]*mutateCaptureOperationalState[\s\S]*await notifyLauncherStateRefresh\(\)/,
+  );
+});
+
+test("recalculates the toolbar badge when options refreshes legacy state", () => {
+  assert.match(
+    backgroundSource,
+    /case "REFRESH_LAUNCHER_STATE":[\s\S]*await updateToolbarBadge\(\)[\s\S]*await notifyLauncherStateRefresh\(\)/,
+  );
+});
+
+test("preserves a newer aggregate result when an older tab operation renders", () => {
+  for (const source of [popupSource, contentSource]) {
+    assert.match(
+      source,
+      /Date\.parse\(operation\.completedAt\) >=\s*Date\.parse\([^)]*lastCapture\.completedAt\)/,
+    );
+  }
+});
+
+test("preserves the newest aggregate result inside the serialized storage mutation", () => {
+  assert.match(
+    backgroundSource,
+    /current\.lastCapture[\s\S]*Date\.parse\(current\.lastCapture\.completedAt\) >= Date\.parse\(completedAt\)[\s\S]*return current/,
+  );
+});
+
+test("does not open an older aggregate link for a terminal result without a path", () => {
+  assert.match(
+    popupSource,
+    /\["received", "duplicate"\]\.includes\(currentOperation\.state\)\s*\) \{\s*return currentOperation\.resultPath;/,
+  );
+  assert.match(
+    contentSource,
+    /\["received", "duplicate"\]\.includes\(launcherOperation\.state\)\s*\) \{\s*return launcherOperation\.resultPath;/,
+  );
+});
+
+test("broadcasts preferred-mode changes to every live launcher", () => {
+  assert.match(
+    backgroundSource,
+    /async function setPreferredCaptureMode[\s\S]*mutateCaptureOperationalState[\s\S]*await notifyLauncherStateRefresh\(\)[\s\S]*return \{ success: true, data: state \}/,
+  );
+});

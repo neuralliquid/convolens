@@ -92,8 +92,10 @@ export const STORAGE_KEYS = {
   extractionHistory: "extractionHistory",
   pendingUploads: "pendingUploads",
   captureOperations: "captureOperations",
+  captureOperationOwners: "captureOperationOwners",
   captureLifecycleEpoch: "captureLifecycleEpoch",
   launcherPosition: "launcherPosition",
+  captureOperationalState: "captureOperationalState",
 };
 
 // =============================================================================
@@ -340,6 +342,20 @@ export interface RefreshLauncherStateMessage {
   action: "REFRESH_LAUNCHER_STATE";
 }
 
+export interface GetCaptureOperationalStateMessage {
+  action: "GET_CAPTURE_OPERATIONAL_STATE";
+}
+
+export interface SetPreferredCaptureModeMessage {
+  action: "SET_PREFERRED_CAPTURE_MODE";
+  mode: import("./capture-operation").CaptureOperationMode;
+}
+
+export interface ExportCaptureOperationPayloadMessage {
+  action: "EXPORT_CAPTURE_OPERATION_PAYLOAD";
+  operationId: string;
+}
+
 // Union type of all message types
 export type ExtensionMessage =
   | GetCurrentChatMessage
@@ -374,7 +390,10 @@ export type ExtensionMessage =
   | UpdateSettingsMessage
   | ClearPendingUploadsMessage
   | GetLegacyQueueSummaryMessage
-  | RefreshLauncherStateMessage;
+  | RefreshLauncherStateMessage
+  | GetCaptureOperationalStateMessage
+  | SetPreferredCaptureModeMessage
+  | ExportCaptureOperationPayloadMessage;
 
 // Helper type to extract action names
 export type MessageAction = ExtensionMessage["action"];
