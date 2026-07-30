@@ -198,6 +198,9 @@ async function handleMessage(
       );
 
     case "REFRESH_LAUNCHER_STATE":
+      await updateToolbarBadge().catch((error) =>
+        console.warn("[Background] Toolbar badge update failed:", error),
+      );
       await notifyLauncherStateRefresh();
       return { success: true };
 
@@ -2039,6 +2042,7 @@ async function recordSuccessfulCapture(
       reconciliationRequired: Boolean(operation.reconciliationRequired),
     },
   }));
+  await notifyLauncherStateRefresh();
 }
 
 async function getApiConfig() {

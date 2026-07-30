@@ -201,3 +201,17 @@ test("ties reconciliation state to the same result shown and opened", () => {
     );
   }
 });
+
+test("refreshes every launcher after successful aggregate metadata changes", () => {
+  assert.match(
+    backgroundSource,
+    /async function recordSuccessfulCapture[\s\S]*mutateCaptureOperationalState[\s\S]*await notifyLauncherStateRefresh\(\)/,
+  );
+});
+
+test("recalculates the toolbar badge when options refreshes legacy state", () => {
+  assert.match(
+    backgroundSource,
+    /case "REFRESH_LAUNCHER_STATE":[\s\S]*await updateToolbarBadge\(\)[\s\S]*await notifyLauncherStateRefresh\(\)/,
+  );
+});
