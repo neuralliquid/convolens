@@ -23,11 +23,15 @@ export class SelectorReportService {
         userAgent: input.userAgent,
         extensionVersion: input.extensionVersion?.slice(0, 50),
         observedAt: new Date(input.timestamp),
+        // Supply the server timestamp explicitly so SQLite fixtures retain
+        // millisecond receipt order instead of its second-precision default.
+        createdAt: new Date(),
       })
     );
     const expired = await repository.find({
       select: { id: true },
-      order: { observedAt: 'DESC', id: 'DESC' },
+      // Retention is based on server receipt, never the untrusted browser clock.
+      order: { createdAt: 'DESC', id: 'DESC' },
       skip: this.maximumReports,
     });
     if (expired.length > 0) await repository.delete(expired.map(({ id }) => id));
