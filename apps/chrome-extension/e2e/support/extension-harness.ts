@@ -197,81 +197,87 @@ export const test = base.extend<{ harness: ExtensionHarness }>({
     const profileDir = await mkdtemp(
       resolve(tmpdir(), "convolens-pw-fixture-"),
     );
-    const fixtureApi = await startFixtureApi(apiRequests);
-    const fixtureHtml = await readFile(fixturePath, "utf8");
-    const context = await chromium.launchPersistentContext(profileDir, {
-      channel: "chromium",
-      // MV3 service workers must run in the full bundled Chromium process.
-      // Linux CI supplies a virtual display with xvfb-run.
-      headless: false,
-      args: [
-        `--disable-extensions-except=${extensionPath}`,
-        `--load-extension=${extensionPath}`,
-        "--host-resolver-rules=MAP convolens.neuralliquid.ai ~NOTFOUND, MAP nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io ~NOTFOUND, MAP api.convolens.com ~NOTFOUND, MAP api.convolens.neuralliquid.ai ~NOTFOUND, EXCLUDE localhost",
-      ],
-    });
-    await attachConsoleEvidence(context, consoleMessages);
-    await context.route("https://web.whatsapp.com/**", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "text/html",
-        body: fixtureHtml,
-      }),
-    );
-    await context.route("https://convolens.neuralliquid.ai/**", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "text/html",
-        body: "<!doctype html><title>Fixture dashboard</title>",
-      }),
-    );
-    const serviceWorker = await waitForExtensionWorker(context);
-    const extensionId = new URL(serviceWorker.url()).host;
-    const existingPages = context.pages();
-    const extensionPage = await context.newPage();
-    await extensionPage.goto(
-      `chrome-extension://${extensionId}/options/options.html`,
-    );
-    for (const existingPage of existingPages) await existingPage.close();
-    await extensionPage.evaluate(
-      async ({ endpoint }) => {
-        const chromeApi = (
-          globalThis as typeof globalThis & { chrome: typeof chrome }
-        ).chrome;
-        await chromeApi.storage.local.clear();
-        await chromeApi.storage.session.clear();
-        await chromeApi.storage.local.set({
-          authToken: "fixture-owner-a-token",
-          authTokenExpiresAt: Date.now() + 3_600_000,
-          user: { id: "fixture-owner-a", email: "owner-a@example.test" },
-          settings: { apiEndpoint: endpoint },
-        });
-      },
-      { endpoint: apiOrigin },
-    );
-
-    const page = await context.newPage();
-    await page.goto("https://web.whatsapp.com/");
-    await page.locator("#convolens-fab").waitFor();
-
-    const harness = {
-      apiRequests,
-      consoleMessages,
-      context,
-      extensionPage,
-      extensionId,
-      page,
-      serviceWorker,
-    };
+    let fixtureApi: Awaited<ReturnType<typeof startFixtureApi>> | undefined;
+    let context: BrowserContext | undefined;
     try {
+      fixtureApi = await startFixtureApi(apiRequests);
+      const fixtureHtml = await readFile(fixturePath, "utf8");
+      context = await chromium.launchPersistentContext(profileDir, {
+        channel: "chromium",
+        // MV3 service workers must run in the full bundled Chromium process.
+        // Linux CI supplies a virtual display with xvfb-run.
+        headless: false,
+        args: [
+          `--disable-extensions-except=${extensionPath}`,
+          `--load-extension=${extensionPath}`,
+          "--host-resolver-rules=MAP convolens.neuralliquid.ai ~NOTFOUND, MAP nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io ~NOTFOUND, MAP api.convolens.com ~NOTFOUND, MAP api.convolens.neuralliquid.ai ~NOTFOUND, EXCLUDE localhost",
+        ],
+      });
+      await attachConsoleEvidence(context, consoleMessages);
+      await context.route("https://web.whatsapp.com/**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "text/html",
+          body: fixtureHtml,
+        }),
+      );
+      await context.route("https://convolens.neuralliquid.ai/**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "text/html",
+          body: "<!doctype html><title>Fixture dashboard</title>",
+        }),
+      );
+      const serviceWorker = await waitForExtensionWorker(context);
+      const extensionId = new URL(serviceWorker.url()).host;
+      const existingPages = context.pages();
+      const extensionPage = await context.newPage();
+      await extensionPage.goto(
+        `chrome-extension://${extensionId}/options/options.html`,
+      );
+      for (const existingPage of existingPages) await existingPage.close();
+      await extensionPage.evaluate(
+        async ({ endpoint }) => {
+          const chromeApi = (
+            globalThis as typeof globalThis & { chrome: typeof chrome }
+          ).chrome;
+          await chromeApi.storage.local.clear();
+          await chromeApi.storage.session.clear();
+          await chromeApi.storage.local.set({
+            authToken: "fixture-owner-a-token",
+            authTokenExpiresAt: Date.now() + 3_600_000,
+            user: { id: "fixture-owner-a", email: "owner-a@example.test" },
+            settings: { apiEndpoint: endpoint },
+          });
+        },
+        { endpoint: apiOrigin },
+      );
+
+      const page = await context.newPage();
+      await page.goto("https://web.whatsapp.com/");
+      await page.locator("#convolens-fab").waitFor();
+
+      const harness = {
+        apiRequests,
+        consoleMessages,
+        context,
+        extensionPage,
+        extensionId,
+        page,
+        serviceWorker,
+      };
       await use(harness);
       await attachEvidence(testInfo, harness);
     } finally {
-      await context.close();
-      await new Promise<void>((resolvePromise) =>
-        fixtureApi.close(() => resolvePromise()),
+      if (context) await context.close().catch(() => undefined);
+      if (fixtureApi) {
+        await new Promise<void>((resolvePromise) =>
+          fixtureApi?.close(() => resolvePromise()),
+        );
+      }
+      await rm(profileDir, { force: true, recursive: true }).catch(
+        () => undefined,
       );
-      await rm(profileDir, { force: true, recursive: true });
     }
   },
 });
