@@ -15,7 +15,7 @@ The release matrix is recorded in `docs/EXTENSION-CAPTURE-PHASE9-RELEASE-MATRIX.
 - Focused API conversation-intake service tests: 29 passed, 0 failed.
 - Production package and ZIP inspection: passed; 13 expected entries validated by local header, decompression, payload size, and CRC, with no duplicate or unsafe paths.
 - Clean uncached monorepo build: 8/8 packages passed; the web build compiled 24 routes.
-- ZIP SHA-256: `A6C876CEA1A1F454A682E0651422AACDCB3CDF4048406EB4408D914E5352D696`.
+- ZIP SHA-256: `0E954D21502CB8A625AE15CB609626540545D2EDBC014445A64DADE1525EC278`.
 - GitHub CI and exact-head review: pending.
 
 ## Acceptance boundary

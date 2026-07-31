@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { resolve } from "node:path";
+import { parse } from "parse5";
 import ts from "typescript";
 
 const read = (path: string) =>
@@ -58,64 +59,22 @@ const jsxHasAuthoredPreload = (source: string) => {
   return found;
 };
 
+type HtmlNode = {
+  tagName?: string;
+  attrs?: Array<{ name: string; value: string }>;
+  childNodes?: HtmlNode[];
+};
+
 const htmlHasAuthoredPreload = (source: string) => {
-  const withoutComments = source.replace(/<!--[\s\S]*?-->/g, "");
-  const tags: string[] = [];
-  const lower = withoutComments.toLowerCase();
-  let searchFrom = 0;
-  while (searchFrom < withoutComments.length) {
-    const start = lower.indexOf("<link", searchFrom);
-    if (start === -1) break;
-    const boundary = withoutComments[start + 5];
-    if (boundary && !/[\s/>]/.test(boundary)) {
-      searchFrom = start + 5;
-      continue;
+  const document = parse(source) as HtmlNode;
+  const visit = (node: HtmlNode): boolean => {
+    if (node.tagName === "link") {
+      const rel = node.attrs?.find((attribute) => attribute.name === "rel");
+      if (rel && includesPreloadToken(rel.value)) return true;
     }
-    let quote: '"' | "'" | null = null;
-    let end = start + 5;
-    for (; end < withoutComments.length; end += 1) {
-      const character = withoutComments[end];
-      if (quote) {
-        if (character === quote) quote = null;
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === ">") {
-        tags.push(withoutComments.slice(start, end + 1));
-        break;
-      }
-    }
-    searchFrom = end + 1;
-  }
-  for (const tag of tags) {
-    let index = 5;
-    while (index < tag.length) {
-      while (/\s/.test(tag[index] ?? "")) index += 1;
-      if (tag[index] === "/" || tag[index] === ">") break;
-      const nameStart = index;
-      while (index < tag.length && !/[\s=/>]/.test(tag[index])) index += 1;
-      const name = tag.slice(nameStart, index).toLowerCase();
-      while (/\s/.test(tag[index] ?? "")) index += 1;
-      let value = "";
-      if (tag[index] === "=") {
-        index += 1;
-        while (/\s/.test(tag[index] ?? "")) index += 1;
-        const quote =
-          tag[index] === '"' || tag[index] === "'" ? tag[index] : null;
-        if (quote) {
-          const valueStart = ++index;
-          while (index < tag.length && tag[index] !== quote) index += 1;
-          value = tag.slice(valueStart, index);
-          if (tag[index] === quote) index += 1;
-        } else {
-          const valueStart = index;
-          while (index < tag.length && !/[\s>]/.test(tag[index])) index += 1;
-          value = tag.slice(valueStart, index);
-        }
-      }
-      if (name === "rel" && includesPreloadToken(value)) return true;
-    }
-  }
-  return false;
+    return node.childNodes?.some(visit) ?? false;
+  };
+  return visit(document);
 };
 
 test("keeps release versions aligned and package inspection mandatory", () => {
@@ -166,6 +125,19 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(
     htmlHasAuthoredPreload('<link title="1 > 0" rel="preload">'),
     true,
+  );
+  assert.equal(htmlHasAuthoredPreload('<link rel="pre&#108;oad">'), true);
+  assert.equal(
+    htmlHasAuthoredPreload(
+      `<script>const fixture = '<link rel="preload">';</script>`,
+    ),
+    false,
+  );
+  assert.equal(
+    htmlHasAuthoredPreload(
+      `<style>link[rel="preload"] { color: red; }</style>`,
+    ),
+    false,
   );
   assert.equal(
     jsxHasAuthoredPreload(`const fixture = '<link rel="preload">';`),
