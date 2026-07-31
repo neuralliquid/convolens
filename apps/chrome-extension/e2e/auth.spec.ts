@@ -91,6 +91,11 @@ test.describe("operator-held authentic extension acceptance", () => {
       !targetChat,
       "CONVOLENS_TEST_CHAT must identify the dedicated test chat.",
     );
+    const targetChatJid = process.env.CONVOLENS_TEST_CHAT_JID;
+    test.skip(
+      !targetChatJid,
+      "CONVOLENS_TEST_CHAT_JID must identify the reviewed WhatsApp conversation.",
+    );
 
     const extensionPath = resolve(import.meta.dirname, "..");
     const context = await chromium.launchPersistentContext(
@@ -112,7 +117,8 @@ test.describe("operator-held authentic extension acceptance", () => {
         .locator('[data-testid="chat-list"], #pane-side')
         .first();
       await chatList.waitFor();
-      const target = chatList.getByText(targetChat!, { exact: true }).first();
+      const target = chatList.getByText(targetChat!, { exact: true });
+      await expect(target).toHaveCount(1);
       await expect(target).toBeVisible();
       await target.click();
       const activeTitle = page
@@ -125,14 +131,18 @@ test.describe("operator-held authentic extension acceptance", () => {
       await expect(page.locator("#ws-status-text")).toContainText(
         "ready for review",
       );
+      await page.bringToFront();
       const reviewedChat = await extensionPage.evaluate(async () => {
         const chromeApi = (
           globalThis as typeof globalThis & { chrome: typeof chrome }
         ).chrome;
         const [tab] = await chromeApi.tabs.query({
-          url: "https://web.whatsapp.com/*",
+          active: true,
+          currentWindow: true,
         });
-        if (!tab?.id) return { success: false };
+        if (!tab?.id || !tab.url?.startsWith("https://web.whatsapp.com/")) {
+          return { success: false };
+        }
         const operation = await chromeApi.runtime.sendMessage({
           action: "GET_CAPTURE_OPERATION",
           tabId: tab.id,
@@ -144,12 +154,21 @@ test.describe("operator-held authentic extension acceptance", () => {
           action: "GET_CAPTURE_PREVIEW",
           operationId: operation.data.operationId,
         });
+        const payload = await chromeApi.tabs.sendMessage(tab.id, {
+          action: "GET_CAPTURE_OPERATION_PAYLOAD",
+          operationId: operation.data.operationId,
+        });
         return {
-          success: Boolean(preview?.success),
+          success: Boolean(preview?.success && payload?.success),
           chatName: preview?.data?.chatName,
+          sourceConversationId: payload?.data?.sourceConversationId,
         };
       });
-      expect(reviewedChat).toEqual({ success: true, chatName: targetChat });
+      expect(reviewedChat).toEqual({
+        success: true,
+        chatName: targetChat,
+        sourceConversationId: targetChatJid,
+      });
       await expect(activeTitle).toHaveText(targetChat!);
       await page.locator("#ws-confirm-capture").click();
       await expect(page.locator("#ws-status-text")).toContainText(

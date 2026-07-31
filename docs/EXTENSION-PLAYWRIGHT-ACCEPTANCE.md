@@ -34,8 +34,11 @@ Authentic sending is fail-closed and needs all of these values:
 $env:CONVOLENS_ALLOW_SEND="1"
 $env:CONVOLENS_SEND_CONFIRMATION="I authorize one ConvoLens intake"
 $env:CONVOLENS_TEST_CHAT="Dedicated test chat label"
+$env:CONVOLENS_TEST_CHAT_JID="whatsapp:stable-test-chat-jid"
 pnpm --filter @convolens/chrome-extension test:browser:auth
 ```
+
+The chat label must match exactly one chat-list row. Before confirmation, the runner focuses that exact WhatsApp tab and requires both the active header and the reviewed payload's stable conversation ID to match the allowlist.
 
 The profile contains sensitive session material. Keep it outside the repository, never upload it as a CI artifact, and do not use a normal personal Chrome profile. Authentic runs force one worker, zero retries, and disable traces, screenshots, and video.
 

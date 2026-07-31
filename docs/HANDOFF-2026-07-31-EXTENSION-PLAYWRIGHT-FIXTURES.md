@@ -12,7 +12,7 @@ Phase 10 adds a real-browser test layer without turning synthetic evidence into 
 - Four browser fixtures cover explicit review before send, payload/tracing shape, repeated-capture duplicate rendering, authenticated-owner invalidation, page console capture, and service-worker target attribution.
 - A dedicated-profile provisioner supports operator-completed WhatsApp QR and Mystira authentication without printing or exporting session values.
 - Authentic checks use one worker, zero retries, and no trace, screenshot, or video capture.
-- Authentic sending is disabled unless the operator supplies the acceptance flag, dedicated chat label, send flag, and exact one-intake confirmation phrase.
+- Authentic sending is disabled unless the operator supplies the acceptance flag, unique dedicated chat label, stable reviewed WhatsApp conversation ID, send flag, and exact one-intake confirmation phrase.
 
 The commands and evidence boundary are documented in `docs/EXTENSION-PLAYWRIGHT-ACCEPTANCE.md`.
 
