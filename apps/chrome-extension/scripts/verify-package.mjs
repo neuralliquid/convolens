@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { inflateRawSync } from "node:zlib";
 
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
@@ -43,6 +44,20 @@ function crc32(buffer) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+export function verifyLocalEntryIntegrity(
+  entry,
+  { crc, compressedSize, uncompressedSize },
+) {
+  if (
+    (entry.flags & 0x08) === 0 &&
+    (crc !== entry.crc ||
+      compressedSize !== entry.compressedSize ||
+      uncompressedSize !== entry.uncompressedSize)
+  ) {
+    throw new Error(`ZIP local entry sizes or CRC are inconsistent: ${entry.name}`);
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -53,6 +68,9 @@ function verifyEntryPayload(buffer, entry) {
   }
   const localFlags = buffer.readUInt16LE(offset + 6);
   const localMethod = buffer.readUInt16LE(offset + 8);
+  const localCrc = buffer.readUInt32LE(offset + 14);
+  const localCompressedSize = buffer.readUInt32LE(offset + 18);
+  const localUncompressedSize = buffer.readUInt32LE(offset + 22);
   const nameLength = buffer.readUInt16LE(offset + 26);
   const extraLength = buffer.readUInt16LE(offset + 28);
   const nameStart = offset + 30;
@@ -69,6 +87,11 @@ function verifyEntryPayload(buffer, entry) {
   if ((entry.flags & 1) !== 0) {
     throw new Error(`ZIP entry must not be encrypted: ${entry.name}`);
   }
+  verifyLocalEntryIntegrity(entry, {
+    crc: localCrc,
+    compressedSize: localCompressedSize,
+    uncompressedSize: localUncompressedSize,
+  });
 
   const compressed = buffer.subarray(dataStart, dataEnd);
   const payload =
@@ -152,22 +175,31 @@ export function inspectZip(buffer) {
   return entries.sort();
 }
 
-const packageJson = JSON.parse(await readFile(resolve("package.json"), "utf8"));
-const manifest = JSON.parse(await readFile(resolve("manifest.json"), "utf8"));
-if (packageJson.version !== manifest.version) {
-  throw new Error(
-    `Version mismatch: package ${packageJson.version}, manifest ${manifest.version}.`,
+async function main() {
+  const packageJson = JSON.parse(await readFile(resolve("package.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(resolve("manifest.json"), "utf8"));
+  if (packageJson.version !== manifest.version) {
+    throw new Error(
+      `Version mismatch: package ${packageJson.version}, manifest ${manifest.version}.`,
+    );
+  }
+
+  const archivePath = resolve("convolens-extension.zip");
+  const entries = inspectZip(await readFile(archivePath));
+  if (JSON.stringify(entries) !== JSON.stringify(EXPECTED_ENTRIES)) {
+    throw new Error(
+      `Unexpected ZIP entries. Expected ${EXPECTED_ENTRIES.join(", ")}; received ${entries.join(", ")}.`,
+    );
+  }
+
+  console.log(
+    `Verified extension ${manifest.version} ZIP: ${entries.length} expected payloads decompressed with matching sizes and CRCs, no duplicates or unsafe paths.`,
   );
 }
 
-const archivePath = resolve("convolens-extension.zip");
-const entries = inspectZip(await readFile(archivePath));
-if (JSON.stringify(entries) !== JSON.stringify(EXPECTED_ENTRIES)) {
-  throw new Error(
-    `Unexpected ZIP entries. Expected ${EXPECTED_ENTRIES.join(", ")}; received ${entries.join(", ")}.`,
-  );
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
+  await main();
 }
-
-console.log(
-  `Verified extension ${manifest.version} ZIP: ${entries.length} expected payloads decompressed with matching sizes and CRCs, no duplicates or unsafe paths.`,
-);
