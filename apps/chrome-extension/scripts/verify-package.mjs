@@ -142,6 +142,9 @@ export function verifyRegularFileEntry(creatorSystem, externalAttributes, name) 
   if ((externalAttributes & 0x18) !== 0) {
     throw new Error(`ZIP entry is not a regular file: ${name}`);
   }
+  if (creatorSystem !== 0 && creatorSystem !== 3) {
+    throw new Error(`ZIP entry uses an unsupported creator system: ${name}`);
+  }
   if (creatorSystem === 3) {
     const unixFileType = (externalAttributes >>> 16) & 0xf000;
     if (unixFileType !== 0x8000) {

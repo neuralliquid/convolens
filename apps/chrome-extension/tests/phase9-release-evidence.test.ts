@@ -194,6 +194,14 @@ test("rejects ZIP entries that are not regular files", () => {
     () => verifyRegularFileEntry(0, 0x08, "manifest.json"),
     /entry is not a regular file/,
   );
+  assert.throws(
+    () => verifyRegularFileEntry(5, 0xa1ff0020, "manifest.json"),
+    /entry uses an unsupported creator system/,
+  );
+  assert.throws(
+    () => verifyRegularFileEntry(16, 0x81b60020, "manifest.json"),
+    /entry uses an unsupported creator system/,
+  );
 });
 
 test("bounds complete local ZIP records before the central directory", () => {
