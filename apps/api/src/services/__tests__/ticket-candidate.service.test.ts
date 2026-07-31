@@ -248,4 +248,36 @@ describe('TicketCandidateService', () => {
     expect(afterWindow.candidate.batonTaskId).toBe('task-after-window');
     expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(2);
   }, 15_000);
+
+  it('preserves the ambiguous window when reconciliation lookup fails', async () => {
+    const fetcher = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockRejectedValueOnce(new Error('connection lost after POST'))
+      .mockRejectedValueOnce(new Error('duplicate lookup unavailable'))
+      .mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      'project-1'
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+      'connection lost after POST'
+    );
+    await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+      'duplicate lookup unavailable'
+    );
+
+    const afterLookupFailure = await dataSource
+      .getRepository(TicketCandidate)
+      .findOneByOrFail({ id: candidate.id });
+    expect(afterLookupFailure.lastPublishErrorCode).toBe('baton_ambiguous');
+    await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+      'still reconciling'
+    );
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+  }, 15_000);
 });

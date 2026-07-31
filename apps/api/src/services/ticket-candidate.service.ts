@@ -161,23 +161,25 @@ export class TicketCandidateService {
       );
       const marker = `[convolens:${current.idempotencyKey}]`;
       let createStarted = false;
+      let reconcilingAmbiguousCreate = false;
       try {
-        let duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
         const lastAmbiguousCreate = (current.publishAttempts || [])
           .filter((candidateAttempt) => candidateAttempt.errorCode === 'baton_ambiguous')
           .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
-        if (
-          !duplicate &&
-          current.lastPublishErrorCode === 'baton_ambiguous' &&
+        reconcilingAmbiguousCreate = Boolean(
           lastAmbiguousCreate?.completedAt &&
-          Date.now() - lastAmbiguousCreate.completedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
-        ) {
+            Date.now() - lastAmbiguousCreate.completedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
+        );
+        let duplicate: BatonTask | null;
+        if (reconcilingAmbiguousCreate) {
           duplicate = await this.reconcileAmbiguousCreate(current.projectId, marker, batonToken);
           if (!duplicate) {
             throw new BatonReconciliationPending(
               'Baton is still reconciling the prior publish; retry after the safety window'
             );
           }
+        } else {
+          duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
         }
         createStarted = !duplicate;
         const task = duplicate || (await this.createBatonTask(current, marker, batonToken));
@@ -209,12 +211,10 @@ export class TicketCandidateService {
         return { candidate: await this.get(userId, id), duplicate: Boolean(duplicate) };
       } catch (error) {
         const code =
-          createStarted || error instanceof BatonReconciliationPending
-            ? 'baton_ambiguous'
-            : 'baton_unavailable';
+          createStarted || reconcilingAmbiguousCreate ? 'baton_ambiguous' : 'baton_unavailable';
         await attemptRepository.update(attempt.id, {
           status: 'failed',
-          errorCode: error instanceof BatonReconciliationPending ? 'baton_reconciling' : code,
+          errorCode: reconcilingAmbiguousCreate && !createStarted ? 'baton_reconciling' : code,
           completedAt: new Date(),
         });
         await repository.update(

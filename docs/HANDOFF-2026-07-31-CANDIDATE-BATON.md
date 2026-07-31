@@ -12,9 +12,9 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - the conversation UI supports edit, project selection, accept, reject, and an additional explicit publish action;
 - no candidate publishes before acceptance;
 - accepted candidates publish through the current user's server-held Mystira session, without a stored Baton credential;
-- accepted candidates become immutable, so edits require a fresh review decision;
+- accepted candidates become immutable and render read-only, so edits require a fresh review decision;
 - candidate and intake publication claims use reclaimable 90-second leases and serialize deletion with remote publication;
-- ambiguous Baton creates retain the original reconciliation deadline, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
+- ambiguous Baton creates retain the original reconciliation deadline across lookup failures, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
 - Mystira access-token expiry is tracked independently from ID-token expiry before the token is forwarded;
 - a durable idempotency marker and remote duplicate check reconcile ambiguous timeouts;
 - publication attempts, failures, retries, task ids, and links are persisted;
@@ -29,10 +29,10 @@ The headed persistence fixture now exercises the production extension, built API
 
 Validated locally:
 
-- candidate service suite: 7/7;
-- candidate, intake, and migration suite: 51/51;
-- complete API Jest suite: 146/146;
-- focused Mystira refresh suite: 2/2;
+- candidate service suite: 8/8;
+- candidate, intake, and migration suite: 52/52;
+- complete API Jest suite: 147/147;
+- focused candidate UI plus Mystira refresh suite: 3/3;
 - headed Playwright persistence fixture: 1/1;
 - headed extension UI/console fixtures: 4/4;
 - monorepo build: 8/8;

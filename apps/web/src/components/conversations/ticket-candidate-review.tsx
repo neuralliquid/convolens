@@ -126,10 +126,7 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
           <Input
             aria-label="Candidate title"
             value={candidate.title}
-            disabled={
-              candidate.status === "published" ||
-              candidate.status === "rejected"
-            }
+            disabled={candidate.status !== "pending"}
             onChange={(event) =>
               patchLocal(candidate.id, { title: event.target.value })
             }
@@ -138,10 +135,7 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
             aria-label="Candidate description"
             className="min-h-20 w-full rounded-md border bg-background p-2 text-sm"
             value={candidate.description || ""}
-            disabled={
-              candidate.status === "published" ||
-              candidate.status === "rejected"
-            }
+            disabled={candidate.status !== "pending"}
             onChange={(event) =>
               patchLocal(candidate.id, { description: event.target.value })
             }
@@ -150,10 +144,7 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
             aria-label="Baton project ID"
             placeholder="Baton project ID"
             value={candidate.projectId || ""}
-            disabled={
-              candidate.status === "published" ||
-              candidate.status === "rejected"
-            }
+            disabled={candidate.status !== "pending"}
             onChange={(event) =>
               patchLocal(candidate.id, { projectId: event.target.value })
             }
