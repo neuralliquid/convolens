@@ -276,6 +276,16 @@ const jsxSourcesWithAuthoredPreload = (
       }
       return undefined;
     };
+    if (
+      props.properties.some(
+        (property) =>
+          property.name &&
+          ts.isComputedPropertyName(property.name) &&
+          propertyName(property.name) === undefined,
+      )
+    ) {
+      return true;
+    }
     const rel = props.properties.find(
       (property) => propertyName(property.name)?.toLowerCase() === "rel",
     );
@@ -451,6 +461,12 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(
     jsxHasAuthoredPreload(
       "import * as React from \"react\"; React.createElement(\"link\", { [`rel`]: \"preload\" });",
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as React from "react"; const key = "rel"; React.createElement("link", { [key]: "preload" });`,
     ),
     true,
   );
