@@ -318,6 +318,9 @@ importers:
       '@anthropic-ai/tokenizer':
         specifier: ^0.0.4
         version: 0.0.4
+      '@playwright/test':
+        specifier: ^1.56.1
+        version: 1.56.1
       '@types/chrome':
         specifier: ^0.0.260
         version: 0.0.260

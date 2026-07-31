@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en-ZA">
+  <head>
+    <meta charset="utf-8" />
+    <title>Synthetic WhatsApp fixture</title>
+  </head>
+  <body>
+    <aside id="pane-side" data-testid="chat-list" aria-label="Chat list">
+      <button type="button">Fixture Group</button>
+    </aside>
+    <main id="main" data-testid="conversation-panel-wrapper">
+      <header
+        data-testid="conversation-header"
+        data-chat-id="120363000000000000@g.us"
+      >
+        <span data-testid="conversation-info-header-chat-title"
+          >Fixture Group</span
+        >
+        <span data-testid="conversation-subtitle">3 participants</span>
+      </header>
+      <section data-testid="conversation-panel-body">
+        <section
+          data-testid="conversation-panel-messages"
+          data-jid="120363000000000000@g.us"
+          aria-label="Synthetic messages"
+        >
+          <article
+            class="message-in"
+            data-testid="msg-container"
+            data-id="fixture-001"
+            data-pre-plain-text="[09:55, 30/07/2026] Participant A: "
+          >
+            <span data-testid="msg-sender">Participant A</span>
+            <div data-testid="msg-text">Repeatable fixture message</div>
+            <span data-testid="msg-meta">09:55</span>
+          </article>
+          <article
+            class="message-in"
+            data-testid="msg-container"
+            data-id="fixture-002"
+            data-pre-plain-text="[09:55, 30/07/2026] Participant A: "
+          >
+            <span data-testid="msg-sender">Participant A</span>
+            <div data-testid="msg-text">Repeatable fixture message</div>
+            <span data-testid="msg-meta">09:55</span>
+          </article>
+          <article
+            class="message-out"
+            data-testid="msg-container"
+            data-id="fixture-003"
+            data-pre-plain-text="[10:00, 30/07/2026] You: "
+          >
+            <div data-testid="msg-out">
+              <div data-testid="msg-text">Synthetic reply</div>
+              <span data-testid="msg-meta">10:00</span>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

@@ -50,6 +50,7 @@ yarn-error.log*
 tests/__results__/
 /.playwright-cli/
 /output/playwright/
+/.playwright-auth/
 
 # Local extension package output
 /apps/chrome-extension/convolens-extension/

@@ -12,11 +12,15 @@
     "package": "npm run build:prod && node scripts/package-extension.mjs && node scripts/verify-package.mjs",
     "clean": "rm -rf dist",
     "test": "tsx --test tests/*.test.ts",
+    "test:browser:fixtures": "npm run build && playwright test --config=e2e/playwright.fixture.config.ts",
+    "auth:provision": "npm run build && tsx e2e/provision-auth.ts",
+    "test:browser:auth": "npm run build && playwright test --config=e2e/playwright.auth.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.18.0",
     "@anthropic-ai/tokenizer": "^0.0.4",
+    "@playwright/test": "^1.56.1",
     "@types/chrome": "^0.0.260",
     "archiver": "^8.0.0",
     "esbuild": "^0.27.7",
