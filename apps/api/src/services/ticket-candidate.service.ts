@@ -163,14 +163,14 @@ export class TicketCandidateService {
       let createStarted = false;
       try {
         let duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
-        const lastAttempt = [...(current.publishAttempts || [])].sort(
-          (a, b) => b.attemptNumber - a.attemptNumber
-        )[0];
+        const lastAmbiguousCreate = (current.publishAttempts || [])
+          .filter((candidateAttempt) => candidateAttempt.errorCode === 'baton_ambiguous')
+          .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
         if (
           !duplicate &&
           current.lastPublishErrorCode === 'baton_ambiguous' &&
-          lastAttempt?.completedAt &&
-          Date.now() - lastAttempt.completedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
+          lastAmbiguousCreate?.completedAt &&
+          Date.now() - lastAmbiguousCreate.completedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
         ) {
           duplicate = await this.reconcileAmbiguousCreate(current.projectId, marker, batonToken);
           if (!duplicate) {
@@ -214,7 +214,7 @@ export class TicketCandidateService {
             : 'baton_unavailable';
         await attemptRepository.update(attempt.id, {
           status: 'failed',
-          errorCode: code,
+          errorCode: error instanceof BatonReconciliationPending ? 'baton_reconciling' : code,
           completedAt: new Date(),
         });
         await repository.update(

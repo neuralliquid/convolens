@@ -201,11 +201,16 @@ describe('TicketCandidateService', () => {
   });
 
   it('holds an ambiguous create for reconciliation instead of issuing a second POST', async () => {
+    let allowCreateSuccess = false;
     const fetcher = jest
       .fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
       .mockRejectedValueOnce(new Error('connection lost after POST'))
-      .mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
+      .mockImplementation(async (_input, init) =>
+        init?.method === 'POST' && allowCreateSuccess
+          ? new Response(JSON.stringify({ id: 'task-after-window' }), { status: 201 })
+          : new Response(JSON.stringify([]), { status: 200 })
+      );
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -227,5 +232,20 @@ describe('TicketCandidateService', () => {
       .getRepository(TicketCandidate)
       .findOneByOrFail({ id: candidate.id });
     expect(stored.lastPublishErrorCode).toBe('baton_ambiguous');
+    const attempts = await dataSource
+      .getRepository(BatonPublishAttempt)
+      .find({ where: { candidateId: candidate.id }, order: { attemptNumber: 'ASC' } });
+    expect(attempts.map((attempt) => attempt.errorCode)).toEqual([
+      'baton_ambiguous',
+      'baton_reconciling',
+    ]);
+
+    await dataSource.getRepository(BatonPublishAttempt).update(attempts[0].id, {
+      completedAt: new Date(Date.now() - 61_000),
+    });
+    allowCreateSuccess = true;
+    const afterWindow = await service.publish('user-1', candidate.id, 'token');
+    expect(afterWindow.candidate.batonTaskId).toBe('task-after-window');
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(2);
   }, 15_000);
 });
