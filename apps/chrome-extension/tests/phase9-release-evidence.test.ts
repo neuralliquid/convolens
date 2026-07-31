@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { resolve } from "node:path";
-import { decodeHTMLAttribute } from "entities";
+import { decodeHTMLStrict } from "entities";
 import { parse } from "parse5";
 import ts from "typescript";
 
@@ -23,7 +23,7 @@ const jsxRelValue = (attribute: ts.JsxAttribute): string | undefined => {
   const initializer = attribute.initializer;
   if (!initializer) return undefined;
   if (ts.isStringLiteral(initializer)) {
-    return decodeHTMLAttribute(initializer.text);
+    return decodeHTMLStrict(initializer.text);
   }
   if (
     ts.isJsxExpression(initializer) &&
@@ -123,6 +123,8 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload('<link rel="preloader" />'), false);
   assert.equal(jsxHasAuthoredPreload('<link rel={"pre&#108;oad"} />'), false);
   assert.equal(jsxHasAuthoredPreload('<link rel="x&#160;preload" />'), false);
+  assert.equal(jsxHasAuthoredPreload('<link rel="x&#9preload" />'), false);
+  assert.equal(jsxHasAuthoredPreload('<link rel="x&#9;preload" />'), true);
   assert.equal(jsxHasAuthoredPreload('<link rel={"x\u00a0preload"} />'), false);
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
   assert.equal(jsxHasAuthoredPreload("<Link {...props} />"), false);
