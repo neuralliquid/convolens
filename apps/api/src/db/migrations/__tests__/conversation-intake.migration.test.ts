@@ -56,6 +56,10 @@ describe('CreateConversationIntake migration', () => {
     expect(publishAttemptTable).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactStatus')).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactCleanupKeys')).toBeDefined();
+    expect(intakeTable?.findColumnByName('batonPublishClaimId')).toBeDefined();
+    expect(intakeTable?.findColumnByName('batonPublishClaimedAt')).toBeDefined();
+    expect(candidateTable?.findColumnByName('publishClaimId')).toBeDefined();
+    expect(candidateTable?.findColumnByName('publishClaimedAt')).toBeDefined();
     expect(
       intakeTable?.indices.some(
         (index) => index.name === 'UQ_conversation_intakes_user_content_hash' && index.isUnique

@@ -16,6 +16,7 @@ import {
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from '../storage/storage.service';
+import { BATON_PUBLISH_LEASE_MS } from '../ticket-candidate.service';
 
 const baseInput: ConversationIntakeInput = {
   userId: 'mystira-user-1',
@@ -551,6 +552,30 @@ describe('ConversationIntakeService', () => {
     expect(await service.getForUser(baseInput.userId, owned.conversation.id)).toBeNull();
     expect(await dataSource.getRepository(ConversationMessage).count()).toBe(2);
     expect(await service.getForUser('mystira-user-2', otherUser.conversation.id)).not.toBeNull();
+  });
+
+  it('blocks deletion while a Baton publication lease is active', async () => {
+    const saved = await service.save(baseInput);
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'active-publish-claim',
+      batonPublishClaimedAt: new Date(),
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'Baton publication is in progress'
+    );
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+  });
+
+  it('reclaims a stale Baton publication lease before deletion', async () => {
+    const saved = await service.save(baseInput);
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'stale-publish-claim',
+      batonPublishClaimedAt: new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000),
+    });
+
+    expect(await service.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
   });
 
   it('excludes generated source IDs from the durable content hash', () => {

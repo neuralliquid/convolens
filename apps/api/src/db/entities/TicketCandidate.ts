@@ -67,6 +67,12 @@ export class TicketCandidate {
   @Column({ type: 'varchar', length: 20, default: 'not_requested' })
   publishStatus!: BatonPublishStatus;
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  publishClaimId?: string | null;
+
+  @Column({ type: dateColumnType, nullable: true })
+  publishClaimedAt?: Date | null;
+
   @Column({ type: 'varchar', length: 100 })
   idempotencyKey!: string;
 

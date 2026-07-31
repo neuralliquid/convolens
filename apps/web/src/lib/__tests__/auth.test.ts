@@ -53,6 +53,7 @@ describe("Mystira Identity token refresh", () => {
 
     expect(result).toMatchObject({
       accessToken: "access-2",
+      accessTokenExpiresAt: expect.any(Number),
       idToken,
       idTokenExpiresAt: expiresAt * 1000,
       refreshToken: "refresh-2",

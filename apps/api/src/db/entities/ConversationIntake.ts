@@ -120,6 +120,12 @@ export class ConversationIntake {
   @Column({ type: dateColumnType, nullable: true })
   rawArtifactClaimedAt?: Date | null;
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  batonPublishClaimId?: string | null;
+
+  @Column({ type: dateColumnType, nullable: true })
+  batonPublishClaimedAt?: Date | null;
+
   @Column({ type: dateColumnType, nullable: true })
   sourceExtractedAt?: Date;
 

@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { In, type DataSource, type Repository } from 'typeorm';
+import { createHash, randomUUID } from 'node:crypto';
+import { In, IsNull, type DataSource, type Repository } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
@@ -8,9 +8,12 @@ import { TicketCandidate, type TicketCandidateConfidence } from '../db/entities/
 const HIGH_SIGNAL = /^(?:todo|action(?: item)?|follow[- ]?up)\s*[:\-]\s*(.+)$/i;
 const MEDIUM_SIGNAL = /^(?:please|can you|could you|we need to|i will|i'll|let's)\b[\s,:-]*(.+)$/i;
 const BATON_TIMEOUT_MS = 15_000;
+export const BATON_PUBLISH_LEASE_MS = 90_000;
+export const BATON_AMBIGUOUS_HOLD_MS = 60_000;
 
 export class TicketCandidateConflict extends Error {}
 export class TicketCandidateValidation extends Error {}
+class BatonReconciliationPending extends Error {}
 
 interface BatonTask {
   id: string;
@@ -104,10 +107,7 @@ export class TicketCandidateService {
     if (changes.projectId !== undefined) partial.projectId = changes.projectId.trim();
     const result = await this.dataSource
       .getRepository(TicketCandidate)
-      .update(
-        { id, userId, status: In(['pending', 'accepted']), revision: expectedRevision },
-        partial
-      );
+      .update({ id, userId, status: 'pending', revision: expectedRevision }, partial);
     if (result.affected !== 1)
       throw new TicketCandidateConflict('Candidate changed; reload before editing');
     return this.get(userId, id);
@@ -150,65 +150,86 @@ export class TicketCandidateService {
     if (current.status !== 'accepted' || !current.projectId) {
       throw new TicketCandidateValidation('Only an accepted candidate with a project can publish');
     }
-    const claimed = await repository.update(
-      { id, userId, status: 'accepted', publishStatus: In(['not_requested', 'failed']) },
-      { publishStatus: 'pending', lastPublishErrorCode: null }
-    );
-    if (claimed.affected !== 1)
-      throw new TicketCandidateConflict('Candidate publication is already in progress');
-
-    const attemptRepository = this.dataSource.getRepository(BatonPublishAttempt);
-    const attemptNumber = (await attemptRepository.countBy({ candidateId: id })) + 1;
-    const attempt = await attemptRepository.save(
-      attemptRepository.create({
-        candidateId: id,
-        userId,
-        attemptNumber,
-        status: 'pending',
-      })
-    );
-
+    const claimId = randomUUID();
+    await this.acquireIntakePublishClaim(userId, current.intakeId, claimId);
     try {
+      await this.acquireCandidatePublishClaim(current, claimId);
+      const attemptRepository = this.dataSource.getRepository(BatonPublishAttempt);
+      const attemptNumber = (await attemptRepository.countBy({ candidateId: id })) + 1;
+      const attempt = await attemptRepository.save(
+        attemptRepository.create({ candidateId: id, userId, attemptNumber, status: 'pending' })
+      );
       const marker = `[convolens:${current.idempotencyKey}]`;
-      const duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
-      const task = duplicate || (await this.createBatonTask(current, marker, batonToken));
-      const completedAt = new Date();
-      await attemptRepository.update(attempt.id, {
-        status: duplicate ? 'duplicate' : 'succeeded',
-        batonTaskId: task.id,
-        responseStatus: duplicate ? 200 : 201,
-        completedAt,
-      });
-      await repository.update(
-        { id, userId, publishStatus: 'pending' },
-        {
-          status: 'published',
-          publishStatus: 'succeeded',
+      let createStarted = false;
+      try {
+        let duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
+        const lastAttempt = [...(current.publishAttempts || [])].sort(
+          (a, b) => b.attemptNumber - a.attemptNumber
+        )[0];
+        if (
+          !duplicate &&
+          current.lastPublishErrorCode === 'baton_ambiguous' &&
+          lastAttempt?.completedAt &&
+          Date.now() - lastAttempt.completedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
+        ) {
+          duplicate = await this.reconcileAmbiguousCreate(current.projectId, marker, batonToken);
+          if (!duplicate) {
+            throw new BatonReconciliationPending(
+              'Baton is still reconciling the prior publish; retry after the safety window'
+            );
+          }
+        }
+        createStarted = !duplicate;
+        const task = duplicate || (await this.createBatonTask(current, marker, batonToken));
+        const completedAt = new Date();
+        await attemptRepository.update(attempt.id, {
+          status: duplicate ? 'duplicate' : 'succeeded',
           batonTaskId: task.id,
-          batonTaskUrl: `${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks/${task.id}`,
-          publishedAt: completedAt,
-          lastPublishErrorCode: null,
+          responseStatus: duplicate ? 200 : 201,
+          completedAt,
+        });
+        const finalized = await repository.update(
+          { id, userId, publishStatus: 'pending', publishClaimId: claimId },
+          {
+            status: 'published',
+            publishStatus: 'succeeded',
+            publishClaimId: null,
+            publishClaimedAt: null,
+            batonTaskId: task.id,
+            batonTaskUrl: `${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks/${task.id}`,
+            publishedAt: completedAt,
+            lastPublishErrorCode: null,
+          }
+        );
+        if (finalized.affected !== 1) {
+          throw new TicketCandidateConflict(
+            'Baton task created but local finalization must reconcile'
+          );
         }
-      );
-      return { candidate: await this.get(userId, id), duplicate: Boolean(duplicate) };
-    } catch (error) {
-      const code =
-        error instanceof Error && error.name === 'AbortError'
-          ? 'baton_timeout'
-          : 'baton_unavailable';
-      await attemptRepository.update(attempt.id, {
-        status: 'failed',
-        errorCode: code,
-        completedAt: new Date(),
-      });
-      await repository.update(
-        { id, userId, publishStatus: 'pending' },
-        {
-          publishStatus: 'failed',
-          lastPublishErrorCode: code,
-        }
-      );
-      throw error;
+        return { candidate: await this.get(userId, id), duplicate: Boolean(duplicate) };
+      } catch (error) {
+        const code =
+          createStarted || error instanceof BatonReconciliationPending
+            ? 'baton_ambiguous'
+            : 'baton_unavailable';
+        await attemptRepository.update(attempt.id, {
+          status: 'failed',
+          errorCode: code,
+          completedAt: new Date(),
+        });
+        await repository.update(
+          { id, userId, publishStatus: 'pending', publishClaimId: claimId },
+          {
+            publishStatus: 'failed',
+            publishClaimId: null,
+            publishClaimedAt: null,
+            lastPublishErrorCode: code,
+          }
+        );
+        throw error;
+      }
+    } finally {
+      await this.releaseIntakePublishClaim(userId, current.intakeId, claimId);
     }
   }
 
@@ -225,6 +246,102 @@ export class TicketCandidateService {
     });
     if (!candidate) throw new TicketCandidateValidation('Candidate not found');
     return candidate;
+  }
+
+  private async acquireCandidatePublishClaim(
+    candidate: TicketCandidate,
+    claimId: string
+  ): Promise<void> {
+    const repository = this.dataSource.getRepository(TicketCandidate);
+    const claimedAt = new Date();
+    let result = await repository.update(
+      {
+        id: candidate.id,
+        userId: candidate.userId,
+        status: 'accepted',
+        publishStatus: In(['not_requested', 'failed']),
+      },
+      { publishStatus: 'pending', publishClaimId: claimId, publishClaimedAt: claimedAt }
+    );
+    if (result.affected === 1) return;
+    const current = await repository.findOneByOrFail({
+      id: candidate.id,
+      userId: candidate.userId,
+    });
+    const stale =
+      current.publishStatus === 'pending' &&
+      (!current.publishClaimedAt ||
+        current.publishClaimedAt.getTime() <= Date.now() - BATON_PUBLISH_LEASE_MS);
+    if (stale) {
+      result = await repository.update(
+        {
+          id: candidate.id,
+          userId: candidate.userId,
+          status: 'accepted',
+          publishStatus: 'pending',
+          publishClaimId: current.publishClaimId || IsNull(),
+        },
+        { publishClaimId: claimId, publishClaimedAt: claimedAt }
+      );
+      if (result.affected === 1) return;
+    }
+    throw new TicketCandidateConflict('Candidate publication is already in progress');
+  }
+
+  private async acquireIntakePublishClaim(
+    userId: string,
+    intakeId: string,
+    claimId: string
+  ): Promise<void> {
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const intake = await repository.findOneBy({ id: intakeId, userId });
+      if (!intake || intake.rawArtifactStatus === 'deleting') {
+        throw new TicketCandidateConflict('Conversation deletion has started');
+      }
+      const active =
+        intake.batonPublishClaimId &&
+        intake.batonPublishClaimedAt &&
+        intake.batonPublishClaimedAt.getTime() > Date.now() - BATON_PUBLISH_LEASE_MS;
+      if (active) throw new TicketCandidateConflict('Another Baton publication is in progress');
+      const claimed = await repository.update(
+        {
+          id: intakeId,
+          userId,
+          rawArtifactStatus: intake.rawArtifactStatus,
+          batonPublishClaimId: intake.batonPublishClaimId || IsNull(),
+        },
+        { batonPublishClaimId: claimId, batonPublishClaimedAt: new Date() }
+      );
+      if (claimed.affected === 1) return;
+    }
+    throw new TicketCandidateConflict('Conversation changed too often to start publication safely');
+  }
+
+  private releaseIntakePublishClaim(
+    userId: string,
+    intakeId: string,
+    claimId: string
+  ): Promise<unknown> {
+    return this.dataSource
+      .getRepository(ConversationIntake)
+      .update(
+        { id: intakeId, userId, batonPublishClaimId: claimId },
+        { batonPublishClaimId: null, batonPublishClaimedAt: null }
+      );
+  }
+
+  private async reconcileAmbiguousCreate(
+    projectId: string,
+    marker: string,
+    token: string
+  ): Promise<BatonTask | null> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const duplicate = await this.findDuplicate(projectId, marker, token);
+      if (duplicate) return duplicate;
+      if (attempt < 2) await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
+    }
+    return null;
   }
 
   private async findDuplicate(

@@ -16,6 +16,7 @@ import {
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from './storage/storage.service';
+import { BATON_PUBLISH_LEASE_MS } from './ticket-candidate.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
@@ -1029,6 +1030,25 @@ export class ConversationIntakeService {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const candidate = await repository.findOneBy({ id, userId });
       if (!candidate) return false;
+      if (candidate.batonPublishClaimId) {
+        const claimActive =
+          candidate.batonPublishClaimedAt &&
+          candidate.batonPublishClaimedAt.getTime() > Date.now() - BATON_PUBLISH_LEASE_MS;
+        if (claimActive) {
+          throw new Error('A Baton publication is in progress; retry deletion after it completes');
+        }
+        const cleared = await repository.update(
+          {
+            id,
+            userId,
+            rawArtifactStatus: candidate.rawArtifactStatus,
+            batonPublishClaimId: candidate.batonPublishClaimId,
+          },
+          { batonPublishClaimId: null, batonPublishClaimedAt: null }
+        );
+        if (cleared.affected === 1) continue;
+        continue;
+      }
       const marked = await repository.update(
         {
           id,
@@ -1036,6 +1056,7 @@ export class ConversationIntakeService {
           rawArtifactStatus: candidate.rawArtifactStatus,
           rawArtifactClaimId: candidate.rawArtifactClaimId || IsNull(),
           rawArtifactKey: candidate.rawArtifactKey || IsNull(),
+          batonPublishClaimId: IsNull(),
         },
         { rawArtifactStatus: 'deleting' }
       );

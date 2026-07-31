@@ -5,7 +5,11 @@ import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import { ConversationIntakeService } from '../conversation-intake.service';
-import { TicketCandidateConflict, TicketCandidateService } from '../ticket-candidate.service';
+import {
+  BATON_PUBLISH_LEASE_MS,
+  TicketCandidateConflict,
+  TicketCandidateService,
+} from '../ticket-candidate.service';
 
 describe('TicketCandidateService', () => {
   let dataSource: DataSource;
@@ -101,6 +105,16 @@ describe('TicketCandidateService', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it('requires a fresh acceptance after editing', async () => {
+    const service = new TicketCandidateService(dataSource, '', fetch, 'project-1');
+    const [candidate] = await service.generate('user-1', intakeId);
+    const accepted = await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+
+    await expect(
+      service.update('user-1', candidate.id, accepted.revision, { title: 'Changed after review' })
+    ).rejects.toBeInstanceOf(TicketCandidateConflict);
+  });
+
   it('publishes one accepted candidate once and returns the persisted result on replay', async () => {
     const fetcher = jest
       .fn<typeof fetch>()
@@ -150,4 +164,68 @@ describe('TicketCandidateService', () => {
       'failed',
     ]);
   });
+
+  it('reclaims stale candidate and intake publication leases', async () => {
+    const fetcher = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'task-reclaimed' }), { status: 201 })
+      );
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      'project-1'
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await dataSource.getRepository(TicketCandidate).update(candidate.id, {
+      publishStatus: 'pending',
+      publishClaimId: 'stale-candidate-claim',
+      publishClaimedAt: staleAt,
+    });
+    await dataSource.getRepository(ConversationIntake).update(intakeId, {
+      batonPublishClaimId: 'stale-intake-claim',
+      batonPublishClaimedAt: staleAt,
+    });
+
+    const result = await service.publish('user-1', candidate.id, 'token');
+
+    expect(result.candidate.batonTaskId).toBe('task-reclaimed');
+    const intake = await dataSource
+      .getRepository(ConversationIntake)
+      .findOneByOrFail({ id: intakeId });
+    expect(intake.batonPublishClaimId).toBeNull();
+  });
+
+  it('holds an ambiguous create for reconciliation instead of issuing a second POST', async () => {
+    const fetcher = jest
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockRejectedValueOnce(new Error('connection lost after POST'))
+      .mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      'project-1'
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+      'connection lost after POST'
+    );
+
+    await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+      'still reconciling'
+    );
+
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+    const stored = await dataSource
+      .getRepository(TicketCandidate)
+      .findOneByOrFail({ id: candidate.id });
+    expect(stored.lastPublishErrorCode).toBe('baton_ambiguous');
+  }, 15_000);
 });

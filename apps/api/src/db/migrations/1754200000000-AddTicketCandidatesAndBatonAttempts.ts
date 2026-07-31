@@ -1,4 +1,11 @@
-import { MigrationInterface, QueryRunner, Table, TableForeignKey, TableIndex } from 'typeorm';
+import {
+  MigrationInterface,
+  QueryRunner,
+  Table,
+  TableColumn,
+  TableForeignKey,
+  TableIndex,
+} from 'typeorm';
 
 export class AddTicketCandidatesAndBatonAttempts1754200000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -26,6 +33,8 @@ export class AddTicketCandidatesAndBatonAttempts1754200000000 implements Migrati
           { name: 'status', type: 'varchar', length: '20', default: "'pending'" },
           { name: 'revision', type: 'integer', default: '1' },
           { name: 'publishStatus', type: 'varchar', length: '20', default: "'not_requested'" },
+          { name: 'publishClaimId', type: 'varchar', length: '36', isNullable: true },
+          { name: 'publishClaimedAt', type: dateType, isNullable: true },
           { name: 'idempotencyKey', type: 'varchar', length: '100' },
           { name: 'batonTaskId', type: 'varchar', length: '36', isNullable: true },
           { name: 'batonTaskUrl', type: 'varchar', length: '500', isNullable: true },
@@ -48,6 +57,15 @@ export class AddTicketCandidatesAndBatonAttempts1754200000000 implements Migrati
         onDelete: 'CASCADE',
       })
     );
+    await queryRunner.addColumns('conversation_intakes', [
+      new TableColumn({
+        name: 'batonPublishClaimId',
+        type: 'varchar',
+        length: '36',
+        isNullable: true,
+      }),
+      new TableColumn({ name: 'batonPublishClaimedAt', type: dateType, isNullable: true }),
+    ]);
     await queryRunner.createIndex(
       'ticket_candidates',
       new TableIndex({
@@ -103,5 +121,7 @@ export class AddTicketCandidatesAndBatonAttempts1754200000000 implements Migrati
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.dropTable('baton_publish_attempts', true);
     await queryRunner.dropTable('ticket_candidates', true);
+    await queryRunner.dropColumn('conversation_intakes', 'batonPublishClaimedAt');
+    await queryRunner.dropColumn('conversation_intakes', 'batonPublishClaimId');
   }
 }
