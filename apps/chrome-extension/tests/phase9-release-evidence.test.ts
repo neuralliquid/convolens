@@ -7,6 +7,7 @@ import {
   verifyEndOfCentralDirectory,
   verifyEntryRequirements,
   verifyLocalEntryIntegrity,
+  verifyRegularFileEntry,
   verifySingleDiskEntry,
 } from "../scripts/verify-package.mjs";
 
@@ -167,5 +168,19 @@ test("accepts only the supported ZIP extraction versions and flags", () => {
   assert.throws(
     () => verifyEntryRequirements({ ...entry, flags: 0x48 }, 20),
     /uses unsupported flags/,
+  );
+});
+
+test("rejects ZIP entries that are not regular files", () => {
+  assert.doesNotThrow(() =>
+    verifyRegularFileEntry(3, 0x81b60020, "manifest.json"),
+  );
+  assert.throws(
+    () => verifyRegularFileEntry(3, 0xa1ff0020, "manifest.json"),
+    /entry is not a regular file/,
+  );
+  assert.throws(
+    () => verifyRegularFileEntry(0, 0x10, "manifest.json"),
+    /entry is not a regular file/,
   );
 });

@@ -10,7 +10,7 @@ The release matrix is recorded in `docs/EXTENSION-CAPTURE-PHASE9-RELEASE-MATRIX.
 
 ## Validation to record on the exact PR head
 
-- Chrome extension Node tests: 144 passed, 0 failed.
+- Chrome extension Node tests: 145 passed, 0 failed.
 - Chrome extension TypeScript and popup syntax: passed.
 - Focused API conversation-intake service tests: 29 passed, 0 failed.
 - Production package and ZIP inspection: passed; 13 expected entries validated by local header, decompression, payload size, and CRC, with no duplicate or unsafe paths.

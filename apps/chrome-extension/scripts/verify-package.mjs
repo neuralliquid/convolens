@@ -138,6 +138,19 @@ export function verifyEntryRequirements(entry, localVersionNeeded) {
   }
 }
 
+export function verifyRegularFileEntry(creatorSystem, externalAttributes, name) {
+  if (creatorSystem === 3) {
+    const unixFileType = (externalAttributes >>> 16) & 0xf000;
+    if (unixFileType !== 0x8000) {
+      throw new Error(`ZIP entry is not a regular file: ${name}`);
+    }
+    return;
+  }
+  if ((externalAttributes & 0x10) !== 0) {
+    throw new Error(`ZIP entry is not a regular file: ${name}`);
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -228,6 +241,7 @@ export function inspectZip(buffer) {
       throw new Error(`ZIP central entry ${index + 1} is malformed.`);
     }
     const entry = {
+      creatorSystem: buffer.readUInt8(cursor + 5),
       versionNeeded: buffer.readUInt16LE(cursor + 6),
       flags: buffer.readUInt16LE(cursor + 8),
       compressionMethod: buffer.readUInt16LE(cursor + 10),
@@ -235,6 +249,7 @@ export function inspectZip(buffer) {
       compressedSize: buffer.readUInt32LE(cursor + 20),
       uncompressedSize: buffer.readUInt32LE(cursor + 24),
       diskNumberStart: buffer.readUInt16LE(cursor + 34),
+      externalAttributes: buffer.readUInt32LE(cursor + 38),
       localHeaderOffset: buffer.readUInt32LE(cursor + 42),
     };
     const nameLength = buffer.readUInt16LE(cursor + 28);
@@ -247,6 +262,7 @@ export function inspectZip(buffer) {
       throw new Error(`ZIP entry ${name || index + 1} is empty.`);
     }
     verifySingleDiskEntry(entry.diskNumberStart, name);
+    verifyRegularFileEntry(entry.creatorSystem, entry.externalAttributes, name);
     if (
       name.startsWith("/") ||
       name.includes("\\") ||
