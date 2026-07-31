@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { resolve } from "node:path";
+import { decodeHTMLAttribute } from "entities";
 import { parse } from "parse5";
 import ts from "typescript";
 
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
 const includesPreloadToken = (value: string) =>
-  value.split(/\s+/).some((token) => token.toLowerCase() === "preload");
+  value
+    .split(/[\t\n\f\r ]+/)
+    .some((token) => token.toLowerCase() === "preload");
 
 type HtmlNode = {
   tagName?: string;
@@ -16,26 +19,11 @@ type HtmlNode = {
   childNodes?: HtmlNode[];
 };
 
-const directHtmlRelValue = (source: string): string | undefined => {
-  const document = parse(`<link rel="${source}">`) as HtmlNode;
-  const visit = (node: HtmlNode): string | undefined => {
-    if (node.tagName === "link") {
-      return node.attrs?.find((attribute) => attribute.name === "rel")?.value;
-    }
-    for (const child of node.childNodes ?? []) {
-      const value = visit(child);
-      if (value !== undefined) return value;
-    }
-    return undefined;
-  };
-  return visit(document);
-};
-
 const jsxRelValue = (attribute: ts.JsxAttribute): string | undefined => {
   const initializer = attribute.initializer;
   if (!initializer) return undefined;
   if (ts.isStringLiteral(initializer)) {
-    return directHtmlRelValue(initializer.text);
+    return decodeHTMLAttribute(initializer.text);
   }
   if (
     ts.isJsxExpression(initializer) &&
@@ -124,6 +112,7 @@ test("records the authored web preload inventory deterministically", () => {
     "<link rel={`preload`} />",
     '<link rel="stylesheet preload" />',
     '<link rel="pre&#108;oad" />',
+    `<link rel='x" preload' />`,
   ]) {
     assert.equal(jsxHasAuthoredPreload(source), true);
   }
@@ -133,6 +122,8 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload("<link rel={relation} />"), true);
   assert.equal(jsxHasAuthoredPreload('<link rel="preloader" />'), false);
   assert.equal(jsxHasAuthoredPreload('<link rel={"pre&#108;oad"} />'), false);
+  assert.equal(jsxHasAuthoredPreload('<link rel="x&#160;preload" />'), false);
+  assert.equal(jsxHasAuthoredPreload('<link rel={"x\u00a0preload"} />'), false);
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
   assert.equal(jsxHasAuthoredPreload("<Link {...props} />"), false);
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
@@ -146,6 +137,7 @@ test("records the authored web preload inventory deterministically", () => {
     true,
   );
   assert.equal(htmlHasAuthoredPreload('<link rel="pre&#108;oad">'), true);
+  assert.equal(htmlHasAuthoredPreload('<link rel="x&#160;preload">'), false);
   assert.equal(
     htmlHasAuthoredPreload(
       `<script>const fixture = '<link rel="preload">';</script>`,
