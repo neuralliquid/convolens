@@ -155,6 +155,32 @@ export class TicketCandidateService {
     try {
       await this.acquireCandidatePublishClaim(current, claimId);
       const attemptRepository = this.dataSource.getRepository(BatonPublishAttempt);
+      const recordedSuccess = (current.publishAttempts || [])
+        .filter(
+          (candidateAttempt) =>
+            candidateAttempt.batonTaskId &&
+            (candidateAttempt.status === 'succeeded' || candidateAttempt.status === 'duplicate')
+        )
+        .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
+      if (recordedSuccess?.batonTaskId) {
+        const finalized = await repository.update(
+          { id, userId, publishStatus: 'pending', publishClaimId: claimId },
+          {
+            status: 'published',
+            publishStatus: 'succeeded',
+            publishClaimId: null,
+            publishClaimedAt: null,
+            batonTaskId: recordedSuccess.batonTaskId,
+            batonTaskUrl: `${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks/${recordedSuccess.batonTaskId}`,
+            publishedAt: recordedSuccess.completedAt || new Date(),
+            lastPublishErrorCode: null,
+          }
+        );
+        if (finalized.affected !== 1) {
+          throw new TicketCandidateConflict('Recorded Baton task could not finalize locally');
+        }
+        return { candidate: await this.get(userId, id), duplicate: true };
+      }
       const attemptNumber = (await attemptRepository.countBy({ candidateId: id })) + 1;
       const attempt = await attemptRepository.save(
         attemptRepository.create({ candidateId: id, userId, attemptNumber, status: 'pending' })

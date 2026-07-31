@@ -15,6 +15,7 @@ interface Candidate {
   publishStatus: "not_requested" | "pending" | "failed" | "succeeded";
   batonTaskUrl?: string;
   lastPublishErrorCode?: string;
+  dirty?: boolean;
   evidence: Array<{ position: number; senderName: string; sentAt: string }>;
   publishAttempts?: Array<{
     attemptNumber: number;
@@ -64,7 +65,9 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
   const patchLocal = (id: string, patch: Partial<Candidate>) =>
     setCandidates((current) =>
       current.map((candidate) =>
-        candidate.id === id ? { ...candidate, ...patch } : candidate,
+        candidate.id === id
+          ? { ...candidate, ...patch, dirty: true }
+          : candidate,
       ),
     );
 
@@ -175,7 +178,9 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
                   Save edits
                 </Button>
                 <Button
-                  disabled={Boolean(busy) || !candidate.projectId}
+                  disabled={
+                    Boolean(busy) || !candidate.projectId || candidate.dirty
+                  }
                   onClick={() =>
                     request(
                       candidate.id,
@@ -215,6 +220,11 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
                   Reject
                 </Button>
               </>
+            ) : null}
+            {candidate.status === "pending" && candidate.dirty ? (
+              <span className="self-center text-xs text-amber-700">
+                Save edits before accepting.
+              </span>
             ) : null}
             {candidate.status === "accepted" ||
             candidate.publishStatus === "failed" ? (

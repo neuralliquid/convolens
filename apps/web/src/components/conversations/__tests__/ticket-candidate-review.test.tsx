@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { TicketCandidateReview } from "../ticket-candidate-review";
 
 describe("TicketCandidateReview", () => {
@@ -43,5 +43,44 @@ describe("TicketCandidateReview", () => {
     expect(
       screen.queryByRole("button", { name: "Save edits" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("requires pending edits to be saved before acceptance", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          candidates: [
+            {
+              id: "candidate-2",
+              title: "Pending title",
+              description: "Pending description",
+              confidence: "high",
+              projectId: "project-1",
+              status: "pending",
+              revision: 1,
+              publishStatus: "not_requested",
+              evidence: [
+                {
+                  position: 0,
+                  senderName: "Operator",
+                  sentAt: "2026-07-31T10:00:00.000Z",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    });
+    render(<TicketCandidateReview intakeId="intake-1" />);
+    const accept = await screen.findByRole("button", { name: "Accept" });
+    expect(accept).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("Candidate title"), {
+      target: { value: "Unsaved reviewed title" },
+    });
+
+    expect(accept).toBeDisabled();
+    expect(screen.getByText("Save edits before accepting.")).toBeVisible();
   });
 });

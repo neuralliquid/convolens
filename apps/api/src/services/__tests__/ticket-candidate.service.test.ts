@@ -200,6 +200,43 @@ describe('TicketCandidateService', () => {
     expect(intake.batonPublishClaimId).toBeNull();
   });
 
+  it('finalizes a recorded Baton success before any remote retry', async () => {
+    const fetcher = jest.fn<typeof fetch>();
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      'project-1'
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await dataSource.getRepository(TicketCandidate).update(candidate.id, {
+      publishStatus: 'pending',
+      publishClaimId: 'crashed-candidate-claim',
+      publishClaimedAt: staleAt,
+    });
+    await dataSource.getRepository(ConversationIntake).update(intakeId, {
+      batonPublishClaimId: 'crashed-intake-claim',
+      batonPublishClaimedAt: staleAt,
+    });
+    await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: 'user-1',
+      attemptNumber: 1,
+      status: 'succeeded',
+      batonTaskId: 'task-recorded',
+      responseStatus: 201,
+      completedAt: new Date(),
+    });
+
+    const recovered = await service.publish('user-1', candidate.id, 'token');
+
+    expect(recovered.candidate.batonTaskId).toBe('task-recorded');
+    expect(recovered.candidate.publishStatus).toBe('succeeded');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('holds an ambiguous create for reconciliation instead of issuing a second POST', async () => {
     let allowCreateSuccess = false;
     const fetcher = jest
