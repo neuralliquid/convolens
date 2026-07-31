@@ -12,6 +12,7 @@ const originalEnvironment = {
   account: process.env.AZURE_STORAGE_ACCOUNT_NAME,
   container: process.env.AZURE_STORAGE_CONTAINER,
   sasToken: process.env.AZURE_STORAGE_SAS_TOKEN,
+  accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY,
   endpoint: process.env.IDENTITY_ENDPOINT,
   header: process.env.IDENTITY_HEADER,
 };
@@ -23,6 +24,7 @@ afterEach(() => {
     AZURE_STORAGE_ACCOUNT_NAME: originalEnvironment.account,
     AZURE_STORAGE_CONTAINER: originalEnvironment.container,
     AZURE_STORAGE_SAS_TOKEN: originalEnvironment.sasToken,
+    AZURE_STORAGE_ACCOUNT_KEY: originalEnvironment.accountKey,
     IDENTITY_ENDPOINT: originalEnvironment.endpoint,
     IDENTITY_HEADER: originalEnvironment.header,
   })) {
@@ -106,5 +108,27 @@ describe('StorageService managed identity', () => {
     await jest.advanceTimersByTimeAsync(AZURE_DELETE_REQUEST_TIMEOUT_MS);
 
     await assertion;
+  });
+
+  it('uses SharedKey authentication for Blob deletion when an account key is configured', async () => {
+    process.env.AZURE_STORAGE_ACCOUNT_NAME = 'fixturestorage';
+    process.env.AZURE_STORAGE_CONTAINER = 'chat-exports';
+    process.env.AZURE_STORAGE_ACCOUNT_KEY = Buffer.from('fixture-account-key').toString('base64');
+    delete process.env.AZURE_STORAGE_SAS_TOKEN;
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 202 }));
+    const storage = new StorageService({ provider: 'azure-blob' });
+
+    await storage.deleteFile('raw-intakes/a/account-key.json');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'DELETE',
+      headers: expect.objectContaining({
+        Authorization: expect.stringMatching(/^SharedKey fixturestorage:/),
+        'x-ms-date': expect.any(String),
+      }),
+    });
   });
 });

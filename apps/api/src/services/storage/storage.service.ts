@@ -497,8 +497,22 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
-    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const headers: Record<string, string> = {
+      'x-ms-version': AZURE_API_VERSION,
+      'x-ms-date': new Date().toUTCString(),
+    };
+    if (!config.sasToken) {
+      headers.Authorization = config.accountKey
+        ? this.createAzureAuthHeader(
+            'DELETE',
+            config.accountName,
+            config.containerName,
+            key,
+            config.accountKey,
+            headers
+          )
+        : await this.getAzureBearerAuthorization();
+    }
     const response = await fetchWithTimeout(
       url,
       { method: 'DELETE', headers },
