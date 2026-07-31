@@ -89,9 +89,11 @@ const scriptKindFor = (fileName: string) =>
     ? ts.ScriptKind.TSX
     : fileName.endsWith(".jsx")
       ? ts.ScriptKind.JSX
-      : fileName.endsWith(".js")
+      : /\.(?:js|mjs|cjs)$/.test(fileName)
         ? ts.ScriptKind.JS
         : ts.ScriptKind.TS;
+const isWebSourceFile = (fileName: string) =>
+  /\.(?:tsx?|jsx?|mts|cts|mjs|cjs|html)$/.test(fileName);
 
 const jsxSourcesWithAuthoredPreload = (
   sources: Array<{ fileName: string; source: string }>,
@@ -249,12 +251,12 @@ const jsxSourcesWithAuthoredPreload = (
         "react",
         "createElement",
       ) ||
-      !node.arguments[0] ||
-      !ts.isStringLiteralLike(node.arguments[0]) ||
-      node.arguments[0].text !== "link"
+      !node.arguments[0]
     ) {
       return false;
     }
+    const tag = node.arguments[0];
+    if (ts.isStringLiteralLike(tag) && tag.text !== "link") return false;
     const props = node.arguments[1];
     if (!props || props.kind === ts.SyntaxKind.NullKeyword) return false;
     if (!ts.isObjectLiteralExpression(props)) return true;
@@ -472,6 +474,12 @@ test("records the authored web preload inventory deterministically", () => {
   );
   assert.equal(
     jsxHasAuthoredPreload(
+      `import * as React from "react"; const tag = "link"; React.createElement(tag, { rel: "preload" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
       `import * as React from "react"; React.createElement("link", dynamicProps);`,
     ),
     true,
@@ -568,10 +576,23 @@ test("records the authored web preload inventory deterministically", () => {
   );
   assert.equal(jsxHasAuthoredPreload(`{/* <link rel="preload" /> */}`), false);
   assert.equal(htmlHasAuthoredPreload(`<!-- <link rel="preload"> -->`), false);
+  for (const fileName of [
+    "inventory.ts",
+    "inventory.tsx",
+    "inventory.js",
+    "inventory.jsx",
+    "inventory.mts",
+    "inventory.cts",
+    "inventory.mjs",
+    "inventory.cjs",
+    "inventory.html",
+  ]) {
+    assert.equal(isWebSourceFile(fileName), true);
+  }
   const webRoot = new URL("../../web/src/", import.meta.url);
   const files = readdirSync(webRoot, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
-    .filter((entry) => /\.(?:tsx?|jsx?|html)$/.test(entry.name));
+    .filter((entry) => isWebSourceFile(entry.name));
   const htmlPreloads = files.filter((entry) => {
     if (!entry.name.endsWith(".html")) return false;
     const source = readFileSync(resolve(entry.parentPath, entry.name), "utf8");
