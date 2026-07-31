@@ -102,6 +102,9 @@ export class ConversationIntake {
   @Column({ type: 'varchar', length: 1000, nullable: true })
   rawArtifactKey?: string;
 
+  @Column({ type: 'simple-json', nullable: true })
+  rawArtifactCleanupKeys?: string[] | null;
+
   @Column({ type: 'varchar', length: 64, nullable: true })
   rawArtifactSha256?: string;
 

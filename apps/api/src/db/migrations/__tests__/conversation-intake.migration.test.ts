@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { CreateConversationIntake1753400000000 } from '../1753400000000-CreateConversationIntake';
 import { AddConversationFidelity1753660000000 } from '../1753660000000-AddConversationFidelity';
 import { AddIntakeArtifactsAndSelectorReports1754000000000 } from '../1754000000000-AddIntakeArtifactsAndSelectorReports';
+import { AddRawArtifactCleanupKeys1754100000000 } from '../1754100000000-AddRawArtifactCleanupKeys';
 import { CONVERSATION_MIGRATIONS } from '../../../config/migrations';
 
 describe('CreateConversationIntake migration', () => {
@@ -19,6 +20,7 @@ describe('CreateConversationIntake migration', () => {
         CreateConversationIntake1753400000000,
         AddConversationFidelity1753660000000,
         AddIntakeArtifactsAndSelectorReports1754000000000,
+        AddRawArtifactCleanupKeys1754100000000,
       ],
     });
     await dataSource.initialize();
@@ -34,6 +36,7 @@ describe('CreateConversationIntake migration', () => {
       CreateConversationIntake1753400000000,
       AddConversationFidelity1753660000000,
       AddIntakeArtifactsAndSelectorReports1754000000000,
+      AddRawArtifactCleanupKeys1754100000000,
     ]);
     const queryRunner = dataSource.createQueryRunner();
     const intakeTable = await queryRunner.getTable('conversation_intakes');
@@ -45,6 +48,7 @@ describe('CreateConversationIntake migration', () => {
     expect(messageTable).toBeDefined();
     expect(selectorReportTable).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactStatus')).toBeDefined();
+    expect(intakeTable?.findColumnByName('rawArtifactCleanupKeys')).toBeDefined();
     expect(
       intakeTable?.indices.some(
         (index) => index.name === 'UQ_conversation_intakes_user_content_hash' && index.isUnique
