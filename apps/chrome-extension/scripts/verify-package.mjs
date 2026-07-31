@@ -113,6 +113,16 @@ export function verifyEndOfCentralDirectory({
   }
 }
 
+export function verifyCentralDirectoryExtent(
+  centralOffset,
+  centralSize,
+  eocdOffset,
+) {
+  if (centralOffset + centralSize !== eocdOffset) {
+    throw new Error("ZIP central directory does not end at the EOCD.");
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -192,9 +202,7 @@ export function inspectZip(buffer) {
   });
   const centralSize = buffer.readUInt32LE(eocdOffset + 12);
   const centralOffset = buffer.readUInt32LE(eocdOffset + 16);
-  if (centralOffset + centralSize > eocdOffset) {
-    throw new Error("ZIP central directory is outside the archive bounds.");
-  }
+  verifyCentralDirectoryExtent(centralOffset, centralSize, eocdOffset);
 
   const entries = [];
   let cursor = centralOffset;

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   verifyDataDescriptor,
+  verifyCentralDirectoryExtent,
   verifyEndOfCentralDirectory,
   verifyLocalEntryIntegrity,
   verifySingleDiskEntry,
@@ -138,5 +139,10 @@ test("requires a complete, internally consistent single-disk ZIP EOCD", () => {
   assert.throws(
     () => verifyEndOfCentralDirectory({ ...record, archiveLength: 125 }),
     /comment length is inconsistent/,
+  );
+  assert.doesNotThrow(() => verifyCentralDirectoryExtent(40, 60, 100));
+  assert.throws(
+    () => verifyCentralDirectoryExtent(40, 59, 100),
+    /central directory does not end at the EOCD/,
   );
 });
