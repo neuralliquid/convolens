@@ -30,7 +30,8 @@ export class TicketCandidateService {
     private readonly dataSource: DataSource = AppDataSource,
     private readonly batonBaseUrl = process.env.BATON_BASE_URL || '',
     private readonly fetcher: typeof fetch = fetch,
-    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID || ''
+    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID || '',
+    private readonly batonWebBaseUrl = process.env.BATON_WEB_BASE_URL || ''
   ) {}
 
   async generate(userId: string, intakeId: string): Promise<TicketCandidate[]> {
@@ -167,7 +168,7 @@ export class TicketCandidateService {
             publishClaimId: null,
             publishClaimedAt: null,
             batonTaskId: recordedSuccess.batonTaskId,
-            batonTaskUrl: `${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks/${recordedSuccess.batonTaskId}`,
+            batonTaskUrl: this.batonTaskUrl(recordedSuccess.batonTaskId),
             publishedAt: recordedSuccess.completedAt || new Date(),
             lastPublishErrorCode: null,
           }
@@ -220,7 +221,7 @@ export class TicketCandidateService {
             publishClaimId: null,
             publishClaimedAt: null,
             batonTaskId: task.id,
-            batonTaskUrl: `${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks/${task.id}`,
+            batonTaskUrl: this.batonTaskUrl(task.id),
             publishedAt: completedAt,
             lastPublishErrorCode: null,
           }
@@ -364,6 +365,12 @@ export class TicketCandidateService {
       if (attempt < 2) await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
     }
     return null;
+  }
+
+  private batonTaskUrl(taskId: string): string | null {
+    return this.batonWebBaseUrl
+      ? `${this.batonWebBaseUrl.replace(/\/$/, '')}/tasks/${taskId}`
+      : null;
   }
 
   private async findDuplicate(

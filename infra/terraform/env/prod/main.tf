@@ -378,6 +378,10 @@ resource "azurerm_container_app" "api" {
         value = "https://baton-backend.up.railway.app"
       }
       env {
+        name  = "BATON_WEB_BASE_URL"
+        value = "https://baton.phoenixvc.tech"
+      }
+      env {
         name  = "BATON_DEFAULT_PROJECT_ID"
         value = "d20d739a-89b0-4a48-8f9b-dcb0724c149d"
       }

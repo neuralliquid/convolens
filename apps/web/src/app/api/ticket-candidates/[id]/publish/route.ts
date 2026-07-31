@@ -1,8 +1,7 @@
 import {
   apiAuthErrorResponse,
   getConvolensApiBaseUrl,
-  getConvolensApiToken,
-  getMystiraAccessToken,
+  getConvolensPublishTokens,
 } from "@/lib/convolens-api";
 
 export async function POST(
@@ -10,10 +9,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const [token, batonToken] = await Promise.all([
-      getConvolensApiToken(),
-      getMystiraAccessToken(),
-    ]);
+    const { apiToken: token, batonToken } = await getConvolensPublishTokens();
     const response = await fetch(
       `${getConvolensApiBaseUrl()}/api/ticket-candidates/${encodeURIComponent((await context.params).id)}/publish`,
       {

@@ -124,13 +124,15 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      'project-1',
+      'https://baton-ui.example'
     );
     const [candidate] = await service.generate('user-1', intakeId);
     await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
     const first = await service.publish('user-1', candidate.id, 'mystira-token');
     const replay = await service.publish('user-1', candidate.id, 'mystira-token');
     expect(first.candidate.batonTaskId).toBe('task-1');
+    expect(first.candidate.batonTaskUrl).toBe('https://baton-ui.example/tasks/task-1');
     expect(first.duplicate).toBe(false);
     expect(replay.duplicate).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(2);

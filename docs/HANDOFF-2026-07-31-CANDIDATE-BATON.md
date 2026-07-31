@@ -17,6 +17,8 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - any completed durable Baton attempt carrying a task ID finalizes the candidate locally before any recovery path can call Baton again, including attempts later marked failed by local finalization errors;
 - ambiguous Baton creates retain the original reconciliation deadline across lookup failures, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
 - Mystira access-token expiry is tracked independently from ID-token expiry before the token is forwarded;
+- the publish proxy resolves one refreshed Mystira session and derives both downstream credentials from it;
+- persisted task links use the authenticated Baton frontend at `https://baton.phoenixvc.tech/tasks/:id`, not the bearer-only API;
 - Accept is disabled while candidate edits are unsaved, preventing reviewed text from being silently replaced by persisted text;
 - a durable idempotency marker and remote duplicate check reconcile ambiguous timeouts;
 - publication attempts, failures, retries, task ids, and links are persisted;
@@ -34,7 +36,7 @@ Validated locally:
 - candidate service suite: 9/9;
 - candidate, intake, and migration suite: 53/53;
 - complete API Jest suite: 148/148;
-- focused candidate UI plus Mystira refresh suite: 4/4;
+- focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
 - headed extension UI/console fixtures: 4/4;
 - monorepo build: 8/8;

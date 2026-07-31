@@ -17,8 +17,10 @@ export function getConvolensApiBaseUrl(): string {
   ).replace(/\/$/, "");
 }
 
-export async function getConvolensApiToken(): Promise<string> {
-  const session = await getServerSession(authOptions);
+async function exchangeConvolensApiToken(session: {
+  user?: unknown;
+  idToken?: string;
+}): Promise<string> {
   if (!session?.user) {
     throw new ConvolensApiAuthError("Unauthorized", 401);
   }
@@ -55,6 +57,28 @@ export async function getConvolensApiToken(): Promise<string> {
   }
 
   return payload.token;
+}
+
+export async function getConvolensApiToken(): Promise<string> {
+  const session = await getServerSession(authOptions);
+  return exchangeConvolensApiToken(session || {});
+}
+
+export async function getConvolensPublishTokens(): Promise<{
+  apiToken: string;
+  batonToken: string;
+}> {
+  const session = await getServerSession(authOptions);
+  if (!session?.accessToken) {
+    throw new ConvolensApiAuthError(
+      "Your Mystira Identity session needs to be refreshed",
+      401,
+    );
+  }
+  return {
+    apiToken: await exchangeConvolensApiToken(session),
+    batonToken: session.accessToken,
+  };
 }
 
 export async function getMystiraAccessToken(): Promise<string> {
