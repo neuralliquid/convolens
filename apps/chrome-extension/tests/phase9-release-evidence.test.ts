@@ -87,9 +87,33 @@ const htmlHasAuthoredPreload = (source: string) => {
     searchFrom = end + 1;
   }
   for (const tag of tags) {
-    const rel = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
-    const value = rel?.slice(1).find((candidate) => candidate !== undefined);
-    if (value && includesPreloadToken(value)) return true;
+    let index = 5;
+    while (index < tag.length) {
+      while (/\s/.test(tag[index] ?? "")) index += 1;
+      if (tag[index] === "/" || tag[index] === ">") break;
+      const nameStart = index;
+      while (index < tag.length && !/[\s=/>]/.test(tag[index])) index += 1;
+      const name = tag.slice(nameStart, index).toLowerCase();
+      while (/\s/.test(tag[index] ?? "")) index += 1;
+      let value = "";
+      if (tag[index] === "=") {
+        index += 1;
+        while (/\s/.test(tag[index] ?? "")) index += 1;
+        const quote =
+          tag[index] === '"' || tag[index] === "'" ? tag[index] : null;
+        if (quote) {
+          const valueStart = ++index;
+          while (index < tag.length && tag[index] !== quote) index += 1;
+          value = tag.slice(valueStart, index);
+          if (tag[index] === quote) index += 1;
+        } else {
+          const valueStart = index;
+          while (index < tag.length && !/[\s>]/.test(tag[index])) index += 1;
+          value = tag.slice(valueStart, index);
+        }
+      }
+      if (name === "rel" && includesPreloadToken(value)) return true;
+    }
   }
   return false;
 };
@@ -134,6 +158,11 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
   assert.equal(jsxHasAuthoredPreload("<Link {...props} />"), false);
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
+  assert.equal(htmlHasAuthoredPreload('<link data-rel="preload">'), false);
+  assert.equal(
+    htmlHasAuthoredPreload('<link title="rel=preload" href="/">'),
+    false,
+  );
   assert.equal(
     htmlHasAuthoredPreload('<link title="1 > 0" rel="preload">'),
     true,
