@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parse } from "parse5";
 import ts from "typescript";
 
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
+const webTsconfigPath = fileURLToPath(
+  new URL("../../web/tsconfig.json", import.meta.url),
+);
+const webTsconfig = ts.readConfigFile(webTsconfigPath, ts.sys.readFile);
+const webCompilerOptions = ts.parseJsonConfigFileContent(
+  webTsconfig.config,
+  ts.sys,
+  dirname(webTsconfigPath),
+).options;
 const includesPreloadToken = (value: string) =>
   value
     .split(/[\t\n\f\r ]+/)
@@ -100,13 +110,13 @@ const jsxSourcesWithAuthoredPreload = (
     allSources.map(({ fileName, source }) => [canonical(fileName), source]),
   );
   const compilerOptions: ts.CompilerOptions = {
-    allowJs: true,
-    jsx: ts.JsxEmit.React,
-    moduleResolution: ts.ModuleResolutionKind.Node10,
+    ...webCompilerOptions,
+    composite: false,
+    incremental: false,
     noEmit: true,
     noLib: true,
     skipLibCheck: true,
-    target: ts.ScriptTarget.Latest,
+    types: [],
   };
   const host = ts.createCompilerHost(compilerOptions);
   const defaultFileExists = host.fileExists.bind(host);
@@ -314,6 +324,19 @@ test("records the authored web preload inventory deterministically", () => {
         source: `import { warm } from "./hints"; warm("/app.js", { as: "script" });`,
       },
     ]).has(resolve("inventory-fixture", "consumer.tsx")),
+    true,
+  );
+  assert.equal(
+    jsxSourcesWithAuthoredPreload([
+      {
+        fileName: resolve(dirname(webTsconfigPath), "src/lib/hints.ts"),
+        source: `export { preload as warm } from "react-dom";`,
+      },
+      {
+        fileName: resolve(dirname(webTsconfigPath), "src/app/consumer.tsx"),
+        source: `import { warm } from "@/lib/hints"; warm("/app.js", { as: "script" });`,
+      },
+    ]).has(resolve(dirname(webTsconfigPath), "src/app/consumer.tsx")),
     true,
   );
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
