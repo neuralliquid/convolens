@@ -82,8 +82,42 @@ const jsxHasAuthoredPreload = (source: string) => {
     true,
     ts.ScriptKind.TSX,
   );
+  const preloadBindings = new Set<string>();
+  const reactDomNamespaces = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "react-dom"
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        if ((element.propertyName ?? element.name).text === "preload") {
+          preloadBindings.add(element.name.text);
+        }
+      }
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      reactDomNamespaces.add(bindings.name.text);
+    }
+  }
   let found = false;
   const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      if (
+        (ts.isIdentifier(node.expression) &&
+          preloadBindings.has(node.expression.text)) ||
+        (ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          reactDomNamespaces.has(node.expression.expression.text) &&
+          node.expression.name.text === "preload")
+      ) {
+        found = true;
+        return;
+      }
+    }
     if (
       (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
       node.tagName.getText(sourceFile) === "link"
@@ -167,6 +201,31 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload('<link rel={"x\u00a0preload"} />'), false);
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
   assert.equal(jsxHasAuthoredPreload("<Link {...props} />"), false);
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import { preload } from "react-dom"; preload("/app.js", { as: "script" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import { preload as warm } from "react-dom"; warm("/app.js", { as: "script" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as ReactDOM from "react-dom"; ReactDOM.preload("/app.js", { as: "script" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import { preload } from "somewhere-else"; preload("/app.js");`,
+    ),
+    false,
+  );
+  assert.equal(jsxHasAuthoredPreload(`preload("/app.js");`), false);
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
   assert.equal(htmlHasAuthoredPreload('<link data-rel="preload">'), false);
   assert.equal(
