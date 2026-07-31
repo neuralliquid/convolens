@@ -7,6 +7,7 @@ import {
   verifyEndOfCentralDirectory,
   verifyEntryRequirements,
   verifyLocalEntryIntegrity,
+  verifyLocalRecordExtent,
   verifyRegularFileEntry,
   verifySingleDiskEntry,
 } from "../scripts/verify-package.mjs";
@@ -180,7 +181,29 @@ test("rejects ZIP entries that are not regular files", () => {
     /entry is not a regular file/,
   );
   assert.throws(
+    () => verifyRegularFileEntry(3, 0x81b60030, "manifest.json"),
+    /entry is not a regular file/,
+  );
+  assert.throws(
     () => verifyRegularFileEntry(0, 0x10, "manifest.json"),
     /entry is not a regular file/,
+  );
+  assert.throws(
+    () => verifyRegularFileEntry(0, 0x08, "manifest.json"),
+    /entry is not a regular file/,
+  );
+});
+
+test("bounds complete local ZIP records before the central directory", () => {
+  assert.doesNotThrow(() =>
+    verifyLocalRecordExtent(10, 99, 100, "manifest.json"),
+  );
+  assert.throws(
+    () => verifyLocalRecordExtent(100, 120, 100, "manifest.json"),
+    /local entry overlaps the central directory/,
+  );
+  assert.throws(
+    () => verifyLocalRecordExtent(10, 101, 100, "manifest.json"),
+    /local entry overlaps the central directory/,
   );
 });

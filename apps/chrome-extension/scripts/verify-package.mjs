@@ -70,12 +70,12 @@ export function verifyDataDescriptor(buffer, offset, entry) {
     buffer.readUInt32LE(cursor) === entry.crc &&
     buffer.readUInt32LE(cursor + 4) === entry.compressedSize &&
     buffer.readUInt32LE(cursor + 8) === entry.uncompressedSize;
-  if (matchesAt(offset)) return;
+  if (matchesAt(offset)) return 12;
 
   const hasSignature =
     buffer.readUInt32LE(offset) === ZIP_DESCRIPTOR_SIGNATURE;
   if (hasSignature && offset + 16 <= buffer.length && matchesAt(offset + 4)) {
-    return;
+    return 16;
   }
   if (
     hasSignature &&
@@ -139,6 +139,9 @@ export function verifyEntryRequirements(entry, localVersionNeeded) {
 }
 
 export function verifyRegularFileEntry(creatorSystem, externalAttributes, name) {
+  if ((externalAttributes & 0x18) !== 0) {
+    throw new Error(`ZIP entry is not a regular file: ${name}`);
+  }
   if (creatorSystem === 3) {
     const unixFileType = (externalAttributes >>> 16) & 0xf000;
     if (unixFileType !== 0x8000) {
@@ -146,12 +149,20 @@ export function verifyRegularFileEntry(creatorSystem, externalAttributes, name) 
     }
     return;
   }
-  if ((externalAttributes & 0x10) !== 0) {
-    throw new Error(`ZIP entry is not a regular file: ${name}`);
+}
+
+export function verifyLocalRecordExtent(
+  localHeaderOffset,
+  recordEnd,
+  centralOffset,
+  name,
+) {
+  if (localHeaderOffset >= centralOffset || recordEnd > centralOffset) {
+    throw new Error(`ZIP local entry overlaps the central directory: ${name}`);
   }
 }
 
-function verifyEntryPayload(buffer, entry) {
+function verifyEntryPayload(buffer, entry, centralOffset) {
   const offset = entry.localHeaderOffset;
   if (
     offset + 30 > buffer.length ||
@@ -187,9 +198,16 @@ function verifyEntryPayload(buffer, entry) {
     compressedSize: localCompressedSize,
     uncompressedSize: localUncompressedSize,
   });
-  if ((entry.flags & 0x08) !== 0) {
-    verifyDataDescriptor(buffer, dataEnd, entry);
-  }
+  const descriptorLength =
+    (entry.flags & 0x08) !== 0
+      ? verifyDataDescriptor(buffer, dataEnd, entry)
+      : 0;
+  verifyLocalRecordExtent(
+    offset,
+    dataEnd + descriptorLength,
+    centralOffset,
+    entry.name,
+  );
 
   const compressed = buffer.subarray(dataStart, dataEnd);
   const payload =
@@ -270,7 +288,7 @@ export function inspectZip(buffer) {
     ) {
       throw new Error(`ZIP entry has an unsafe path: ${name}`);
     }
-    verifyEntryPayload(buffer, { ...entry, name });
+    verifyEntryPayload(buffer, { ...entry, name }, centralOffset);
     entries.push(name);
     cursor = nameEnd + extraLength + commentLength;
   }
