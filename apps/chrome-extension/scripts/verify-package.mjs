@@ -90,6 +90,26 @@ export function verifySingleDiskEntry(diskNumberStart, name) {
   }
 }
 
+export function verifyEndOfCentralDirectory({
+  diskNumber,
+  centralDisk,
+  entriesOnDisk,
+  entryCount,
+  eocdOffset,
+  commentLength,
+  archiveLength,
+}) {
+  if (diskNumber !== 0 || centralDisk !== 0) {
+    throw new Error("Multi-disk ZIP files are not supported.");
+  }
+  if (entriesOnDisk !== entryCount) {
+    throw new Error("ZIP single-disk entry counts are inconsistent.");
+  }
+  if (eocdOffset + 22 + commentLength !== archiveLength) {
+    throw new Error("ZIP end-of-central-directory comment length is inconsistent.");
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -155,11 +175,18 @@ export function inspectZip(buffer) {
   const eocdOffset = findEndOfCentralDirectory(buffer);
   const diskNumber = buffer.readUInt16LE(eocdOffset + 4);
   const centralDisk = buffer.readUInt16LE(eocdOffset + 6);
-  if (diskNumber !== 0 || centralDisk !== 0) {
-    throw new Error("Multi-disk ZIP files are not supported.");
-  }
-
+  const entriesOnDisk = buffer.readUInt16LE(eocdOffset + 8);
   const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const commentLength = buffer.readUInt16LE(eocdOffset + 20);
+  verifyEndOfCentralDirectory({
+    diskNumber,
+    centralDisk,
+    entriesOnDisk,
+    entryCount,
+    eocdOffset,
+    commentLength,
+    archiveLength: buffer.length,
+  });
   const centralSize = buffer.readUInt32LE(eocdOffset + 12);
   const centralOffset = buffer.readUInt32LE(eocdOffset + 16);
   if (centralOffset + centralSize > eocdOffset) {

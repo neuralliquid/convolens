@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   verifyDataDescriptor,
+  verifyEndOfCentralDirectory,
   verifyLocalEntryIntegrity,
   verifySingleDiskEntry,
 } from "../scripts/verify-package.mjs";
@@ -106,5 +107,26 @@ test("rejects a central ZIP entry assigned to another disk", () => {
   assert.throws(
     () => verifySingleDiskEntry(1, "manifest.json"),
     /entry starts on an unsupported disk/,
+  );
+});
+
+test("requires a complete, internally consistent single-disk ZIP EOCD", () => {
+  const record = {
+    diskNumber: 0,
+    centralDisk: 0,
+    entriesOnDisk: 13,
+    entryCount: 13,
+    eocdOffset: 100,
+    commentLength: 4,
+    archiveLength: 126,
+  };
+  assert.doesNotThrow(() => verifyEndOfCentralDirectory(record));
+  assert.throws(
+    () => verifyEndOfCentralDirectory({ ...record, entriesOnDisk: 12 }),
+    /single-disk entry counts are inconsistent/,
+  );
+  assert.throws(
+    () => verifyEndOfCentralDirectory({ ...record, archiveLength: 125 }),
+    /comment length is inconsistent/,
   );
 });
