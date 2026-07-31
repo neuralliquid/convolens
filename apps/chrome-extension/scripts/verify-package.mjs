@@ -162,6 +162,19 @@ export function verifyLocalRecordExtent(
   }
 }
 
+export function verifyNonOverlappingLocalRecords(records) {
+  const ordered = [...records].sort((left, right) => left.start - right.start);
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    if (current.start < previous.end) {
+      throw new Error(
+        `ZIP local entries overlap: ${previous.name} and ${current.name}`,
+      );
+    }
+  }
+}
+
 function verifyEntryPayload(buffer, entry, centralOffset) {
   const offset = entry.localHeaderOffset;
   if (
@@ -202,12 +215,8 @@ function verifyEntryPayload(buffer, entry, centralOffset) {
     (entry.flags & 0x08) !== 0
       ? verifyDataDescriptor(buffer, dataEnd, entry)
       : 0;
-  verifyLocalRecordExtent(
-    offset,
-    dataEnd + descriptorLength,
-    centralOffset,
-    entry.name,
-  );
+  const recordEnd = dataEnd + descriptorLength;
+  verifyLocalRecordExtent(offset, recordEnd, centralOffset, entry.name);
 
   const compressed = buffer.subarray(dataStart, dataEnd);
   const payload =
@@ -230,6 +239,7 @@ function verifyEntryPayload(buffer, entry, centralOffset) {
       `ZIP entry payload failed size or CRC verification: ${entry.name}`,
     );
   }
+  return { start: offset, end: recordEnd, name: entry.name };
 }
 
 export function inspectZip(buffer) {
@@ -253,6 +263,7 @@ export function inspectZip(buffer) {
   verifyCentralDirectoryExtent(centralOffset, centralSize, eocdOffset);
 
   const entries = [];
+  const localRecords = [];
   let cursor = centralOffset;
   for (let index = 0; index < entryCount; index += 1) {
     if (buffer.readUInt32LE(cursor) !== ZIP_CENTRAL_SIGNATURE) {
@@ -288,7 +299,9 @@ export function inspectZip(buffer) {
     ) {
       throw new Error(`ZIP entry has an unsafe path: ${name}`);
     }
-    verifyEntryPayload(buffer, { ...entry, name }, centralOffset);
+    localRecords.push(
+      verifyEntryPayload(buffer, { ...entry, name }, centralOffset),
+    );
     entries.push(name);
     cursor = nameEnd + extraLength + commentLength;
   }
@@ -299,6 +312,7 @@ export function inspectZip(buffer) {
   if (new Set(entries).size !== entries.length) {
     throw new Error("ZIP contains duplicate entry names.");
   }
+  verifyNonOverlappingLocalRecords(localRecords);
   return entries.sort();
 }
 

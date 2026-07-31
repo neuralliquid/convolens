@@ -10,12 +10,12 @@ The release matrix is recorded in `docs/EXTENSION-CAPTURE-PHASE9-RELEASE-MATRIX.
 
 ## Validation to record on the exact PR head
 
-- Chrome extension Node tests: 146 passed, 0 failed.
+- Chrome extension Node tests: 147 passed, 0 failed.
 - Chrome extension TypeScript and popup syntax: passed.
 - Focused API conversation-intake service tests: 29 passed, 0 failed.
 - Production package and ZIP inspection: passed; 13 expected entries validated by local header, decompression, payload size, and CRC, with no duplicate or unsafe paths.
 - Clean uncached monorepo build: 8/8 packages passed; the web build compiled 24 routes.
-- ZIP SHA-256: `E676E3E61FB92B9C17192354FD7FF401CC86114815E0CA9EEB1242CE63D831C0`.
+- ZIP SHA-256: `3A091DEB2ED53AA2E30C70A7D3E4B99A160219A1284691C4B654E7D945FEBE38`.
 - GitHub CI and exact-head review: pending.
 
 ## Acceptance boundary

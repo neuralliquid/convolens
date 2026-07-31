@@ -7,6 +7,7 @@ import {
   verifyEndOfCentralDirectory,
   verifyEntryRequirements,
   verifyLocalEntryIntegrity,
+  verifyNonOverlappingLocalRecords,
   verifyLocalRecordExtent,
   verifyRegularFileEntry,
   verifySingleDiskEntry,
@@ -205,5 +206,24 @@ test("bounds complete local ZIP records before the central directory", () => {
   assert.throws(
     () => verifyLocalRecordExtent(10, 101, 100, "manifest.json"),
     /local entry overlaps the central directory/,
+  );
+});
+
+test("rejects overlaps between complete local ZIP records", () => {
+  const records = [
+    { start: 0, end: 100, name: "manifest.json" },
+    { start: 100, end: 150, name: "dist/background.js" },
+  ];
+  assert.doesNotThrow(() => verifyNonOverlappingLocalRecords(records));
+  assert.doesNotThrow(() =>
+    verifyNonOverlappingLocalRecords([...records].reverse()),
+  );
+  assert.throws(
+    () =>
+      verifyNonOverlappingLocalRecords([
+        records[0],
+        { ...records[1], start: 99 },
+      ]),
+    /local entries overlap: manifest\.json and dist\/background\.js/,
   );
 });
