@@ -303,7 +303,10 @@ describe('ConversationIntakeService', () => {
       .fn()
       .mockRejectedValueOnce(new Error('storage unavailable'))
       .mockResolvedValueOnce(undefined);
-    const deleteFile = jest.fn().mockResolvedValue(undefined);
+    const deleteFile = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('cleanup unavailable'))
+      .mockResolvedValue(undefined);
     const artifactService = new ConversationIntakeService(dataSource, {
       uploadFile,
       deleteFile,
@@ -331,7 +334,15 @@ describe('ConversationIntakeService', () => {
     expect(retried.rawArtifactKey).not.toBe(failedKey);
     expect(uploadFile.mock.calls[1][0]).toBe(retried.rawArtifactKey);
     expect(deleteFile).toHaveBeenCalledWith(failedKey);
-    expect(retried.rawArtifactCleanupKeys).toBeNull();
+    expect(retried.rawArtifactCleanupKeys).toEqual([failedKey]);
+
+    const afterCleanupRecovery = await artifactService.ensureRawArtifact(
+      saved.conversation,
+      baseInput.userId,
+      artifact
+    );
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(afterCleanupRecovery.rawArtifactCleanupKeys).toBeNull();
   });
 
   it('can retry deletion when the artifact is already absent after a database error', async () => {

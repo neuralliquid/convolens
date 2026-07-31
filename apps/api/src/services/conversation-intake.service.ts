@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { In, IsNull, QueryFailedError, type DataSource, type EntityManager } from 'typeorm';
+import {
+  In,
+  IsNull,
+  QueryFailedError,
+  type DataSource,
+  type EntityManager,
+  type Repository,
+} from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
   ConversationIntake,
@@ -459,7 +466,7 @@ export class ConversationIntakeService {
     // Connector-generated ids and extraction timestamps may differ on a retry,
     // so replacing the artifact would create unowned blobs and weaken provenance.
     if (current.rawArtifactStatus === 'stored' && current.rawArtifactKey) {
-      return current;
+      return this.retryStoredRawArtifactCleanup(repository, current);
     }
 
     const ownerScope = createHash('sha256').update(userId).digest('hex').slice(0, 32);
@@ -489,7 +496,9 @@ export class ConversationIntakeService {
 
     if (claim.affected !== 1) {
       const claimed = await repository.findOneByOrFail({ id: conversation.id });
-      if (claimed.rawArtifactStatus === 'stored' && claimed.rawArtifactKey) return claimed;
+      if (claimed.rawArtifactStatus === 'stored' && claimed.rawArtifactKey) {
+        return this.retryStoredRawArtifactCleanup(repository, claimed);
+      }
 
       // A retry may resume the same first artifact after a failed write, but a
       // different duplicate payload must never replace its provenance.
@@ -660,6 +669,28 @@ export class ConversationIntakeService {
     } catch {
       return false;
     }
+  }
+
+  private async retryStoredRawArtifactCleanup(
+    repository: Repository<ConversationIntake>,
+    conversation: ConversationIntake
+  ): Promise<ConversationIntake> {
+    const cleanupKeys = conversation.rawArtifactCleanupKeys || [];
+    if (cleanupKeys.length === 0) return conversation;
+    const cleaned = await this.deleteRawArtifactKeys(cleanupKeys);
+    if (!cleaned) return conversation;
+    const cleared = await repository
+      .update(
+        {
+          id: conversation.id,
+          rawArtifactStatus: 'stored',
+          rawArtifactKey: conversation.rawArtifactKey,
+        },
+        { rawArtifactCleanupKeys: null }
+      )
+      .catch(() => undefined);
+    if (cleared?.affected === 1) conversation.rawArtifactCleanupKeys = null;
+    return conversation;
   }
 
   private async updateDuplicate(
