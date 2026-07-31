@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import {
   AZURE_MANAGED_IDENTITY_TIMEOUT_MS,
+  AZURE_DELETE_REQUEST_TIMEOUT_MS,
   AZURE_UPLOAD_MAX_RETRIES,
   AZURE_UPLOAD_REQUEST_TIMEOUT_MS,
   AZURE_UPLOAD_TOTAL_TIMEOUT_MS,
@@ -10,15 +11,18 @@ import {
 const originalEnvironment = {
   account: process.env.AZURE_STORAGE_ACCOUNT_NAME,
   container: process.env.AZURE_STORAGE_CONTAINER,
+  sasToken: process.env.AZURE_STORAGE_SAS_TOKEN,
   endpoint: process.env.IDENTITY_ENDPOINT,
   header: process.env.IDENTITY_HEADER,
 };
 
 afterEach(() => {
+  jest.useRealTimers();
   jest.restoreAllMocks();
   for (const [name, value] of Object.entries({
     AZURE_STORAGE_ACCOUNT_NAME: originalEnvironment.account,
     AZURE_STORAGE_CONTAINER: originalEnvironment.container,
+    AZURE_STORAGE_SAS_TOKEN: originalEnvironment.sasToken,
     IDENTITY_ENDPOINT: originalEnvironment.endpoint,
     IDENTITY_HEADER: originalEnvironment.header,
   })) {
@@ -36,6 +40,7 @@ describe('StorageService managed identity', () => {
 
     expect(worstCaseConfiguredDuration).toBeLessThan(AZURE_UPLOAD_TOTAL_TIMEOUT_MS);
     expect(AZURE_UPLOAD_TOTAL_TIMEOUT_MS).toBeLessThan(60_000);
+    expect(AZURE_DELETE_REQUEST_TIMEOUT_MS).toBeLessThan(60_000);
   });
 
   it('uses and caches a Container Apps identity token for private Blob writes', async () => {
@@ -78,5 +83,28 @@ describe('StorageService managed identity', () => {
         }),
       });
     }
+  });
+
+  it('aborts a stalled Blob deletion inside the caller window', async () => {
+    jest.useFakeTimers();
+    process.env.AZURE_STORAGE_ACCOUNT_NAME = 'fixturestorage';
+    process.env.AZURE_STORAGE_CONTAINER = 'chat-exports';
+    process.env.AZURE_STORAGE_SAS_TOKEN = 'fixture-sas';
+    jest.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+          });
+        })
+    );
+    const storage = new StorageService({ provider: 'azure-blob' });
+
+    const assertion = expect(
+      storage.deleteFile('raw-intakes/a/stalled.json')
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await jest.advanceTimersByTimeAsync(AZURE_DELETE_REQUEST_TIMEOUT_MS);
+
+    await assertion;
   });
 });

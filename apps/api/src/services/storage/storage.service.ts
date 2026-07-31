@@ -39,6 +39,7 @@ export const AZURE_MANAGED_IDENTITY_TIMEOUT_MS = 5_000;
 export const AZURE_UPLOAD_REQUEST_TIMEOUT_MS = 8_000;
 export const AZURE_UPLOAD_MAX_RETRIES = 1;
 export const AZURE_UPLOAD_TOTAL_TIMEOUT_MS = 24_000;
+export const AZURE_DELETE_REQUEST_TIMEOUT_MS = 15_000;
 
 // =============================================================================
 // Types
@@ -498,7 +499,11 @@ export class StorageService {
 
     const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
     if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
-    const response = await fetch(url, { method: 'DELETE', headers });
+    const response = await fetchWithTimeout(
+      url,
+      { method: 'DELETE', headers },
+      AZURE_DELETE_REQUEST_TIMEOUT_MS
+    );
 
     if (!response.ok && response.status !== 404) {
       throw new Error(`Azure Blob delete failed: ${response.status}`);
