@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { In, IsNull, QueryFailedError, type DataSource, type EntityManager } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
@@ -12,6 +12,7 @@ import { StorageService } from './storage/storage.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
+const RAW_ARTIFACT_CLAIM_LEASE_MS = 60_000;
 const compatibilityQueues = new Map<string, Promise<void>>();
 const rawArtifactQueues = new Map<string, Promise<void>>();
 
@@ -460,7 +461,11 @@ export class ConversationIntakeService {
 
     const ownerScope = createHash('sha256').update(userId).digest('hex').slice(0, 32);
     const extension = artifact.contentType === 'application/json' ? 'json' : 'txt';
-    const key = `raw-intakes/${ownerScope}/${conversation.id}/${sha256}.${extension}`;
+    const claimId = randomUUID();
+    // A claim-specific segment prevents a late, expired writer from deleting or
+    // overwriting the artifact selected by a newer lease for the same payload.
+    const key = `raw-intakes/${ownerScope}/${conversation.id}/${claimId}/${sha256}.${extension}`;
+    const claimedAt = new Date();
     let claim = await repository.update(
       { id: conversation.id, rawArtifactKey: IsNull() },
       {
@@ -468,7 +473,9 @@ export class ConversationIntakeService {
         rawArtifactSha256: sha256,
         rawArtifactSize: buffer.length,
         rawArtifactStatus: 'pending',
-        errorCode: undefined,
+        rawArtifactClaimId: claimId,
+        rawArtifactClaimedAt: claimedAt,
+        errorCode: null,
       }
     );
 
@@ -485,7 +492,36 @@ export class ConversationIntakeService {
             rawArtifactStatus: 'failed',
             rawArtifactSha256: sha256,
           },
-          { rawArtifactStatus: 'pending', status: 'received', errorCode: undefined }
+          {
+            rawArtifactStatus: 'pending',
+            rawArtifactClaimId: claimId,
+            rawArtifactClaimedAt: claimedAt,
+            status: 'received',
+            errorCode: null,
+          }
+        );
+      }
+
+      const claimExpired =
+        claimed.rawArtifactStatus === 'pending' &&
+        (!claimed.rawArtifactClaimedAt ||
+          claimed.rawArtifactClaimedAt.getTime() <= Date.now() - RAW_ARTIFACT_CLAIM_LEASE_MS);
+      if (claim.affected !== 1 && claimExpired) {
+        claim = await repository.update(
+          {
+            id: conversation.id,
+            rawArtifactStatus: 'pending',
+            rawArtifactClaimId: claimed.rawArtifactClaimId || IsNull(),
+          },
+          {
+            rawArtifactKey: key,
+            rawArtifactSha256: sha256,
+            rawArtifactSize: buffer.length,
+            rawArtifactClaimId: claimId,
+            rawArtifactClaimedAt: claimedAt,
+            status: 'received',
+            errorCode: null,
+          }
         );
       }
 
@@ -504,17 +540,31 @@ export class ConversationIntakeService {
         contentType: artifact.contentType,
         metadata: { intakeId: conversation.id },
       });
-      await repository.update(conversation.id, {
-        rawArtifactStatus: 'stored',
-        status: 'received',
-        errorCode: undefined,
-      });
+      const finalized = await repository.update(
+        { id: conversation.id, rawArtifactStatus: 'pending', rawArtifactClaimId: claimId },
+        {
+          rawArtifactStatus: 'stored',
+          rawArtifactClaimId: null,
+          rawArtifactClaimedAt: null,
+          status: 'received',
+          errorCode: null,
+        }
+      );
+      if (finalized.affected !== 1) {
+        await this.storage.deleteFile(key);
+        return this.waitForRawArtifact(conversation.id);
+      }
     } catch (error) {
-      await repository.update(conversation.id, {
-        rawArtifactStatus: 'failed',
-        status: 'failed',
-        errorCode: 'raw_artifact_write_failed',
-      });
+      await repository.update(
+        { id: conversation.id, rawArtifactStatus: 'pending', rawArtifactClaimId: claimId },
+        {
+          rawArtifactStatus: 'failed',
+          rawArtifactClaimId: null,
+          rawArtifactClaimedAt: null,
+          status: 'failed',
+          errorCode: 'raw_artifact_write_failed',
+        }
+      );
       throw error;
     }
 

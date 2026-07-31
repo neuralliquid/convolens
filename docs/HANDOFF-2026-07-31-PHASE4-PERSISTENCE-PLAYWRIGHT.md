@@ -9,7 +9,7 @@ This slice closes the repository implementation gaps found during the Phase 4/9 
 - extension and manual-upload intakes retain their first accepted raw source in the configured private artifact store alongside normalized PostgreSQL messages;
 - artifact keys are owner-scoped without exposing the Mystira user id, and the database records SHA-256, size, and storage status;
 - production Blob requests use the Container Apps managed identity already granted `Storage Blob Data Contributor` rather than a disabled shared key;
-- duplicate submissions retain the original immutable raw evidence instead of creating orphan artifacts;
+- duplicate submissions use a database-conditional claim and lease so concurrent replicas retain one immutable raw artifact, while a crashed writer can be recovered safely;
 - authenticated deletion removes the raw artifact before deleting the owner-scoped database record;
 - legacy normalized-only rows are explicitly marked `not-recorded` rather than appearing indefinitely pending;
 - selector reports are bounded and persisted in PostgreSQL, while report reads and selector updates require an authenticated admin;
@@ -19,7 +19,7 @@ This slice closes the repository implementation gaps found during the Phase 4/9 
 ## Commands
 
 ```powershell
-pnpm --filter @convolens/api run test -- --runInBand --runTestsByPath src/services/__tests__/conversation-intake.service.test.ts src/services/__tests__/selector-report.service.test.ts src/services/__tests__/storage-managed-identity.test.ts src/db/migrations/__tests__/conversation-intake.migration.test.ts src/routes/__tests__/chat-export.routes.test.ts src/routes/__tests__/extension.routes.test.ts
+pnpm --filter @convolens/api test:ci -- src/services/__tests__/conversation-intake.service.test.ts src/services/__tests__/selector-report.service.test.ts src/services/__tests__/storage-managed-identity.test.ts src/db/migrations/__tests__/conversation-intake.migration.test.ts src/routes/__tests__/chat-export.routes.test.ts src/routes/__tests__/extension.routes.test.ts
 pnpm --filter @convolens/chrome-extension test:browser:persistence
 pnpm --filter @convolens/chrome-extension test:browser:fixtures
 pnpm run build

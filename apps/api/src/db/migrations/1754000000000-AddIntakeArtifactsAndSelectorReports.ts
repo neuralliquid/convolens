@@ -22,6 +22,17 @@ export class AddIntakeArtifactsAndSelectorReports1754000000000 implements Migrat
         length: '50',
         default: "'pending'",
       }),
+      new TableColumn({
+        name: 'rawArtifactClaimId',
+        type: 'varchar',
+        length: '36',
+        isNullable: true,
+      }),
+      new TableColumn({
+        name: 'rawArtifactClaimedAt',
+        type: queryRunner.connection.options.type === 'postgres' ? 'timestamptz' : 'datetime',
+        isNullable: true,
+      }),
     ]);
     // Existing normalized-only intakes must not be presented as if a Blob
     // write is still in progress. New rows retain the pending default.
@@ -64,6 +75,8 @@ export class AddIntakeArtifactsAndSelectorReports1754000000000 implements Migrat
     await queryRunner.dropTable('extension_selector_reports', true);
     for (const column of [
       'rawArtifactStatus',
+      'rawArtifactClaimedAt',
+      'rawArtifactClaimId',
       'rawArtifactSize',
       'rawArtifactSha256',
       'rawArtifactKey',
