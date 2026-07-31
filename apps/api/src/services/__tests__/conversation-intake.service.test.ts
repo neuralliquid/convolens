@@ -3,6 +3,7 @@ import { DataSource, IsNull } from 'typeorm';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import {
@@ -206,20 +207,21 @@ describe('ConversationIntakeService', () => {
     const artifactService = new ConversationIntakeService(dataSource, storage);
     const saved = await artifactService.save(baseInput);
     const repository = dataSource.getRepository(ConversationIntake);
+    const replacement = '{"replacement":true}';
     await repository.update(saved.conversation.id, {
       rawArtifactKey: `raw-intakes/stale/${saved.conversation.id}/stale/artifact.json`,
-      rawArtifactSha256: 'a'.repeat(64),
+      rawArtifactSha256: createHash('sha256').update(replacement).digest('hex'),
       rawArtifactSize: 8,
       rawArtifactStatus: 'pending',
       rawArtifactClaimId: '00000000-0000-4000-8000-000000000000',
-      rawArtifactClaimedAt: new Date(Date.now() - 120_000),
+      rawArtifactClaimedAt: new Date(Date.now() - 240_000),
       errorCode: 'raw_artifact_write_failed',
     });
 
     const persisted = await artifactService.ensureRawArtifact(
       saved.conversation,
       baseInput.userId,
-      { body: '{"replacement":true}', contentType: 'application/json' }
+      { body: replacement, contentType: 'application/json' }
     );
 
     expect(uploads).toEqual([persisted.rawArtifactKey]);
@@ -230,6 +232,35 @@ describe('ConversationIntakeService', () => {
     expect(persisted.errorCode).toBeNull();
   });
 
+  it('fails closed rather than replacing an expired claim with different raw bytes', async () => {
+    const storage = {
+      uploadFile: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StorageService;
+    const artifactService = new ConversationIntakeService(dataSource, storage);
+    const saved = await artifactService.save(baseInput);
+    const originalKey = `raw-intakes/original/${saved.conversation.id}/claim/artifact.json`;
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      rawArtifactKey: originalKey,
+      rawArtifactSha256: createHash('sha256').update('original').digest('hex'),
+      rawArtifactSize: 8,
+      rawArtifactStatus: 'pending',
+      rawArtifactClaimId: '00000000-0000-4000-8000-000000000002',
+      rawArtifactClaimedAt: new Date(Date.now() - 240_000),
+    });
+
+    await expect(
+      artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
+        body: 'different',
+        contentType: 'text/plain',
+      })
+    ).rejects.toThrow('recovery requires the exact original raw payload');
+    const retained = await dataSource
+      .getRepository(ConversationIntake)
+      .findOneByOrFail({ id: saved.conversation.id });
+    expect(retained.rawArtifactKey).toBe(originalKey);
+    expect(storage.uploadFile).not.toHaveBeenCalled();
+  });
+
   it('reclaims a pending claim when its lease expires during the wait', async () => {
     const storage = {
       uploadFile: jest.fn().mockResolvedValue(undefined),
@@ -237,19 +268,20 @@ describe('ConversationIntakeService', () => {
     } as unknown as StorageService;
     const artifactService = new ConversationIntakeService(dataSource, storage);
     const saved = await artifactService.save(baseInput);
+    const afterWait = '{"after-wait":true}';
     await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
       rawArtifactKey: `raw-intakes/pending/${saved.conversation.id}/pending/artifact.json`,
-      rawArtifactSha256: 'b'.repeat(64),
+      rawArtifactSha256: createHash('sha256').update(afterWait).digest('hex'),
       rawArtifactSize: 8,
       rawArtifactStatus: 'pending',
       rawArtifactClaimId: '00000000-0000-4000-8000-000000000001',
-      rawArtifactClaimedAt: new Date(Date.now() - 59_900),
+      rawArtifactClaimedAt: new Date(Date.now() - 179_900),
     });
 
     const persisted = await artifactService.ensureRawArtifact(
       saved.conversation,
       baseInput.userId,
-      { body: '{"after-wait":true}', contentType: 'application/json' }
+      { body: afterWait, contentType: 'application/json' }
     );
 
     expect(persisted.rawArtifactStatus).toBe('stored');

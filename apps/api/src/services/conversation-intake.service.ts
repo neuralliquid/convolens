@@ -12,7 +12,10 @@ import { StorageService } from './storage/storage.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
-const RAW_ARTIFACT_CLAIM_LEASE_MS = 60_000;
+// Azure upload retries can consume about 127 seconds (four 30-second attempts
+// plus backoff), so an active first writer must not be reclaimed inside that
+// window.
+const RAW_ARTIFACT_CLAIM_LEASE_MS = 180_000;
 const compatibilityQueues = new Map<string, Promise<void>>();
 const rawArtifactQueues = new Map<string, Promise<void>>();
 
@@ -511,7 +514,7 @@ export class ConversationIntakeService {
         claimed.rawArtifactStatus === 'pending' &&
         (!claimed.rawArtifactClaimedAt ||
           claimed.rawArtifactClaimedAt.getTime() <= Date.now() - RAW_ARTIFACT_CLAIM_LEASE_MS);
-      if (claim.affected !== 1 && claimExpired) {
+      if (claim.affected !== 1 && claimExpired && claimed.rawArtifactSha256 === sha256) {
         claim = await repository.update(
           {
             id: conversation.id,
@@ -533,6 +536,11 @@ export class ConversationIntakeService {
 
       if (claim.affected !== 1) {
         if (claimed.rawArtifactStatus === 'pending' && claimed.rawArtifactKey) {
+          if (claimExpired && claimed.rawArtifactSha256 !== sha256) {
+            throw new Error(
+              'The first raw artifact claim expired; recovery requires the exact original raw payload'
+            );
+          }
           const resolved = await this.waitForRawArtifact(conversation.id);
           if (resolved) return resolved;
           return this.ensureRawArtifactLocked(conversation, userId, artifact);
