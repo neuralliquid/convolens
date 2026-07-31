@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { resolve } from "node:path";
-import { decodeHTMLStrict } from "entities";
 import { parse } from "parse5";
 import ts from "typescript";
 
@@ -19,11 +18,50 @@ type HtmlNode = {
   childNodes?: HtmlNode[];
 };
 
-const jsxRelValue = (attribute: ts.JsxAttribute): string | undefined => {
+const decodeJsxLiteral = (
+  initializer: ts.StringLiteral,
+  sourceFile: ts.SourceFile,
+) => {
+  const emitted = ts.transpileModule(
+    `const inventory = <link rel=${initializer.getText(sourceFile)} />;`,
+    {
+      compilerOptions: {
+        jsx: ts.JsxEmit.React,
+        target: ts.ScriptTarget.ESNext,
+      },
+    },
+  ).outputText;
+  const emittedSource = ts.createSourceFile(
+    "inventory.js",
+    emitted,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  let value: string | undefined;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name.getText(emittedSource) === "rel" &&
+      ts.isStringLiteral(node.initializer)
+    ) {
+      value = node.initializer.text;
+      return;
+    }
+    if (value === undefined) ts.forEachChild(node, visit);
+  };
+  visit(emittedSource);
+  return value;
+};
+
+const jsxRelValue = (
+  attribute: ts.JsxAttribute,
+  sourceFile: ts.SourceFile,
+): string | undefined => {
   const initializer = attribute.initializer;
   if (!initializer) return undefined;
   if (ts.isStringLiteral(initializer)) {
-    return decodeHTMLStrict(initializer.text);
+    return decodeJsxLiteral(initializer, sourceFile);
   }
   if (
     ts.isJsxExpression(initializer) &&
@@ -60,7 +98,7 @@ const jsxHasAuthoredPreload = (source: string) => {
           attribute.name.getText(sourceFile).toLowerCase() === "rel",
       );
       if (rel) {
-        const value = jsxRelValue(rel);
+        const value = jsxRelValue(rel, sourceFile);
         if (value === undefined || includesPreloadToken(value)) found = true;
       }
     }
@@ -125,6 +163,7 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload('<link rel="x&#160;preload" />'), false);
   assert.equal(jsxHasAuthoredPreload('<link rel="x&#9preload" />'), false);
   assert.equal(jsxHasAuthoredPreload('<link rel="x&#9;preload" />'), true);
+  assert.equal(jsxHasAuthoredPreload('<link rel="x&Tab;preload" />'), false);
   assert.equal(jsxHasAuthoredPreload('<link rel={"x\u00a0preload"} />'), false);
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
   assert.equal(jsxHasAuthoredPreload("<Link {...props} />"), false);

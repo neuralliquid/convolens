@@ -19,7 +19,6 @@
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@types/chrome": "^0.0.260",
     "archiver": "^8.0.0",
-    "entities": "^6.0.1",
     "esbuild": "^0.27.7",
     "parse5": "^7.3.0",
     "tsx": "^4.7.0",

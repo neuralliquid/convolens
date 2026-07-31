@@ -324,9 +324,6 @@ importers:
       archiver:
         specifier: ^8.0.0
         version: 8.0.0
-      entities:
-        specifier: ^6.0.1
-        version: 6.0.1
       esbuild:
         specifier: ^0.27.7
         version: 0.27.7
