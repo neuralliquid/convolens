@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { verifyLocalEntryIntegrity } from "../scripts/verify-package.mjs";
+import {
+  verifyDataDescriptor,
+  verifyLocalEntryIntegrity,
+} from "../scripts/verify-package.mjs";
 
 const read = (path: string) =>
   readFileSync(new URL(path, import.meta.url), "utf8");
@@ -57,5 +60,34 @@ test("requires local ZIP sizes and CRC when no data descriptor is present", () =
       { ...entry, flags: 0x08 },
       { crc: 0, compressedSize: 0, uncompressedSize: 0 },
     ),
+  );
+});
+
+test("requires a complete and consistent ZIP data descriptor", () => {
+  const entry = {
+    name: "manifest.json",
+    flags: 0x08,
+    crc: 123,
+    compressedSize: 456,
+    uncompressedSize: 789,
+  };
+  const unsigned = Buffer.alloc(12);
+  unsigned.writeUInt32LE(entry.crc, 0);
+  unsigned.writeUInt32LE(entry.compressedSize, 4);
+  unsigned.writeUInt32LE(entry.uncompressedSize, 8);
+  assert.doesNotThrow(() => verifyDataDescriptor(unsigned, 0, entry));
+
+  const signed = Buffer.alloc(16);
+  signed.writeUInt32LE(0x08074b50, 0);
+  unsigned.copy(signed, 4);
+  assert.doesNotThrow(() => verifyDataDescriptor(signed, 0, entry));
+  assert.throws(
+    () => verifyDataDescriptor(signed.subarray(0, 15), 0, entry),
+    /data descriptor is truncated/,
+  );
+  signed.writeUInt32LE(entry.crc + 1, 4);
+  assert.throws(
+    () => verifyDataDescriptor(signed, 0, entry),
+    /data descriptor is inconsistent/,
   );
 });

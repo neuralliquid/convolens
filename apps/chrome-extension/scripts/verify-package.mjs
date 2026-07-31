@@ -6,6 +6,7 @@ import { inflateRawSync } from "node:zlib";
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
 const ZIP_LOCAL_SIGNATURE = 0x04034b50;
+const ZIP_DESCRIPTOR_SIGNATURE = 0x08074b50;
 const EXPECTED_ENTRIES = [
   "dist/background.js",
   "dist/content.css",
@@ -58,6 +59,29 @@ export function verifyLocalEntryIntegrity(
   }
 }
 
+export function verifyDataDescriptor(buffer, offset, entry) {
+  let cursor = offset;
+  if (
+    cursor + 4 <= buffer.length &&
+    buffer.readUInt32LE(cursor) === ZIP_DESCRIPTOR_SIGNATURE
+  ) {
+    cursor += 4;
+  }
+  if (cursor + 12 > buffer.length) {
+    throw new Error(`ZIP data descriptor is truncated: ${entry.name}`);
+  }
+  const crc = buffer.readUInt32LE(cursor);
+  const compressedSize = buffer.readUInt32LE(cursor + 4);
+  const uncompressedSize = buffer.readUInt32LE(cursor + 8);
+  if (
+    crc !== entry.crc ||
+    compressedSize !== entry.compressedSize ||
+    uncompressedSize !== entry.uncompressedSize
+  ) {
+    throw new Error(`ZIP data descriptor is inconsistent: ${entry.name}`);
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -92,6 +116,9 @@ function verifyEntryPayload(buffer, entry) {
     compressedSize: localCompressedSize,
     uncompressedSize: localUncompressedSize,
   });
+  if ((entry.flags & 0x08) !== 0) {
+    verifyDataDescriptor(buffer, dataEnd, entry);
+  }
 
   const compressed = buffer.subarray(dataStart, dataEnd);
   const payload =
