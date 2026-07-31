@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   verifyDataDescriptor,
   verifyLocalEntryIntegrity,
+  verifySingleDiskEntry,
 } from "../scripts/verify-package.mjs";
 
 const read = (path: string) =>
@@ -97,5 +98,13 @@ test("requires a complete and consistent ZIP data descriptor", () => {
   assert.throws(
     () => verifyDataDescriptor(signed, 0, entry),
     /data descriptor is inconsistent/,
+  );
+});
+
+test("rejects a central ZIP entry assigned to another disk", () => {
+  assert.doesNotThrow(() => verifySingleDiskEntry(0, "manifest.json"));
+  assert.throws(
+    () => verifySingleDiskEntry(1, "manifest.json"),
+    /entry starts on an unsupported disk/,
   );
 });

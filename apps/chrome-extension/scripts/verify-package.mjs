@@ -84,6 +84,12 @@ export function verifyDataDescriptor(buffer, offset, entry) {
   throw new Error(`ZIP data descriptor is inconsistent: ${entry.name}`);
 }
 
+export function verifySingleDiskEntry(diskNumberStart, name) {
+  if (diskNumberStart !== 0) {
+    throw new Error(`ZIP entry starts on an unsupported disk: ${name}`);
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -172,6 +178,7 @@ export function inspectZip(buffer) {
       crc: buffer.readUInt32LE(cursor + 16),
       compressedSize: buffer.readUInt32LE(cursor + 20),
       uncompressedSize: buffer.readUInt32LE(cursor + 24),
+      diskNumberStart: buffer.readUInt16LE(cursor + 34),
       localHeaderOffset: buffer.readUInt32LE(cursor + 42),
     };
     const nameLength = buffer.readUInt16LE(cursor + 28);
@@ -183,6 +190,7 @@ export function inspectZip(buffer) {
     if (!name || entry.uncompressedSize === 0) {
       throw new Error(`ZIP entry ${name || index + 1} is empty.`);
     }
+    verifySingleDiskEntry(entry.diskNumberStart, name);
     if (
       name.startsWith("/") ||
       name.includes("\\") ||
