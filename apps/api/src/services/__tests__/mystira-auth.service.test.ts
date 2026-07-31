@@ -6,6 +6,8 @@ import { exchangeMystiraIdToken, resetMystiraDiscoveryCache } from '../mystira-a
 describe('Mystira extension authentication', () => {
   const originalWellKnown = process.env.MYSTIRA_IDENTITY_WELL_KNOWN;
   const originalClientId = process.env.MYSTIRA_IDENTITY_CLIENT_ID;
+  const originalAdminEmails = process.env.MYSTIRA_ADMIN_EMAILS;
+  const originalAdminSubjects = process.env.MYSTIRA_ADMIN_SUBJECTS;
   const issuer = 'https://identity.example';
   const clientId = 'convolens-client';
   const keyId = 'mystira-signing-key';
@@ -23,14 +25,46 @@ describe('Mystira extension authentication', () => {
     process.env.MYSTIRA_IDENTITY_WELL_KNOWN =
       'https://identity.example/.well-known/openid-configuration';
     process.env.MYSTIRA_IDENTITY_CLIENT_ID = clientId;
+    delete process.env.MYSTIRA_ADMIN_EMAILS;
+    delete process.env.MYSTIRA_ADMIN_SUBJECTS;
     resetMystiraDiscoveryCache();
     global.fetch = jest.fn();
   });
 
   afterEach(() => {
-    process.env.MYSTIRA_IDENTITY_WELL_KNOWN = originalWellKnown;
-    process.env.MYSTIRA_IDENTITY_CLIENT_ID = originalClientId;
+    restoreEnvironment('MYSTIRA_IDENTITY_WELL_KNOWN', originalWellKnown);
+    restoreEnvironment('MYSTIRA_IDENTITY_CLIENT_ID', originalClientId);
+    restoreEnvironment('MYSTIRA_ADMIN_EMAILS', originalAdminEmails);
+    restoreEnvironment('MYSTIRA_ADMIN_SUBJECTS', originalAdminSubjects);
     jest.restoreAllMocks();
+  });
+
+  function restoreEnvironment(name: string, value: string | undefined): void {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
+
+  it('issues an admin API token only for an explicitly configured verified identity', async () => {
+    process.env.MYSTIRA_ADMIN_EMAILS = 'other@example.com, operator@example.com';
+    mockDiscoveryAndKeys();
+
+    const result = await exchangeMystiraIdToken(createIdToken());
+    const claims = jwt.verify(result.token, JWT_SECRET) as jwt.JwtPayload;
+
+    expect(claims.role).toBe('admin');
+  });
+
+  it('does not elevate an unconfigured verified identity', async () => {
+    process.env.MYSTIRA_ADMIN_EMAILS = 'other@example.com';
+    mockDiscoveryAndKeys();
+
+    const result = await exchangeMystiraIdToken(createIdToken());
+    const claims = jwt.verify(result.token, JWT_SECRET) as jwt.JwtPayload;
+
+    expect(claims.role).toBe('user');
   });
 
   function createIdToken(overrides: Record<string, unknown> = {}): string {

@@ -133,6 +133,18 @@ variable "mystira_identity_scope" {
   default     = "openid profile email offline_access"
 }
 
+variable "mystira_admin_emails" {
+  type        = string
+  description = "Comma-separated verified Mystira email identities allowed to administer Convolens. Empty denies all Mystira admin access."
+  default     = ""
+}
+
+variable "mystira_admin_subjects" {
+  type        = string
+  description = "Comma-separated verified Mystira subject identifiers allowed to administer Convolens. Empty denies all subject-based admin access."
+  default     = ""
+}
+
 variable "admin_email" {
   type        = string
   description = "Email address that receives budget alerts. Empty disables budget alerts."
