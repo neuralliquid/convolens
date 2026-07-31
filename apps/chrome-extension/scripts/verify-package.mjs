@@ -60,26 +60,28 @@ export function verifyLocalEntryIntegrity(
 }
 
 export function verifyDataDescriptor(buffer, offset, entry) {
-  let cursor = offset;
-  if (
-    cursor + 4 <= buffer.length &&
-    buffer.readUInt32LE(cursor) === ZIP_DESCRIPTOR_SIGNATURE
-  ) {
-    cursor += 4;
-  }
-  if (cursor + 12 > buffer.length) {
+  if (offset + 12 > buffer.length) {
     throw new Error(`ZIP data descriptor is truncated: ${entry.name}`);
   }
-  const crc = buffer.readUInt32LE(cursor);
-  const compressedSize = buffer.readUInt32LE(cursor + 4);
-  const uncompressedSize = buffer.readUInt32LE(cursor + 8);
-  if (
-    crc !== entry.crc ||
-    compressedSize !== entry.compressedSize ||
-    uncompressedSize !== entry.uncompressedSize
-  ) {
-    throw new Error(`ZIP data descriptor is inconsistent: ${entry.name}`);
+  const matchesAt = (cursor) =>
+    buffer.readUInt32LE(cursor) === entry.crc &&
+    buffer.readUInt32LE(cursor + 4) === entry.compressedSize &&
+    buffer.readUInt32LE(cursor + 8) === entry.uncompressedSize;
+  if (matchesAt(offset)) return;
+
+  const hasSignature =
+    buffer.readUInt32LE(offset) === ZIP_DESCRIPTOR_SIGNATURE;
+  if (hasSignature && offset + 16 <= buffer.length && matchesAt(offset + 4)) {
+    return;
   }
+  if (
+    hasSignature &&
+    entry.crc !== ZIP_DESCRIPTOR_SIGNATURE &&
+    offset + 16 > buffer.length
+  ) {
+    throw new Error(`ZIP data descriptor is truncated: ${entry.name}`);
+  }
+  throw new Error(`ZIP data descriptor is inconsistent: ${entry.name}`);
 }
 
 function verifyEntryPayload(buffer, entry) {

@@ -81,6 +81,14 @@ test("requires a complete and consistent ZIP data descriptor", () => {
   signed.writeUInt32LE(0x08074b50, 0);
   unsigned.copy(signed, 4);
   assert.doesNotThrow(() => verifyDataDescriptor(signed, 0, entry));
+  const signatureCrcEntry = { ...entry, crc: 0x08074b50 };
+  const ambiguousUnsigned = Buffer.alloc(12);
+  ambiguousUnsigned.writeUInt32LE(signatureCrcEntry.crc, 0);
+  ambiguousUnsigned.writeUInt32LE(signatureCrcEntry.compressedSize, 4);
+  ambiguousUnsigned.writeUInt32LE(signatureCrcEntry.uncompressedSize, 8);
+  assert.doesNotThrow(() =>
+    verifyDataDescriptor(ambiguousUnsigned, 0, signatureCrcEntry),
+  );
   assert.throws(
     () => verifyDataDescriptor(signed.subarray(0, 15), 0, entry),
     /data descriptor is truncated/,
