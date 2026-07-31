@@ -74,93 +74,138 @@ const jsxRelValue = (
   return undefined;
 };
 
-const jsxHasAuthoredPreload = (source: string) => {
-  const fileName = "inventory.tsx";
+const scriptKindFor = (fileName: string) =>
+  fileName.endsWith(".tsx")
+    ? ts.ScriptKind.TSX
+    : fileName.endsWith(".jsx")
+      ? ts.ScriptKind.JSX
+      : fileName.endsWith(".js")
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+
+const jsxSourcesWithAuthoredPreload = (
+  sources: Array<{ fileName: string; source: string }>,
+) => {
+  const canonical = (path: string) => resolve(path).replaceAll("\\", "/").toLowerCase();
+  const ambientFile = resolve("inventory-fixture", "react-dom-inventory.d.ts");
+  const allSources = [
+    ...sources,
+    {
+      fileName: ambientFile,
+      source:
+        'declare module "react-dom" { export function preload(href: string, options?: unknown): void; }',
+    },
+  ];
+  const sourceByPath = new Map(
+    allSources.map(({ fileName, source }) => [canonical(fileName), source]),
+  );
   const compilerOptions: ts.CompilerOptions = {
+    allowJs: true,
     jsx: ts.JsxEmit.React,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+    noEmit: true,
     noLib: true,
-    noResolve: true,
+    skipLibCheck: true,
     target: ts.ScriptTarget.Latest,
   };
   const host = ts.createCompilerHost(compilerOptions);
-  host.fileExists = (path) => path === fileName;
-  host.getSourceFile = (path) =>
-    path === fileName
+  const defaultFileExists = host.fileExists.bind(host);
+  const defaultDirectoryExists = host.directoryExists?.bind(host);
+  const defaultGetSourceFile = host.getSourceFile.bind(host);
+  const defaultReadFile = host.readFile.bind(host);
+  host.fileExists = (path) =>
+    sourceByPath.has(canonical(path)) || defaultFileExists(path);
+  host.directoryExists = (path) => {
+    const directory = `${canonical(path).replace(/\/$/, "")}/`;
+    return (
+      [...sourceByPath.keys()].some((sourcePath) =>
+        sourcePath.startsWith(directory),
+      ) ||
+      defaultDirectoryExists?.(path) ||
+      false
+    );
+  };
+  host.getSourceFile = (path, languageVersion, onError, shouldCreateNew) => {
+    const source = sourceByPath.get(canonical(path));
+    return source !== undefined
       ? ts.createSourceFile(
-          fileName,
+          path,
           source,
-          ts.ScriptTarget.Latest,
+          languageVersion,
           true,
-          ts.ScriptKind.TSX,
+          scriptKindFor(path),
         )
-      : undefined;
-  host.readFile = (path) => (path === fileName ? source : undefined);
-  const program = ts.createProgram([fileName], compilerOptions, host);
-  const sourceFile = program.getSourceFile(fileName)!;
+      : defaultGetSourceFile(path, languageVersion, onError, shouldCreateNew);
+  };
+  host.readFile = (path) =>
+    sourceByPath.get(canonical(path)) ?? defaultReadFile(path);
+  const program = ts.createProgram(
+    allSources.map(({ fileName }) => fileName),
+    compilerOptions,
+    host,
+  );
   const checker = program.getTypeChecker();
-  const preloadBindings = new Set<ts.Symbol>();
-  const reactDomNamespaces = new Set<ts.Symbol>();
-  for (const statement of sourceFile.statements) {
-    if (
-      !ts.isImportDeclaration(statement) ||
-      !ts.isStringLiteral(statement.moduleSpecifier) ||
-      statement.moduleSpecifier.text !== "react-dom"
-    ) {
-      continue;
+  const isReactDomPreload = (symbol: ts.Symbol | undefined) => {
+    if (!symbol) return false;
+    while (symbol.flags & ts.SymbolFlags.Alias) {
+      const target = checker.getAliasedSymbol(symbol);
+      if (target === symbol) break;
+      symbol = target;
     }
-    const bindings = statement.importClause?.namedBindings;
-    if (bindings && ts.isNamedImports(bindings)) {
-      for (const element of bindings.elements) {
-        if ((element.propertyName ?? element.name).text === "preload") {
-          const symbol = checker.getSymbolAtLocation(element.name);
-          if (symbol) preloadBindings.add(symbol);
+    if (symbol.name !== "preload") return false;
+    return symbol.declarations?.some((declaration) => {
+      const path = canonical(declaration.getSourceFile().fileName);
+      return (
+        path === canonical(ambientFile) ||
+        path.includes("/node_modules/@types/react-dom/index.d.ts")
+      );
+    });
+  };
+  const authored = new Set<string>();
+  for (const { fileName } of sources) {
+    const sourceFile = program.getSourceFile(fileName);
+    if (!sourceFile) continue;
+    let found = false;
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node)) {
+        const callee = ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name
+          : node.expression;
+        if (isReactDomPreload(checker.getSymbolAtLocation(callee))) {
+          found = true;
+          return;
         }
       }
-    } else if (bindings && ts.isNamespaceImport(bindings)) {
-      const symbol = checker.getSymbolAtLocation(bindings.name);
-      if (symbol) reactDomNamespaces.add(symbol);
-    }
-  }
-  let found = false;
-  const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node)) {
       if (
-        (ts.isIdentifier(node.expression) &&
-          preloadBindings.has(checker.getSymbolAtLocation(node.expression)!)) ||
-        (ts.isPropertyAccessExpression(node.expression) &&
-          ts.isIdentifier(node.expression.expression) &&
-          reactDomNamespaces.has(
-            checker.getSymbolAtLocation(node.expression.expression)!,
-          ) &&
-          node.expression.name.text === "preload")
+        (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+        node.tagName.getText(sourceFile) === "link"
       ) {
-        found = true;
-        return;
+        if (node.attributes.properties.some(ts.isJsxSpreadAttribute)) {
+          found = true;
+          return;
+        }
+        const rel = node.attributes.properties.find(
+          (attribute): attribute is ts.JsxAttribute =>
+            ts.isJsxAttribute(attribute) &&
+            attribute.name.getText(sourceFile).toLowerCase() === "rel",
+        );
+        if (rel) {
+          const value = jsxRelValue(rel, sourceFile);
+          if (value === undefined || includesPreloadToken(value)) found = true;
+        }
       }
-    }
-    if (
-      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
-      node.tagName.getText(sourceFile) === "link"
-    ) {
-      if (node.attributes.properties.some(ts.isJsxSpreadAttribute)) {
-        found = true;
-        return;
-      }
-      const rel = node.attributes.properties.find(
-        (attribute): attribute is ts.JsxAttribute =>
-          ts.isJsxAttribute(attribute) &&
-          attribute.name.getText(sourceFile).toLowerCase() === "rel",
-      );
-      if (rel) {
-        const value = jsxRelValue(rel, sourceFile);
-        if (value === undefined || includesPreloadToken(value)) found = true;
-      }
-    }
-    if (!found) ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return found;
+      if (!found) ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    if (found) authored.add(fileName);
+  }
+  return authored;
 };
+
+const jsxHasAuthoredPreload = (source: string) =>
+  jsxSourcesWithAuthoredPreload([
+    { fileName: resolve("inventory-fixture", "inventory.tsx"), source },
+  ]).size > 0;
 
 const htmlHasAuthoredPreload = (source: string) => {
   const document = parse(source) as HtmlNode;
@@ -258,6 +303,19 @@ test("records the authored web preload inventory deterministically", () => {
     ),
     false,
   );
+  assert.equal(
+    jsxSourcesWithAuthoredPreload([
+      {
+        fileName: resolve("inventory-fixture", "hints.ts"),
+        source: `export { preload as warm } from "react-dom";`,
+      },
+      {
+        fileName: resolve("inventory-fixture", "consumer.tsx"),
+        source: `import { warm } from "./hints"; warm("/app.js", { as: "script" });`,
+      },
+    ]).has(resolve("inventory-fixture", "consumer.tsx")),
+    true,
+  );
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
   assert.equal(htmlHasAuthoredPreload('<link data-rel="preload">'), false);
   assert.equal(
@@ -292,11 +350,17 @@ test("records the authored web preload inventory deterministically", () => {
   const files = readdirSync(webRoot, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .filter((entry) => /\.(?:tsx?|jsx?|html)$/.test(entry.name));
-  const authoredPreloads = files.filter((entry) => {
+  const htmlPreloads = files.filter((entry) => {
+    if (!entry.name.endsWith(".html")) return false;
     const source = readFileSync(resolve(entry.parentPath, entry.name), "utf8");
-    return entry.name.endsWith(".html")
-      ? htmlHasAuthoredPreload(source)
-      : jsxHasAuthoredPreload(source);
+    return htmlHasAuthoredPreload(source);
   });
-  assert.deepEqual(authoredPreloads, []);
+  const scriptSources = files
+    .filter((entry) => !entry.name.endsWith(".html"))
+    .map((entry) => ({
+      fileName: resolve(entry.parentPath, entry.name),
+      source: readFileSync(resolve(entry.parentPath, entry.name), "utf8"),
+    }));
+  assert.deepEqual(htmlPreloads, []);
+  assert.deepEqual([...jsxSourcesWithAuthoredPreload(scriptSources)], []);
 });
