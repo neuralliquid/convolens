@@ -1,4 +1,10 @@
-import { chromium, expect, test } from "@playwright/test";
+import {
+  chromium,
+  expect,
+  test,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
 import { isAbsolute, relative, resolve } from "node:path";
 
 const enabled = process.env.CONVOLENS_AUTHENTIC_ACCEPTANCE === "1";
@@ -10,6 +16,24 @@ const relativeProfilePath = profileDir
 const profileInsideRepository =
   relativeProfilePath === "" ||
   (!relativeProfilePath.startsWith("..") && !isAbsolute(relativeProfilePath));
+
+async function openExtensionControlPage(
+  context: BrowserContext,
+): Promise<Page> {
+  const worker =
+    context
+      .serviceWorkers()
+      .find((candidate) => candidate.url().startsWith("chrome-extension://")) ||
+    (await context.waitForEvent("serviceworker", {
+      predicate: (candidate) =>
+        candidate.url().startsWith("chrome-extension://"),
+    }));
+  const extensionPage = await context.newPage();
+  await extensionPage.goto(
+    `chrome-extension://${new URL(worker.url()).host}/options/options.html`,
+  );
+  return extensionPage;
+}
 
 test.describe("operator-held authentic extension acceptance", () => {
   test.skip(
@@ -37,10 +61,10 @@ test.describe("operator-held authentic extension acceptance", () => {
     try {
       const page = await context.newPage();
       await page.goto("https://web.whatsapp.com/");
-      await page
+      const chatList = page
         .locator('[data-testid="chat-list"], #pane-side')
-        .first()
-        .waitFor();
+        .first();
+      await chatList.waitFor();
       await page.locator("#convolens-fab").waitFor();
       await page.locator("#ws-launcher-toggle").click();
       await expect(page.locator("#ws-extract-btn")).toBeEnabled();
@@ -81,19 +105,52 @@ test.describe("operator-held authentic extension acceptance", () => {
       },
     );
     try {
+      const extensionPage = await openExtensionControlPage(context);
       const page = await context.newPage();
       await page.goto("https://web.whatsapp.com/");
-      await page
+      const chatList = page
         .locator('[data-testid="chat-list"], #pane-side')
-        .first()
-        .waitFor();
-      await page.getByText(targetChat!, { exact: true }).first().click();
+        .first();
+      await chatList.waitFor();
+      const target = chatList.getByText(targetChat!, { exact: true }).first();
+      await expect(target).toBeVisible();
+      await target.click();
+      const activeTitle = page
+        .locator('[data-testid="conversation-info-header-chat-title"]')
+        .first();
+      await expect(activeTitle).toHaveText(targetChat!, { timeout: 30_000 });
       await page.locator("#convolens-fab").waitFor();
       await page.locator("#ws-launcher-toggle").click();
       await page.locator("#ws-extract-btn").click();
       await expect(page.locator("#ws-status-text")).toContainText(
         "ready for review",
       );
+      const reviewedChat = await extensionPage.evaluate(async () => {
+        const chromeApi = (
+          globalThis as typeof globalThis & { chrome: typeof chrome }
+        ).chrome;
+        const [tab] = await chromeApi.tabs.query({
+          url: "https://web.whatsapp.com/*",
+        });
+        if (!tab?.id) return { success: false };
+        const operation = await chromeApi.runtime.sendMessage({
+          action: "GET_CAPTURE_OPERATION",
+          tabId: tab.id,
+        });
+        if (!operation?.success || !operation.data?.operationId) {
+          return { success: false };
+        }
+        const preview = await chromeApi.tabs.sendMessage(tab.id, {
+          action: "GET_CAPTURE_PREVIEW",
+          operationId: operation.data.operationId,
+        });
+        return {
+          success: Boolean(preview?.success),
+          chatName: preview?.data?.chatName,
+        };
+      });
+      expect(reviewedChat).toEqual({ success: true, chatName: targetChat });
+      await expect(activeTitle).toHaveText(targetChat!);
       await page.locator("#ws-confirm-capture").click();
       await expect(page.locator("#ws-status-text")).toContainText(
         /received by ConvoLens|already exist in ConvoLens/,
