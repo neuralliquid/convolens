@@ -4,6 +4,7 @@ import { CreateConversationIntake1753400000000 } from '../1753400000000-CreateCo
 import { AddConversationFidelity1753660000000 } from '../1753660000000-AddConversationFidelity';
 import { AddIntakeArtifactsAndSelectorReports1754000000000 } from '../1754000000000-AddIntakeArtifactsAndSelectorReports';
 import { AddRawArtifactCleanupKeys1754100000000 } from '../1754100000000-AddRawArtifactCleanupKeys';
+import { AddTicketCandidatesAndBatonAttempts1754200000000 } from '../1754200000000-AddTicketCandidatesAndBatonAttempts';
 import { CONVERSATION_MIGRATIONS } from '../../../config/migrations';
 
 describe('CreateConversationIntake migration', () => {
@@ -21,6 +22,7 @@ describe('CreateConversationIntake migration', () => {
         AddConversationFidelity1753660000000,
         AddIntakeArtifactsAndSelectorReports1754000000000,
         AddRawArtifactCleanupKeys1754100000000,
+        AddTicketCandidatesAndBatonAttempts1754200000000,
       ],
     });
     await dataSource.initialize();
@@ -37,16 +39,21 @@ describe('CreateConversationIntake migration', () => {
       AddConversationFidelity1753660000000,
       AddIntakeArtifactsAndSelectorReports1754000000000,
       AddRawArtifactCleanupKeys1754100000000,
+      AddTicketCandidatesAndBatonAttempts1754200000000,
     ]);
     const queryRunner = dataSource.createQueryRunner();
     const intakeTable = await queryRunner.getTable('conversation_intakes');
     const messageTable = await queryRunner.getTable('conversation_messages');
     const selectorReportTable = await queryRunner.getTable('extension_selector_reports');
+    const candidateTable = await queryRunner.getTable('ticket_candidates');
+    const publishAttemptTable = await queryRunner.getTable('baton_publish_attempts');
     await queryRunner.release();
 
     expect(intakeTable).toBeDefined();
     expect(messageTable).toBeDefined();
     expect(selectorReportTable).toBeDefined();
+    expect(candidateTable).toBeDefined();
+    expect(publishAttemptTable).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactStatus')).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactCleanupKeys')).toBeDefined();
     expect(

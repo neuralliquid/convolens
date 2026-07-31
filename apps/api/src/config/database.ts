@@ -5,6 +5,8 @@ import { User } from '../db/entities/User';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 import { SelectorReport } from '../db/entities/SelectorReport';
+import { TicketCandidate } from '../db/entities/TicketCandidate';
+import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { postgresNativeUuidOptions } from './postgres-uuid';
 import { CONVERSATION_MIGRATIONS } from './migrations';
 import { logger } from '../utils/logger';
@@ -19,7 +21,16 @@ const migrationsRun =
 const commonOptions = {
   synchronize: !isProduction && process.env.DB_SYNCHRONIZE !== 'false',
   logging: process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development',
-  entities: [Message, Group, User, ConversationIntake, ConversationMessage, SelectorReport],
+  entities: [
+    Message,
+    Group,
+    User,
+    ConversationIntake,
+    ConversationMessage,
+    SelectorReport,
+    TicketCandidate,
+    BatonPublishAttempt,
+  ],
   migrations: CONVERSATION_MIGRATIONS,
   migrationsRun,
   subscribers: [],

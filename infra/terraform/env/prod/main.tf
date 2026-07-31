@@ -374,6 +374,14 @@ resource "azurerm_container_app" "api" {
         value = "true"
       }
       env {
+        name  = "BATON_BASE_URL"
+        value = "https://baton-backend.up.railway.app"
+      }
+      env {
+        name  = "BATON_DEFAULT_PROJECT_ID"
+        value = "d20d739a-89b0-4a48-8f9b-dcb0724c149d"
+      }
+      env {
         name  = "AZURE_STORAGE_CONTAINER"
         value = "chat-exports"
       }

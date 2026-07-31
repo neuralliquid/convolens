@@ -49,7 +49,7 @@ test("loads the production extension and sends only after explicit review", asyn
   expect(messages.map((message) => message.text)).toEqual([
     "Repeatable fixture message",
     "Repeatable fixture message",
-    "Synthetic reply",
+    "TODO: Synthetic reply",
   ]);
   expect(messages.filter((message) => message.isOutgoing)).toHaveLength(1);
 });

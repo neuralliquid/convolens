@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -72,6 +73,8 @@ async function startApi(
       STORAGE_PROVIDER: "local",
       UPLOAD_DIR: artifactRoot,
       FRONTEND_URL: "https://convolens.neuralliquid.ai",
+      BATON_BASE_URL: "http://127.0.0.1:3002",
+      BATON_DEFAULT_PROJECT_ID: "fixture-project",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -82,6 +85,52 @@ async function startApi(
     await stopApi(child);
     throw error;
   }
+}
+
+async function startBatonStub(): Promise<{
+  server: Server;
+  created: () => number;
+}> {
+  const tasks: Array<{ id: string; context: string }> = [];
+  const server = createServer((request, response) => {
+    if (request.headers.authorization !== "Bearer fixture-mystira-token") {
+      response.writeHead(401, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/api/tasks")) {
+      const search =
+        new URL(request.url, "http://127.0.0.1").searchParams.get("search") ||
+        "";
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify(tasks.filter((task) => task.context.includes(search))),
+      );
+      return;
+    }
+    if (request.method === "POST" && request.url === "/api/tasks") {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        const payload = JSON.parse(body) as { context: string };
+        const task = {
+          id: `fixture-task-${tasks.length + 1}`,
+          context: payload.context,
+        };
+        tasks.push(task);
+        response.writeHead(201, { "Content-Type": "application/json" });
+        response.end(JSON.stringify(task));
+      });
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  await new Promise<void>((resolvePromise) =>
+    server.listen(3002, "127.0.0.1", resolvePromise),
+  );
+  return { server, created: () => tasks.length };
 }
 
 async function stopApi(child: ChildProcess | undefined): Promise<void> {
@@ -123,7 +172,9 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
   const otherToken = fixtureToken("fixture-owner-b", "owner-b@example.test");
   let api: ChildProcess | undefined;
   let context: BrowserContext | undefined;
+  let baton: Awaited<ReturnType<typeof startBatonStub>> | undefined;
   try {
+    baton = await startBatonStub();
     api = await startApi(databasePath, artifactRoot);
     const fixtureHtml = await readFile(fixturePath, "utf8");
     context = await chromium.launchPersistentContext(profileDir, {
@@ -226,6 +277,57 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
     );
     expect(detail.data.conversation.rawArtifact.size).toBeGreaterThan(0);
 
+    const generated = await context.request.post(
+      `${apiOrigin}/api/ticket-candidates/conversations/${intakeId}/generate`,
+      { headers: ownerHeaders },
+    );
+    expect(generated.ok()).toBe(true);
+    const generatedPayload = (await generated.json()) as {
+      data: {
+        candidates: Array<{ id: string; title: string; revision: number }>;
+      };
+    };
+    expect(generatedPayload.data.candidates).toHaveLength(1);
+    expect(generatedPayload.data.candidates[0].title).toBe("Synthetic reply");
+    const candidateId = generatedPayload.data.candidates[0].id;
+    const accepted = await context.request.post(
+      `${apiOrigin}/api/ticket-candidates/${candidateId}/decision`,
+      {
+        headers: { ...ownerHeaders, "Content-Type": "application/json" },
+        data: {
+          expectedRevision: 1,
+          decision: "accepted",
+          projectId: "fixture-project",
+        },
+      },
+    );
+    expect(accepted.ok()).toBe(true);
+    const publishHeaders = {
+      ...ownerHeaders,
+      "X-Baton-Access-Token": "fixture-mystira-token",
+    };
+    const published = await context.request.post(
+      `${apiOrigin}/api/ticket-candidates/${candidateId}/publish`,
+      { headers: publishHeaders },
+    );
+    expect(published.ok()).toBe(true);
+    const replayedPublish = await context.request.post(
+      `${apiOrigin}/api/ticket-candidates/${candidateId}/publish`,
+      { headers: publishHeaders },
+    );
+    expect(replayedPublish.ok()).toBe(true);
+    expect(baton.created()).toBe(1);
+    const isolatedCandidates = await context.request.get(
+      `${apiOrigin}/api/ticket-candidates/conversations/${intakeId}`,
+      {
+        headers: { Authorization: `Bearer ${otherToken}` },
+      },
+    );
+    expect(
+      ((await isolatedCandidates.json()) as { data: { candidates: unknown[] } })
+        .data.candidates,
+    ).toHaveLength(0);
+
     await reviewLoadedMessages(page);
     await page.locator("#ws-confirm-capture").click();
     await expect(page.locator("#ws-status-text")).toContainText(
@@ -292,6 +394,8 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
           restartStatus: afterRestart.status(),
           isolatedStatus: isolated.status(),
           deletionStatus: deleted.status(),
+          candidateId,
+          batonTaskCount: baton.created(),
         }),
       ),
       contentType: "application/json",
@@ -299,6 +403,10 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
   } finally {
     await context?.close().catch(() => undefined);
     await stopApi(api);
+    await new Promise<void>(
+      (resolvePromise) =>
+        baton?.server.close(() => resolvePromise()) || resolvePromise(),
+    );
     await rm(root, { recursive: true, force: true }).catch(() => undefined);
   }
 });

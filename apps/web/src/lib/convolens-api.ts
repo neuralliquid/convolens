@@ -57,6 +57,17 @@ export async function getConvolensApiToken(): Promise<string> {
   return payload.token;
 }
 
+export async function getMystiraAccessToken(): Promise<string> {
+  const session = await getServerSession(authOptions);
+  if (!session?.accessToken) {
+    throw new ConvolensApiAuthError(
+      "Your Mystira Identity session needs to be refreshed",
+      401,
+    );
+  }
+  return session.accessToken;
+}
+
 export function apiAuthErrorResponse(error: unknown): Response {
   if (error instanceof ConvolensApiAuthError) {
     return Response.json({ error: error.message }, { status: error.status });

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { StyledCard } from "@/components/ui/styled-card";
 import { DeleteConversationButton } from "@/components/conversations/delete-conversation-button";
+import { TicketCandidateReview } from "@/components/conversations/ticket-candidate-review";
 
 interface ConversationMessage {
   id: string;
@@ -249,6 +250,7 @@ export default function ConversationPage() {
               </article>
             ))}
           </section>
+          <TicketCandidateReview intakeId={conversation.id} />
         </>
       ) : null}
     </PageWrapper>
