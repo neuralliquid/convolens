@@ -28,20 +28,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
-          node-version: '24'
-          cache: 'pnpm'
+          node-version: "24"
+          cache: "pnpm"
 
       - name: Install dependencies
         timeout-minutes: 10
         run: pnpm install --frozen-lockfile
         env:
-          CI: 'true'
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+          CI: "true"
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
       - name: Build
         run: pnpm run build
         env:
-          CI: 'true'
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+          CI: "true"
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+
+      - name: Test extension capture matrix
+        run: pnpm --filter @convolens/chrome-extension test
+
+      - name: Test API conversation intake
+        run: pnpm --filter @convolens/api exec jest --config=jest.config.js --runInBand src/services/__tests__/conversation-intake.service.test.ts
+
+      - name: Package and inspect extension
+        run: pnpm --filter @convolens/chrome-extension package
