@@ -175,6 +175,29 @@ export function verifyNonOverlappingLocalRecords(records) {
   }
 }
 
+export function verifyExtraFields(buffer, start, length, name) {
+  const end = start + length;
+  if (end > buffer.length) {
+    throw new Error(`ZIP extra fields are truncated: ${name}`);
+  }
+  let cursor = start;
+  while (cursor < end) {
+    if (cursor + 4 > end) {
+      throw new Error(`ZIP extra fields are malformed: ${name}`);
+    }
+    const headerId = buffer.readUInt16LE(cursor);
+    const dataLength = buffer.readUInt16LE(cursor + 2);
+    cursor += 4;
+    if (cursor + dataLength > end) {
+      throw new Error(`ZIP extra fields are malformed: ${name}`);
+    }
+    if (headerId === 0x7075) {
+      throw new Error(`ZIP entry uses a filename override: ${name}`);
+    }
+    cursor += dataLength;
+  }
+}
+
 function verifyEntryPayload(buffer, entry, centralOffset) {
   const offset = entry.localHeaderOffset;
   if (
@@ -194,6 +217,7 @@ function verifyEntryPayload(buffer, entry, centralOffset) {
   const nameStart = offset + 30;
   const dataStart = nameStart + nameLength + extraLength;
   const dataEnd = dataStart + entry.compressedSize;
+  verifyExtraFields(buffer, nameStart + nameLength, extraLength, entry.name);
   if (
     buffer.toString("utf8", nameStart, nameStart + nameLength) !== entry.name ||
     localFlags !== entry.flags ||
@@ -292,6 +316,7 @@ export function inspectZip(buffer) {
     }
     verifySingleDiskEntry(entry.diskNumberStart, name);
     verifyRegularFileEntry(entry.creatorSystem, entry.externalAttributes, name);
+    verifyExtraFields(buffer, nameEnd, extraLength, name);
     if (
       name.startsWith("/") ||
       name.includes("\\") ||

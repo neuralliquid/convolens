@@ -6,6 +6,7 @@ import {
   verifyCentralDirectoryExtent,
   verifyEndOfCentralDirectory,
   verifyEntryRequirements,
+  verifyExtraFields,
   verifyLocalEntryIntegrity,
   verifyNonOverlappingLocalRecords,
   verifyLocalRecordExtent,
@@ -225,5 +226,34 @@ test("rejects overlaps between complete local ZIP records", () => {
         { ...records[1], start: 99 },
       ]),
     /local entries overlap: manifest\.json and dist\/background\.js/,
+  );
+});
+
+test("rejects Unicode path overrides and malformed ZIP extra fields", () => {
+  const timestamp = Buffer.alloc(9);
+  timestamp.writeUInt16LE(0x5455, 0);
+  timestamp.writeUInt16LE(5, 2);
+  assert.doesNotThrow(() =>
+    verifyExtraFields(timestamp, 0, timestamp.length, "manifest.json"),
+  );
+
+  const unicodePath = Buffer.alloc(9);
+  unicodePath.writeUInt16LE(0x7075, 0);
+  unicodePath.writeUInt16LE(5, 2);
+  assert.throws(
+    () => verifyExtraFields(unicodePath, 0, unicodePath.length, "manifest.json"),
+    /entry uses a filename override/,
+  );
+  assert.throws(
+    () => verifyExtraFields(Buffer.alloc(3), 0, 3, "manifest.json"),
+    /extra fields are malformed/,
+  );
+  assert.throws(
+    () => verifyExtraFields(timestamp, 0, timestamp.length - 1, "manifest.json"),
+    /extra fields are malformed/,
+  );
+  assert.throws(
+    () => verifyExtraFields(timestamp, 1, timestamp.length, "manifest.json"),
+    /extra fields are truncated/,
   );
 });
