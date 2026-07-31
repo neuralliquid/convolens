@@ -466,6 +466,7 @@ export class ConversationIntakeService {
     // overwriting the artifact selected by a newer lease for the same payload.
     const key = `raw-intakes/${ownerScope}/${conversation.id}/${claimId}/${sha256}.${extension}`;
     const claimedAt = new Date();
+    let supersededKey: string | undefined;
     let claim = await repository.update(
       { id: conversation.id, rawArtifactKey: IsNull() },
       {
@@ -493,6 +494,9 @@ export class ConversationIntakeService {
             rawArtifactSha256: sha256,
           },
           {
+            rawArtifactKey: key,
+            rawArtifactSha256: sha256,
+            rawArtifactSize: buffer.length,
             rawArtifactStatus: 'pending',
             rawArtifactClaimId: claimId,
             rawArtifactClaimedAt: claimedAt,
@@ -500,6 +504,7 @@ export class ConversationIntakeService {
             errorCode: null,
           }
         );
+        if (claim.affected === 1) supersededKey = claimed.rawArtifactKey;
       }
 
       const claimExpired =
@@ -523,11 +528,14 @@ export class ConversationIntakeService {
             errorCode: null,
           }
         );
+        if (claim.affected === 1) supersededKey = claimed.rawArtifactKey;
       }
 
       if (claim.affected !== 1) {
         if (claimed.rawArtifactStatus === 'pending' && claimed.rawArtifactKey) {
-          return this.waitForRawArtifact(conversation.id);
+          const resolved = await this.waitForRawArtifact(conversation.id);
+          if (resolved) return resolved;
+          return this.ensureRawArtifactLocked(conversation, userId, artifact);
         }
         throw new Error(
           'The first raw artifact failed and cannot be replaced by a different duplicate payload'
@@ -552,7 +560,15 @@ export class ConversationIntakeService {
       );
       if (finalized.affected !== 1) {
         await this.storage.deleteFile(key);
-        return this.waitForRawArtifact(conversation.id);
+        const resolved = await this.waitForRawArtifact(conversation.id);
+        if (resolved) return resolved;
+        return this.ensureRawArtifactLocked(conversation, userId, artifact);
+      }
+      if (supersededKey && supersededKey !== key) {
+        // Cleanup is best-effort after the durable row points at the winning
+        // artifact; a cleanup outage must not turn a stored intake back into a
+        // failed one.
+        await this.storage.deleteFile(supersededKey).catch(() => undefined);
       }
     } catch (error) {
       await repository.update(
@@ -571,14 +587,21 @@ export class ConversationIntakeService {
     return (await repository.findOneByOrFail({ id: conversation.id })) as ConversationIntake;
   }
 
-  private async waitForRawArtifact(id: string): Promise<ConversationIntake> {
+  private async waitForRawArtifact(id: string): Promise<ConversationIntake | null> {
     const repository = this.dataSource.getRepository(ConversationIntake);
-    const deadline = Date.now() + 45_000;
+    const deadline = Date.now() + RAW_ARTIFACT_CLAIM_LEASE_MS * 2;
     while (Date.now() < deadline) {
       const current = await repository.findOneByOrFail({ id });
       if (current.rawArtifactStatus === 'stored') return current;
       if (current.rawArtifactStatus === 'failed') {
         throw new Error('The first raw artifact write failed');
+      }
+      if (
+        current.rawArtifactStatus === 'pending' &&
+        (!current.rawArtifactClaimedAt ||
+          current.rawArtifactClaimedAt.getTime() <= Date.now() - RAW_ARTIFACT_CLAIM_LEASE_MS)
+      ) {
+        return null;
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }

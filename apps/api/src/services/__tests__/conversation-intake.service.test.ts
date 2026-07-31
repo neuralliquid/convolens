@@ -201,6 +201,7 @@ describe('ConversationIntakeService', () => {
       uploadFile: jest.fn(async (key: string) => {
         uploads.push(key);
       }),
+      deleteFile: jest.fn().mockResolvedValue(undefined),
     } as unknown as StorageService;
     const artifactService = new ConversationIntakeService(dataSource, storage);
     const saved = await artifactService.save(baseInput);
@@ -229,6 +230,32 @@ describe('ConversationIntakeService', () => {
     expect(persisted.errorCode).toBeNull();
   });
 
+  it('reclaims a pending claim when its lease expires during the wait', async () => {
+    const storage = {
+      uploadFile: jest.fn().mockResolvedValue(undefined),
+      deleteFile: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StorageService;
+    const artifactService = new ConversationIntakeService(dataSource, storage);
+    const saved = await artifactService.save(baseInput);
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      rawArtifactKey: `raw-intakes/pending/${saved.conversation.id}/pending/artifact.json`,
+      rawArtifactSha256: 'b'.repeat(64),
+      rawArtifactSize: 8,
+      rawArtifactStatus: 'pending',
+      rawArtifactClaimId: '00000000-0000-4000-8000-000000000001',
+      rawArtifactClaimedAt: new Date(Date.now() - 59_900),
+    });
+
+    const persisted = await artifactService.ensureRawArtifact(
+      saved.conversation,
+      baseInput.userId,
+      { body: '{"after-wait":true}', contentType: 'application/json' }
+    );
+
+    expect(persisted.rawArtifactStatus).toBe('stored');
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+  });
+
   it('clears the persisted write error after a successful same-artifact retry', async () => {
     const uploadFile = jest
       .fn()
@@ -236,6 +263,7 @@ describe('ConversationIntakeService', () => {
       .mockResolvedValueOnce(undefined);
     const artifactService = new ConversationIntakeService(dataSource, {
       uploadFile,
+      deleteFile: jest.fn().mockResolvedValue(undefined),
     } as unknown as StorageService);
     const saved = await artifactService.save(baseInput);
     const artifact = { body: '{"retry":true}', contentType: 'application/json' as const };
@@ -247,6 +275,7 @@ describe('ConversationIntakeService', () => {
       .getRepository(ConversationIntake)
       .findOneByOrFail({ id: saved.conversation.id });
     expect(failed.errorCode).toBe('raw_artifact_write_failed');
+    const failedKey = failed.rawArtifactKey;
 
     const retried = await artifactService.ensureRawArtifact(
       saved.conversation,
@@ -256,6 +285,8 @@ describe('ConversationIntakeService', () => {
     expect(retried.rawArtifactStatus).toBe('stored');
     expect(retried.errorCode).toBeNull();
     expect(uploadFile).toHaveBeenCalledTimes(2);
+    expect(retried.rawArtifactKey).not.toBe(failedKey);
+    expect(uploadFile.mock.calls[1][0]).toBe(retried.rawArtifactKey);
   });
 
   it('can retry deletion when the artifact is already absent after a database error', async () => {
