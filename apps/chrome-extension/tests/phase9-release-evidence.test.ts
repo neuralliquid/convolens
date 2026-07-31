@@ -33,8 +33,9 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   assert.match(workflow, /@convolens\/chrome-extension test/);
   assert.match(
     workflow,
-    /jest --config=jest\.config\.js --runInBand src\/services\/__tests__\/conversation-intake\.service\.test\.ts/,
+    /jest --config=jest\.config\.js --runInBand[\s\S]*src\/services\/__tests__\/conversation-intake\.service\.test\.ts/,
   );
+  assert.match(workflow, /test:browser:persistence/);
   assert.match(workflow, /@convolens\/chrome-extension package/);
 });
 
@@ -249,7 +250,8 @@ test("rejects Unicode path overrides and malformed ZIP extra fields", () => {
   unicodePath.writeUInt16LE(0x7075, 0);
   unicodePath.writeUInt16LE(5, 2);
   assert.throws(
-    () => verifyExtraFields(unicodePath, 0, unicodePath.length, "manifest.json"),
+    () =>
+      verifyExtraFields(unicodePath, 0, unicodePath.length, "manifest.json"),
     /entry uses a filename override/,
   );
   assert.throws(
@@ -257,7 +259,8 @@ test("rejects Unicode path overrides and malformed ZIP extra fields", () => {
     /extra fields are malformed/,
   );
   assert.throws(
-    () => verifyExtraFields(timestamp, 0, timestamp.length - 1, "manifest.json"),
+    () =>
+      verifyExtraFields(timestamp, 0, timestamp.length - 1, "manifest.json"),
     /extra fields are malformed/,
   );
   assert.throws(

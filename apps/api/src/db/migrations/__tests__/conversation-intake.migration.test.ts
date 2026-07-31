@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { DataSource } from 'typeorm';
 import { CreateConversationIntake1753400000000 } from '../1753400000000-CreateConversationIntake';
 import { AddConversationFidelity1753660000000 } from '../1753660000000-AddConversationFidelity';
+import { AddIntakeArtifactsAndSelectorReports1754000000000 } from '../1754000000000-AddIntakeArtifactsAndSelectorReports';
 import { CONVERSATION_MIGRATIONS } from '../../../config/migrations';
 
 describe('CreateConversationIntake migration', () => {
@@ -14,7 +15,11 @@ describe('CreateConversationIntake migration', () => {
       synchronize: false,
       migrationsRun: false,
       entities: [],
-      migrations: [CreateConversationIntake1753400000000, AddConversationFidelity1753660000000],
+      migrations: [
+        CreateConversationIntake1753400000000,
+        AddConversationFidelity1753660000000,
+        AddIntakeArtifactsAndSelectorReports1754000000000,
+      ],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -28,14 +33,18 @@ describe('CreateConversationIntake migration', () => {
     expect(CONVERSATION_MIGRATIONS).toEqual([
       CreateConversationIntake1753400000000,
       AddConversationFidelity1753660000000,
+      AddIntakeArtifactsAndSelectorReports1754000000000,
     ]);
     const queryRunner = dataSource.createQueryRunner();
     const intakeTable = await queryRunner.getTable('conversation_intakes');
     const messageTable = await queryRunner.getTable('conversation_messages');
+    const selectorReportTable = await queryRunner.getTable('extension_selector_reports');
     await queryRunner.release();
 
     expect(intakeTable).toBeDefined();
     expect(messageTable).toBeDefined();
+    expect(selectorReportTable).toBeDefined();
+    expect(intakeTable?.findColumnByName('rawArtifactStatus')).toBeDefined();
     expect(
       intakeTable?.indices.some(
         (index) => index.name === 'UQ_conversation_intakes_user_content_hash' && index.isUnique

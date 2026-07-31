@@ -148,6 +148,8 @@ jobs:
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+          TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
+          TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
         run: |
           set -euo pipefail
           PLAN_ARGS=()

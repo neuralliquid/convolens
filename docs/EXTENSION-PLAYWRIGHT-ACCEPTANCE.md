@@ -10,6 +10,12 @@ This suite proves browser injection, explicit review before send, request shape 
 
 CI installs the pinned Chromium build and runs this headed MV3 suite under `xvfb-run`. Fixture traces and screenshots contain synthetic data only.
 
+## Durable persistence fixture
+
+`pnpm --filter @convolens/chrome-extension test:browser:persistence` runs the real built API with a temporary SQLite database and local artifact store, then drives the production extension in bundled Chromium. It proves reviewed send, normalized-message and integrity-addressed raw-artifact persistence, deterministic duplicate handling, API-process restart durability, owner isolation, and authenticated deletion of both the database row and raw artifact.
+
+The fixture uses synthetic JWTs and WhatsApp content inside a temporary directory. It does not contact production and cannot replace the staffed authentic run.
+
 ## Dedicated operator profile
 
 Install Chromium once with `pnpm exec playwright install chromium`, then choose an absolute profile path outside the repository:

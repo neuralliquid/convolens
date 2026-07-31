@@ -13,6 +13,7 @@
     "clean": "rm -rf dist",
     "test": "tsx --test tests/*.test.ts",
     "test:browser:fixtures": "npm run build && playwright test --config=e2e/playwright.fixture.config.ts",
+    "test:browser:persistence": "pnpm --filter @convolens/api build && npm run build && playwright test --config=e2e/playwright.persistence.config.ts",
     "auth:provision": "npm run build && tsx e2e/provision-auth.ts",
     "test:browser:auth": "npm run build && playwright test --config=e2e/playwright.auth.config.ts",
     "typecheck": "tsc --noEmit"

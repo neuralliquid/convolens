@@ -12,6 +12,9 @@ type MystiraIdTokenClaims = jwt.JwtPayload & {
   email?: string;
   name?: string;
   preferred_username?: string;
+  email_verified?: boolean;
+  role?: string;
+  roles?: string[];
 };
 
 type JsonWebKeySet = {
@@ -26,6 +29,36 @@ export type ExtensionIdentity = {
 
 const DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
+
+function configuredValues(
+  name: string,
+  normalize: (value: string) => string = (value) => value.toLowerCase()
+): Set<string> {
+  return new Set(
+    (process.env[name] || '')
+      .split(',')
+      .map((value) => normalize(value.trim()))
+      .filter(Boolean)
+  );
+}
+
+export function resolveMystiraApiRole(profile: MystiraIdTokenClaims): 'admin' | 'user' {
+  const roles = [profile.role, ...(Array.isArray(profile.roles) ? profile.roles : [])]
+    .filter((role): role is string => typeof role === 'string')
+    .map((role) => role.toLowerCase());
+  const verifiedEmail = profile.email_verified === true ? profile.email : undefined;
+
+  if (
+    roles.includes('admin') ||
+    (profile.sub &&
+      configuredValues('MYSTIRA_ADMIN_SUBJECTS', (value) => value).has(profile.sub)) ||
+    (verifiedEmail && configuredValues('MYSTIRA_ADMIN_EMAILS').has(verifiedEmail.toLowerCase()))
+  ) {
+    return 'admin';
+  }
+
+  return 'user';
+}
 
 let cachedDiscovery:
   | {
@@ -121,13 +154,14 @@ export async function exchangeMystiraIdToken(
     email,
     name: profile.name,
   };
+  const role = resolveMystiraApiRole(profile);
   const expiresIn = 15 * 60;
   const token = jwt.sign(
     {
       id: user.id,
       userId: user.id,
       email: user.email,
-      role: 'user',
+      role,
       authProvider: 'mystira',
     },
     JWT_SECRET,

@@ -4,6 +4,7 @@ import { Group } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
+import { SelectorReport } from '../db/entities/SelectorReport';
 import { postgresNativeUuidOptions } from './postgres-uuid';
 import { CONVERSATION_MIGRATIONS } from './migrations';
 import { logger } from '../utils/logger';
@@ -26,7 +27,7 @@ const commonOptions = {
       ? 'all'
       : ['error', 'warn'],
   logger: isProduction ? 'file' : 'debug',
-  entities: [User, Group, Message, ConversationIntake, ConversationMessage],
+  entities: [User, Group, Message, ConversationIntake, ConversationMessage, SelectorReport],
   migrations: CONVERSATION_MIGRATIONS,
   migrationsRun,
   migrationsTableName: 'migrations',

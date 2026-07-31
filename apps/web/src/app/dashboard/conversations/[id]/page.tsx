@@ -40,6 +40,11 @@ interface Conversation {
   reconciliationStatus?: "none" | "required";
   reconciliationCandidateIds?: string[];
   status: string;
+  rawArtifact?: {
+    status: "pending" | "stored" | "failed" | "not-recorded" | "deleting";
+    sha256?: string;
+    size?: number;
+  };
   receivedAt: string;
   messages: ConversationMessage[];
 }
@@ -187,6 +192,17 @@ export default function ConversationPage() {
                 {conversation.sourceKind === "extension"
                   ? "browser extension"
                   : "chat export"}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {conversation.rawArtifact?.status === "stored"
+                  ? "Raw source stored with integrity metadata"
+                  : conversation.rawArtifact?.status === "deleting"
+                    ? "Deletion in progress"
+                    : conversation.rawArtifact?.status === "not-recorded"
+                      ? "Legacy intake · raw source was not recorded"
+                      : conversation.rawArtifact?.status === "failed"
+                        ? "Raw source storage failed"
+                        : "Raw source storage pending"}
               </p>
             </StyledCard>
             <StyledCard

@@ -314,6 +314,14 @@ resource "azurerm_container_app" "api" {
         value = var.mystira_identity_client_id
       }
       env {
+        name  = "MYSTIRA_ADMIN_EMAILS"
+        value = var.mystira_admin_emails
+      }
+      env {
+        name  = "MYSTIRA_ADMIN_SUBJECTS"
+        value = var.mystira_admin_subjects
+      }
+      env {
         name  = "DB_TYPE"
         value = var.enable_postgres ? "postgres" : "sqlite"
       }
@@ -360,6 +368,10 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "AZURE_STORAGE_ACCOUNT_NAME"
         value = azurerm_storage_account.st.name
+      }
+      env {
+        name  = "AZURE_PROVIDER_ENABLED"
+        value = "true"
       }
       env {
         name  = "AZURE_STORAGE_CONTAINER"

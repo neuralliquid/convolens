@@ -10,6 +10,9 @@ import { logger } from '../utils/logger.js';
 import { cacheService } from '../services/cache.service.js';
 import { CACHE_TTL } from '../config/constants.js';
 import { extensionRateLimit, selectorReportRateLimit } from '../middleware/rate-limit.js';
+import { authenticateToken } from '../middleware/auth.middleware.js';
+import { requireAdmin } from '../middleware/admin.js';
+import { selectorReportService } from '../services/selector-report.service.js';
 
 // =============================================================================
 // Input Validation
@@ -25,6 +28,17 @@ function validateSelectorReport(body: any): ValidationError[] {
 
   if (body.discovered !== undefined && typeof body.discovered !== 'object') {
     errors.push({ field: 'discovered', message: 'must be an object' });
+  }
+  if (body.discovered && typeof body.discovered === 'object') {
+    for (const [key, value] of Object.entries(body.discovered)) {
+      if (key.length > 100 || typeof value !== 'string' || value.length > 500) {
+        errors.push({
+          field: `discovered.${key.slice(0, 100)}`,
+          message:
+            'selector names must be at most 100 characters and values at most 500 characters',
+        });
+      }
+    }
   }
 
   if (body.userAgent !== undefined && typeof body.userAgent !== 'string') {
@@ -120,7 +134,7 @@ interface SelectorConfig {
   fallback: SelectorSet;
 }
 
-interface SelectorReport {
+interface SelectorReportPayload {
   discovered: Partial<SelectorSet>;
   userAgent: string;
   timestamp: string;
@@ -159,10 +173,6 @@ let selectorConfig: SelectorConfig = {
     scrollableMessageList: '._asmz',
   },
 };
-
-// Selector reports for analysis (kept in memory, would be database in production)
-const selectorReports: SelectorReport[] = [];
-const MAX_REPORTS = 100;
 
 // =============================================================================
 // Routes
@@ -206,61 +216,65 @@ router.post(
   selectorReportRateLimit,
   validationMiddleware(validateSelectorReport),
   async (req: Request, res: Response) => {
-  try {
-    const report: SelectorReport = {
-      discovered: req.body.discovered || {},
-      userAgent: req.body.userAgent || '',
-      timestamp: req.body.timestamp || new Date().toISOString(),
-      extensionVersion: req.headers['x-extension-version'] as string,
-    };
+    try {
+      const report: SelectorReportPayload = {
+        discovered: req.body.discovered || {},
+        userAgent: (req.body.userAgent || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim(),
+        timestamp: req.body.timestamp || new Date().toISOString(),
+        extensionVersion: req.headers['x-extension-version'] as string,
+      };
 
-    // Store report (limited to MAX_REPORTS)
-    selectorReports.push(report);
-    if (selectorReports.length > MAX_REPORTS) {
-      selectorReports.shift();
+      await selectorReportService.save(report);
+
+      logger.info('Selector report received', {
+        discovered: Object.keys(report.discovered),
+        extensionVersion: report.extensionVersion,
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Error processing selector report:', error);
+      res.status(500).json({ error: 'Failed to process report' });
     }
-
-    logger.info('Selector report received', {
-      discovered: Object.keys(report.discovered),
-      extensionVersion: report.extensionVersion,
-    });
-
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('Error processing selector report:', error);
-    res.status(500).json({ error: 'Failed to process report' });
   }
-});
+);
 
 /**
  * @route GET /api/extension/selectors/reports
  * @description Get selector reports (admin only)
- * @access Private (would need admin auth)
+ * @access Private (admin only)
  */
-router.get('/selectors/reports', extensionRateLimit, async (_req: Request, res: Response) => {
-  // In production, this would require admin authentication
-  try {
-    res.json({
-      reports: selectorReports,
-      count: selectorReports.length,
-    });
-  } catch (error) {
-    logger.error('Error fetching selector reports:', error);
-    res.status(500).json({ error: 'Failed to fetch reports' });
+router.get(
+  '/selectors/reports',
+  extensionRateLimit,
+  authenticateToken,
+  requireAdmin,
+  async (_req: Request, res: Response) => {
+    try {
+      const selectorReports = await selectorReportService.list();
+      res.json({
+        reports: selectorReports,
+        count: selectorReports.length,
+      });
+    } catch (error) {
+      logger.error('Error fetching selector reports:', error);
+      res.status(500).json({ error: 'Failed to fetch reports' });
+    }
   }
-});
+);
 
 /**
  * @route PUT /api/extension/selectors
  * @description Update selectors (admin only)
- * @access Private (would need admin auth)
+ * @access Private (admin only)
  */
 router.put(
   '/selectors',
   extensionRateLimit,
+  authenticateToken,
+  requireAdmin,
   validationMiddleware(validateSelectorUpdate),
   async (req: Request, res: Response) => {
-    // In production, this would require admin authentication
     try {
       const { primary, fallback, version } = req.body;
 

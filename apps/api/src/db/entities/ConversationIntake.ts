@@ -12,7 +12,8 @@ import { ConversationMessage } from './ConversationMessage';
 import { dateColumnType } from '../column-types';
 
 export type ConversationSourceKind = 'extension' | 'upload';
-export type ConversationStatus = 'received';
+export type ConversationStatus = 'received' | 'failed';
+export type RawArtifactStatus = 'pending' | 'stored' | 'failed' | 'not-recorded' | 'deleting';
 
 export interface ConversationProvenance {
   connectorVersion?: string;
@@ -96,7 +97,25 @@ export class ConversationIntake {
   status!: ConversationStatus;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
-  errorCode?: string;
+  errorCode?: string | null;
+
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  rawArtifactKey?: string;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  rawArtifactSha256?: string;
+
+  @Column({ type: 'integer', nullable: true })
+  rawArtifactSize?: number;
+
+  @Column({ type: 'varchar', length: 50, default: 'pending' })
+  rawArtifactStatus!: RawArtifactStatus;
+
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  rawArtifactClaimId?: string | null;
+
+  @Column({ type: dateColumnType, nullable: true })
+  rawArtifactClaimedAt?: Date | null;
 
   @Column({ type: dateColumnType, nullable: true })
   sourceExtractedAt?: Date;

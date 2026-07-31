@@ -21,7 +21,11 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 import { createHmac } from 'crypto';
 import { logger } from '../../utils/logger.js';
-import { getStorageProvider, getAzureBlobStorageConfig, type StorageProvider } from '../../config/azure/index.js';
+import {
+  getStorageProvider,
+  getAzureBlobStorageConfig,
+  type StorageProvider,
+} from '../../config/azure/index.js';
 
 // =============================================================================
 // Constants
@@ -31,6 +35,11 @@ const AZURE_API_VERSION = '2023-11-03';
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+export const AZURE_MANAGED_IDENTITY_TIMEOUT_MS = 5_000;
+export const AZURE_UPLOAD_REQUEST_TIMEOUT_MS = 8_000;
+export const AZURE_UPLOAD_MAX_RETRIES = 1;
+export const AZURE_UPLOAD_TOTAL_TIMEOUT_MS = 24_000;
+export const AZURE_DELETE_REQUEST_TIMEOUT_MS = 15_000;
 
 // =============================================================================
 // Types
@@ -100,6 +109,10 @@ async function fetchWithTimeout(
   timeoutMs: number = REQUEST_TIMEOUT_MS
 ): Promise<Response> {
   const controller = new AbortController();
+  const parentSignal = options.signal;
+  const abortFromParent = () => controller.abort();
+  if (parentSignal?.aborted) controller.abort();
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -110,6 +123,7 @@ async function fetchWithTimeout(
     return response;
   } finally {
     clearTimeout(timeoutId);
+    parentSignal?.removeEventListener('abort', abortFromParent);
   }
 }
 
@@ -153,6 +167,7 @@ async function withRetry<T>(
 export class StorageService {
   private provider: StorageProvider;
   private localBasePath: string;
+  private azureAccessToken?: { value: string; expiresAt: number };
 
   constructor(config: StorageServiceConfig = {}) {
     this.provider = config.provider || getStorageProvider();
@@ -253,7 +268,11 @@ export class StorageService {
   // Local Storage Implementation
   // ===========================================================================
 
-  private async uploadToLocal(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
+  private async uploadToLocal(
+    key: string,
+    data: Buffer | string,
+    options: UploadOptions
+  ): Promise<StorageFile> {
     const filePath = join(this.localBasePath, key);
     const dirPath = dirname(filePath);
 
@@ -280,7 +299,11 @@ export class StorageService {
 
   private async deleteFromLocal(key: string): Promise<void> {
     const filePath = join(this.localBasePath, key);
-    await fs.unlink(filePath);
+    try {
+      await fs.unlink(filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 
   private getLocalUrl(key: string): string {
@@ -327,7 +350,50 @@ export class StorageService {
   // Azure Blob Storage Implementation
   // ===========================================================================
 
-  private async uploadToAzure(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
+  private async getAzureBearerAuthorization(): Promise<string> {
+    if (this.azureAccessToken && this.azureAccessToken.expiresAt > Date.now() + 300_000) {
+      return `Bearer ${this.azureAccessToken.value}`;
+    }
+
+    const endpoint = process.env.IDENTITY_ENDPOINT;
+    const identityHeader = process.env.IDENTITY_HEADER;
+    if (!endpoint || !identityHeader) {
+      throw new Error(
+        'Azure Blob Storage requires a SAS token, account key, or Container Apps managed identity'
+      );
+    }
+
+    const tokenUrl = new URL(endpoint);
+    tokenUrl.searchParams.set('api-version', '2019-08-01');
+    tokenUrl.searchParams.set('resource', 'https://storage.azure.com/');
+    const response = await fetchWithTimeout(
+      tokenUrl.toString(),
+      { headers: { 'X-IDENTITY-HEADER': identityHeader } },
+      AZURE_MANAGED_IDENTITY_TIMEOUT_MS
+    );
+    if (!response.ok) {
+      throw new Error(`Managed identity token request failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as {
+      access_token?: string;
+      expires_on?: string | number;
+    };
+    if (!payload.access_token) {
+      throw new Error('Managed identity token response did not contain an access token');
+    }
+    const parsedExpiry = Number(payload.expires_on);
+    this.azureAccessToken = {
+      value: payload.access_token,
+      expiresAt: Number.isFinite(parsedExpiry) ? parsedExpiry * 1000 : Date.now() + 3_600_000,
+    };
+    return `Bearer ${payload.access_token}`;
+  }
+
+  private async uploadToAzure(
+    key: string,
+    data: Buffer | string,
+    options: UploadOptions
+  ): Promise<StorageFile> {
     const config = getAzureBlobStorageConfig();
     if (!config) throw new Error('Azure Blob Storage not configured');
 
@@ -344,37 +410,50 @@ export class StorageService {
       'x-ms-date': new Date().toUTCString(),
     };
 
-    // Add SAS token or account key authentication
-    let authUrl = url;
-    if (config.sasToken) {
-      authUrl = `${url}?${config.sasToken}`;
-    } else if (config.accountKey) {
-      // For production, use Azure SDK or proper HMAC signing
-      // This is a simplified version for POC
-      headers['Authorization'] = this.createAzureAuthHeader(
-        'PUT',
-        config.accountName,
-        config.containerName,
-        key,
-        config.accountKey,
-        headers
-      );
-    }
+    const uploadController = new AbortController();
+    const totalTimeout = setTimeout(() => uploadController.abort(), AZURE_UPLOAD_TOTAL_TIMEOUT_MS);
 
-    const response = await withRetry(async () => {
-      const res = await fetchWithTimeout(authUrl, {
-        method: 'PUT',
-        headers,
-        body: buffer,
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Azure Blob upload failed: ${res.status} - ${errorText}`);
+    try {
+      // Add SAS token or account key authentication
+      let authUrl = url;
+      if (config.sasToken) {
+        authUrl = `${url}?${config.sasToken}`;
+      } else if (config.accountKey) {
+        // For production, use Azure SDK or proper HMAC signing
+        // This is a simplified version for POC
+        headers['Authorization'] = this.createAzureAuthHeader(
+          'PUT',
+          config.accountName,
+          config.containerName,
+          key,
+          config.accountKey,
+          headers
+        );
+      } else {
+        headers['Authorization'] = await this.getAzureBearerAuthorization();
       }
 
-      return res;
-    });
+      await withRetry(async () => {
+        const res = await fetchWithTimeout(
+          authUrl,
+          {
+            method: 'PUT',
+            headers,
+            body: buffer,
+            signal: uploadController.signal,
+          },
+          AZURE_UPLOAD_REQUEST_TIMEOUT_MS
+        );
+
+        if (!res.ok) {
+          throw Object.assign(new Error(`Azure Blob upload failed: ${res.status}`), {
+            status: res.status,
+          });
+        }
+      }, AZURE_UPLOAD_MAX_RETRIES);
+    } finally {
+      clearTimeout(totalTimeout);
+    }
 
     logger.info(`[StorageService] Uploaded to Azure: ${key}`);
 
@@ -397,11 +476,9 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`Azure Blob download failed: ${response.status}`);
@@ -420,12 +497,27 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = {
+      'x-ms-version': AZURE_API_VERSION,
+      'x-ms-date': new Date().toUTCString(),
+    };
+    if (!config.sasToken) {
+      headers.Authorization = config.accountKey
+        ? this.createAzureAuthHeader(
+            'DELETE',
+            config.accountName,
+            config.containerName,
+            key,
+            config.accountKey,
+            headers
+          )
+        : await this.getAzureBearerAuthorization();
+    }
+    const response = await fetchWithTimeout(
+      url,
+      { method: 'DELETE', headers },
+      AZURE_DELETE_REQUEST_TIMEOUT_MS
+    );
 
     if (!response.ok && response.status !== 404) {
       throw new Error(`Azure Blob delete failed: ${response.status}`);
@@ -455,12 +547,9 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      method: 'HEAD',
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { method: 'HEAD', headers });
 
     return response.ok;
   }
@@ -476,11 +565,9 @@ export class StorageService {
       url = `${url}&${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`Azure Blob list failed: ${response.status}`);
@@ -525,7 +612,8 @@ export class StorageService {
       const lastModified = this.extractXmlElement(blobContent, 'Last-Modified');
 
       // Extract Content-Type if available
-      const contentType = this.extractXmlElement(blobContent, 'Content-Type') || 'application/octet-stream';
+      const contentType =
+        this.extractXmlElement(blobContent, 'Content-Type') || 'application/octet-stream';
 
       files.push({
         key: this.decodeXmlEntities(name),
@@ -588,9 +676,9 @@ export class StorageService {
   ): string {
     // Build canonicalized headers (x-ms-* headers, sorted alphabetically)
     const canonicalizedHeaders = Object.keys(headers)
-      .filter(key => key.toLowerCase().startsWith('x-ms-'))
+      .filter((key) => key.toLowerCase().startsWith('x-ms-'))
       .sort()
-      .map(key => `${key.toLowerCase()}:${headers[key].trim()}`)
+      .map((key) => `${key.toLowerCase()}:${headers[key].trim()}`)
       .join('\n');
 
     // Build canonicalized resource
@@ -602,24 +690,23 @@ export class StorageService {
     const contentType = headers['Content-Type'] || '';
 
     const stringToSign = [
-      method,                              // HTTP Verb
-      '',                                  // Content-Encoding
-      '',                                  // Content-Language
-      contentLength,                       // Content-Length
-      '',                                  // Content-MD5
-      contentType,                         // Content-Type
-      '',                                  // Date (empty when x-ms-date is used)
-      '',                                  // If-Modified-Since
-      '',                                  // If-Match
-      '',                                  // If-None-Match
-      '',                                  // If-Unmodified-Since
-      '',                                  // Range
-      canonicalizedHeaders,                // Canonicalized headers
-      canonicalizedResource,               // Canonicalized resource
+      method, // HTTP Verb
+      '', // Content-Encoding
+      '', // Content-Language
+      contentLength, // Content-Length
+      '', // Content-MD5
+      contentType, // Content-Type
+      '', // Date (empty when x-ms-date is used)
+      '', // If-Modified-Since
+      '', // If-Match
+      '', // If-None-Match
+      '', // If-Unmodified-Since
+      '', // Range
+      canonicalizedHeaders, // Canonicalized headers
+      canonicalizedResource, // Canonicalized resource
     ].join('\n');
 
     // Create HMAC-SHA256 signature
-    const { createHmac } = require('crypto');
     const decodedKey = Buffer.from(accountKey, 'base64');
     const signature = createHmac('sha256', decodedKey)
       .update(stringToSign, 'utf8')
@@ -644,7 +731,11 @@ export class StorageService {
     throw new Error(message);
   }
 
-  private async uploadToS3(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
+  private async uploadToS3(
+    key: string,
+    data: Buffer | string,
+    options: UploadOptions
+  ): Promise<StorageFile> {
     this.assertS3NotImplemented();
   }
 
