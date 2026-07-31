@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { In, IsNull, QueryFailedError, type DataSource, type EntityManager } from 'typeorm';
+import {
+  In,
+  IsNull,
+  QueryFailedError,
+  type DataSource,
+  type EntityManager,
+  type Repository,
+} from 'typeorm';
 import { AppDataSource } from '../config/database';
 import {
   ConversationIntake,
@@ -459,7 +466,7 @@ export class ConversationIntakeService {
     // Connector-generated ids and extraction timestamps may differ on a retry,
     // so replacing the artifact would create unowned blobs and weaken provenance.
     if (current.rawArtifactStatus === 'stored' && current.rawArtifactKey) {
-      return current;
+      return this.retryStoredRawArtifactCleanup(repository, current);
     }
 
     const ownerScope = createHash('sha256').update(userId).digest('hex').slice(0, 32);
@@ -469,7 +476,7 @@ export class ConversationIntakeService {
     // overwriting the artifact selected by a newer lease for the same payload.
     const key = `raw-intakes/${ownerScope}/${conversation.id}/${claimId}/${sha256}.${extension}`;
     const claimedAt = new Date();
-    let supersededKey: string | undefined;
+    let cleanupKeys = current.rawArtifactCleanupKeys || [];
     let claim = await repository.update(
       {
         id: conversation.id,
@@ -489,11 +496,17 @@ export class ConversationIntakeService {
 
     if (claim.affected !== 1) {
       const claimed = await repository.findOneByOrFail({ id: conversation.id });
-      if (claimed.rawArtifactStatus === 'stored' && claimed.rawArtifactKey) return claimed;
+      if (claimed.rawArtifactStatus === 'stored' && claimed.rawArtifactKey) {
+        return this.retryStoredRawArtifactCleanup(repository, claimed);
+      }
 
       // A retry may resume the same first artifact after a failed write, but a
       // different duplicate payload must never replace its provenance.
       if (claimed.rawArtifactStatus === 'failed' && claimed.rawArtifactSha256 === sha256) {
+        const nextCleanupKeys = this.appendRawArtifactCleanupKey(
+          claimed.rawArtifactCleanupKeys,
+          claimed.rawArtifactKey
+        );
         claim = await repository.update(
           {
             id: conversation.id,
@@ -507,11 +520,14 @@ export class ConversationIntakeService {
             rawArtifactStatus: 'pending',
             rawArtifactClaimId: claimId,
             rawArtifactClaimedAt: claimedAt,
+            rawArtifactCleanupKeys: nextCleanupKeys,
             status: 'received',
             errorCode: null,
           }
         );
-        if (claim.affected === 1) supersededKey = claimed.rawArtifactKey;
+        if (claim.affected === 1) {
+          cleanupKeys = nextCleanupKeys;
+        }
       }
 
       const claimExpired =
@@ -519,6 +535,10 @@ export class ConversationIntakeService {
         (!claimed.rawArtifactClaimedAt ||
           claimed.rawArtifactClaimedAt.getTime() <= Date.now() - RAW_ARTIFACT_CLAIM_LEASE_MS);
       if (claim.affected !== 1 && claimExpired && claimed.rawArtifactSha256 === sha256) {
+        const nextCleanupKeys = this.appendRawArtifactCleanupKey(
+          claimed.rawArtifactCleanupKeys,
+          claimed.rawArtifactKey
+        );
         claim = await repository.update(
           {
             id: conversation.id,
@@ -531,11 +551,14 @@ export class ConversationIntakeService {
             rawArtifactSize: buffer.length,
             rawArtifactClaimId: claimId,
             rawArtifactClaimedAt: claimedAt,
+            rawArtifactCleanupKeys: nextCleanupKeys,
             status: 'received',
             errorCode: null,
           }
         );
-        if (claim.affected === 1) supersededKey = claimed.rawArtifactKey;
+        if (claim.affected === 1) {
+          cleanupKeys = nextCleanupKeys;
+        }
       }
 
       if (claim.affected !== 1) {
@@ -576,11 +599,18 @@ export class ConversationIntakeService {
         if (resolved) return resolved;
         return this.ensureRawArtifactLocked(conversation, userId, artifact);
       }
-      if (supersededKey && supersededKey !== key) {
-        // Cleanup is best-effort after the durable row points at the winning
-        // artifact; a cleanup outage must not turn a stored intake back into a
-        // failed one.
-        await this.storage.deleteFile(supersededKey).catch(() => undefined);
+      if (cleanupKeys.length > 0) {
+        // The ledger remains durable until every superseded object is gone.
+        // A cleanup outage must not turn a stored intake back into a failed one.
+        const cleaned = await this.deleteRawArtifactKeys(cleanupKeys);
+        if (cleaned) {
+          await repository
+            .update(
+              { id: conversation.id, rawArtifactStatus: 'stored', rawArtifactKey: key },
+              { rawArtifactCleanupKeys: null }
+            )
+            .catch(() => undefined);
+        }
       }
     } catch (error) {
       await repository.update(
@@ -621,6 +651,46 @@ export class ConversationIntakeService {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error('Timed out waiting for the first raw artifact write');
+  }
+
+  private appendRawArtifactCleanupKey(
+    cleanupKeys: string[] | null | undefined,
+    key: string | null | undefined
+  ): string[] {
+    return Array.from(new Set([...(cleanupKeys || []), ...(key ? [key] : [])]));
+  }
+
+  private async deleteRawArtifactKeys(keys: string[]): Promise<boolean> {
+    try {
+      for (const key of Array.from(new Set(keys))) {
+        await this.storage.deleteFile(key);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async retryStoredRawArtifactCleanup(
+    repository: Repository<ConversationIntake>,
+    conversation: ConversationIntake
+  ): Promise<ConversationIntake> {
+    const cleanupKeys = conversation.rawArtifactCleanupKeys || [];
+    if (cleanupKeys.length === 0) return conversation;
+    const cleaned = await this.deleteRawArtifactKeys(cleanupKeys);
+    if (!cleaned) return conversation;
+    const cleared = await repository
+      .update(
+        {
+          id: conversation.id,
+          rawArtifactStatus: 'stored',
+          rawArtifactKey: conversation.rawArtifactKey,
+        },
+        { rawArtifactCleanupKeys: null }
+      )
+      .catch(() => undefined);
+    if (cleared?.affected === 1) conversation.rawArtifactCleanupKeys = null;
+    return conversation;
   }
 
   private async updateDuplicate(
@@ -951,14 +1021,32 @@ export class ConversationIntakeService {
 
   async deleteForUser(userId: string, id: string): Promise<boolean> {
     const repository = this.dataSource.getRepository(ConversationIntake);
-    const conversation = await repository.findOneBy({ id, userId });
-    if (!conversation) return false;
+    let conversation: ConversationIntake | null = null;
 
-    // Tombstone the claim before touching Blob storage. A concurrent writer's
-    // claim-conditional finalization then fails and that writer cleans up its
-    // own late upload; new retries cannot claim a deleting row.
-    const marked = await repository.update({ id, userId }, { rawArtifactStatus: 'deleting' });
-    if (marked.affected !== 1) return false;
+    // Compare-and-swap the complete claim identity into a tombstone. If another
+    // replica changes the key/claim/status after our read, retry from its new
+    // snapshot so deletion never loses a superseded artifact key.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = await repository.findOneBy({ id, userId });
+      if (!candidate) return false;
+      const marked = await repository.update(
+        {
+          id,
+          userId,
+          rawArtifactStatus: candidate.rawArtifactStatus,
+          rawArtifactClaimId: candidate.rawArtifactClaimId || IsNull(),
+          rawArtifactKey: candidate.rawArtifactKey || IsNull(),
+        },
+        { rawArtifactStatus: 'deleting' }
+      );
+      if (marked.affected === 1) {
+        conversation = candidate;
+        break;
+      }
+    }
+    if (!conversation) {
+      throw new Error('Conversation artifact changed too often to start deletion safely');
+    }
     if (conversation.rawArtifactClaimId && conversation.rawArtifactClaimedAt) {
       const cleanupSafeAt =
         conversation.rawArtifactClaimedAt.getTime() +
@@ -969,8 +1057,12 @@ export class ConversationIntakeService {
         await new Promise((resolve) => setTimeout(resolve, remainingUploadWindow));
       }
     }
-    if (conversation.rawArtifactKey) {
-      await this.storage.deleteFile(conversation.rawArtifactKey);
+    const artifactKeys = this.appendRawArtifactCleanupKey(
+      conversation.rawArtifactCleanupKeys,
+      conversation.rawArtifactKey
+    );
+    for (const artifactKey of artifactKeys) {
+      await this.storage.deleteFile(artifactKey);
     }
     const result = await repository.delete({ id, userId });
     return result.affected === 1;

@@ -303,9 +303,13 @@ describe('ConversationIntakeService', () => {
       .fn()
       .mockRejectedValueOnce(new Error('storage unavailable'))
       .mockResolvedValueOnce(undefined);
+    const deleteFile = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('cleanup unavailable'))
+      .mockResolvedValue(undefined);
     const artifactService = new ConversationIntakeService(dataSource, {
       uploadFile,
-      deleteFile: jest.fn().mockResolvedValue(undefined),
+      deleteFile,
     } as unknown as StorageService);
     const saved = await artifactService.save(baseInput);
     const artifact = { body: '{"retry":true}', contentType: 'application/json' as const };
@@ -329,6 +333,16 @@ describe('ConversationIntakeService', () => {
     expect(uploadFile).toHaveBeenCalledTimes(2);
     expect(retried.rawArtifactKey).not.toBe(failedKey);
     expect(uploadFile.mock.calls[1][0]).toBe(retried.rawArtifactKey);
+    expect(deleteFile).toHaveBeenCalledWith(failedKey);
+    expect(retried.rawArtifactCleanupKeys).toEqual([failedKey]);
+
+    const afterCleanupRecovery = await artifactService.ensureRawArtifact(
+      saved.conversation,
+      baseInput.userId,
+      artifact
+    );
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(afterCleanupRecovery.rawArtifactCleanupKeys).toBeNull();
   });
 
   it('can retry deletion when the artifact is already absent after a database error', async () => {
@@ -448,6 +462,48 @@ describe('ConversationIntakeService', () => {
 
     expect(await artifactService.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
     expect(deleteFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries the tombstone CAS when another replica wins a claim first', async () => {
+    const deleteFile = jest.fn().mockResolvedValue(undefined);
+    const artifactService = new ConversationIntakeService(dataSource, {
+      deleteFile,
+    } as unknown as StorageService);
+    const saved = await artifactService.save(baseInput);
+    const repository = dataSource.getRepository(ConversationIntake);
+    const update = repository.update.bind(repository);
+    const supersededKey = `raw-intakes/raced/${saved.conversation.id}/old/artifact.json`;
+    const racedKey = `raw-intakes/raced/${saved.conversation.id}/claim/artifact.json`;
+    await update(saved.conversation.id, {
+      rawArtifactKey: supersededKey,
+      rawArtifactSha256: createHash('sha256').update('raced').digest('hex'),
+      rawArtifactSize: 5,
+      rawArtifactStatus: 'pending',
+      rawArtifactClaimId: '00000000-0000-4000-8000-000000000098',
+      rawArtifactClaimedAt: new Date(
+        Date.now() - AZURE_UPLOAD_TOTAL_TIMEOUT_MS - RAW_ARTIFACT_DELETE_GRACE_MS
+      ),
+    });
+    jest.spyOn(repository, 'update').mockImplementationOnce(async (criteria, partialEntity) => {
+      await update(saved.conversation.id, {
+        rawArtifactKey: racedKey,
+        rawArtifactCleanupKeys: [supersededKey],
+        rawArtifactSha256: createHash('sha256').update('raced').digest('hex'),
+        rawArtifactSize: 5,
+        rawArtifactStatus: 'pending',
+        rawArtifactClaimId: '00000000-0000-4000-8000-000000000099',
+        rawArtifactClaimedAt: new Date(
+          Date.now() - AZURE_UPLOAD_TOTAL_TIMEOUT_MS - RAW_ARTIFACT_DELETE_GRACE_MS
+        ),
+      });
+      return update(criteria, partialEntity);
+    });
+
+    expect(await artifactService.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(deleteFile).toHaveBeenCalledWith(supersededKey);
+    expect(deleteFile).toHaveBeenCalledWith(racedKey);
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(await repository.findOneBy({ id: saved.conversation.id })).toBeNull();
   });
 
   it('deduplicates stable content even when connector IDs change', async () => {
