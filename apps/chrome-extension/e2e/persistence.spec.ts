@@ -75,8 +75,13 @@ async function startApi(
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  await waitForReady(child);
-  return child;
+  try {
+    await waitForReady(child);
+    return child;
+  } catch (error) {
+    await stopApi(child);
+    throw error;
+  }
 }
 
 async function stopApi(child: ChildProcess | undefined): Promise<void> {

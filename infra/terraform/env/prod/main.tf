@@ -362,6 +362,10 @@ resource "azurerm_container_app" "api" {
         value = azurerm_storage_account.st.name
       }
       env {
+        name  = "AZURE_PROVIDER_ENABLED"
+        value = "true"
+      }
+      env {
         name  = "AZURE_STORAGE_CONTAINER"
         value = "chat-exports"
       }

@@ -13,6 +13,7 @@ import { StorageService } from './storage/storage.service';
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
 const compatibilityQueues = new Map<string, Promise<void>>();
+const rawArtifactQueues = new Map<string, Promise<void>>();
 
 async function withLocalCompatibilityLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
   const previous = compatibilityQueues.get(key) || Promise.resolve();
@@ -29,6 +30,25 @@ async function withLocalCompatibilityLock<T>(key: string, operation: () => Promi
     release();
     if (compatibilityQueues.get(key) === queued) {
       compatibilityQueues.delete(key);
+    }
+  }
+}
+
+async function withLocalRawArtifactLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = rawArtifactQueues.get(key) || Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => gate);
+  rawArtifactQueues.set(key, queued);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (rawArtifactQueues.get(key) === queued) {
+      rawArtifactQueues.delete(key);
     }
   }
 }
@@ -417,26 +437,67 @@ export class ConversationIntakeService {
     userId: string,
     artifact: RawConversationArtifact
   ): Promise<ConversationIntake> {
+    return withLocalRawArtifactLock(conversation.id, () =>
+      this.ensureRawArtifactLocked(conversation, userId, artifact)
+    );
+  }
+
+  private async ensureRawArtifactLocked(
+    conversation: ConversationIntake,
+    userId: string,
+    artifact: RawConversationArtifact
+  ): Promise<ConversationIntake> {
     const buffer = Buffer.isBuffer(artifact.body) ? artifact.body : Buffer.from(artifact.body);
     const sha256 = createHash('sha256').update(buffer).digest('hex');
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    const current = await repository.findOneByOrFail({ id: conversation.id });
     // A duplicate normalized intake retains the exact first accepted raw evidence.
     // Connector-generated ids and extraction timestamps may differ on a retry,
     // so replacing the artifact would create unowned blobs and weaken provenance.
-    if (conversation.rawArtifactStatus === 'stored' && conversation.rawArtifactKey) {
-      return conversation;
+    if (current.rawArtifactStatus === 'stored' && current.rawArtifactKey) {
+      return current;
     }
 
     const ownerScope = createHash('sha256').update(userId).digest('hex').slice(0, 32);
     const extension = artifact.contentType === 'application/json' ? 'json' : 'txt';
     const key = `raw-intakes/${ownerScope}/${conversation.id}/${sha256}.${extension}`;
-    const repository = this.dataSource.getRepository(ConversationIntake);
-    await repository.update(conversation.id, {
-      rawArtifactKey: key,
-      rawArtifactSha256: sha256,
-      rawArtifactSize: buffer.length,
-      rawArtifactStatus: 'pending',
-      errorCode: undefined,
-    });
+    let claim = await repository.update(
+      { id: conversation.id, rawArtifactKey: IsNull() },
+      {
+        rawArtifactKey: key,
+        rawArtifactSha256: sha256,
+        rawArtifactSize: buffer.length,
+        rawArtifactStatus: 'pending',
+        errorCode: undefined,
+      }
+    );
+
+    if (claim.affected !== 1) {
+      const claimed = await repository.findOneByOrFail({ id: conversation.id });
+      if (claimed.rawArtifactStatus === 'stored' && claimed.rawArtifactKey) return claimed;
+
+      // A retry may resume the same first artifact after a failed write, but a
+      // different duplicate payload must never replace its provenance.
+      if (claimed.rawArtifactStatus === 'failed' && claimed.rawArtifactSha256 === sha256) {
+        claim = await repository.update(
+          {
+            id: conversation.id,
+            rawArtifactStatus: 'failed',
+            rawArtifactSha256: sha256,
+          },
+          { rawArtifactStatus: 'pending', status: 'received', errorCode: undefined }
+        );
+      }
+
+      if (claim.affected !== 1) {
+        if (claimed.rawArtifactStatus === 'pending' && claimed.rawArtifactKey) {
+          return this.waitForRawArtifact(conversation.id);
+        }
+        throw new Error(
+          'The first raw artifact failed and cannot be replaced by a different duplicate payload'
+        );
+      }
+    }
 
     try {
       await this.storage.uploadFile(key, buffer, {
@@ -458,6 +519,20 @@ export class ConversationIntakeService {
     }
 
     return (await repository.findOneByOrFail({ id: conversation.id })) as ConversationIntake;
+  }
+
+  private async waitForRawArtifact(id: string): Promise<ConversationIntake> {
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+      const current = await repository.findOneByOrFail({ id });
+      if (current.rawArtifactStatus === 'stored') return current;
+      if (current.rawArtifactStatus === 'failed') {
+        throw new Error('The first raw artifact write failed');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('Timed out waiting for the first raw artifact write');
   }
 
   private async updateDuplicate(

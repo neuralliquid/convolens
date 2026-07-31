@@ -289,7 +289,11 @@ export class StorageService {
 
   private async deleteFromLocal(key: string): Promise<void> {
     const filePath = join(this.localBasePath, key);
-    await fs.unlink(filePath);
+    try {
+      await fs.unlink(filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 
   private getLocalUrl(key: string): string {

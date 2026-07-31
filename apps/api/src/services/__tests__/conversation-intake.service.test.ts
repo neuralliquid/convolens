@@ -167,6 +167,62 @@ describe('ConversationIntakeService', () => {
     }
   });
 
+  it('serializes concurrent raw-artifact claims and retains the first evidence', async () => {
+    const uploads: Array<{ key: string; body: string }> = [];
+    const storage = {
+      uploadFile: jest.fn(async (key: string, body: Buffer) => {
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+        uploads.push({ key, body: body.toString('utf8') });
+      }),
+    } as unknown as StorageService;
+    const artifactService = new ConversationIntakeService(dataSource, storage);
+    const saved = await artifactService.save(baseInput);
+
+    const [first, second] = await Promise.all([
+      artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
+        body: '{"capture":1}',
+        contentType: 'application/json',
+      }),
+      artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
+        body: '{"capture":2}',
+        contentType: 'application/json',
+      }),
+    ]);
+
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0].body).toBe('{"capture":1}');
+    expect(second.rawArtifactKey).toBe(first.rawArtifactKey);
+    expect(second.rawArtifactStatus).toBe('stored');
+  });
+
+  it('can retry deletion when the artifact is already absent after a database error', async () => {
+    const artifactRoot = await mkdtemp(resolve(tmpdir(), 'convolens-delete-retry-test-'));
+    try {
+      const artifactService = new ConversationIntakeService(
+        dataSource,
+        new StorageService({ provider: 'local', localBasePath: artifactRoot })
+      );
+      const saved = await artifactService.save(baseInput);
+      const persisted = await artifactService.ensureRawArtifact(
+        saved.conversation,
+        baseInput.userId,
+        { body: 'deletion retry', contentType: 'text/plain' }
+      );
+      const repository = dataSource.getRepository(ConversationIntake);
+      const deleteSpy = jest
+        .spyOn(repository, 'delete')
+        .mockRejectedValueOnce(new Error('db down'));
+
+      await expect(artifactService.deleteForUser(baseInput.userId, persisted.id)).rejects.toThrow(
+        'db down'
+      );
+      expect(await artifactService.deleteForUser(baseInput.userId, persisted.id)).toBe(true);
+      expect(deleteSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      await rm(artifactRoot, { recursive: true, force: true });
+    }
+  });
+
   it('deduplicates stable content even when connector IDs change', async () => {
     const first = await service.save(baseInput);
     const second = await service.save({
