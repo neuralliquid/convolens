@@ -49,12 +49,15 @@ export function verifyLocalEntryIntegrity(
   entry,
   { crc, compressedSize, uncompressedSize },
 ) {
-  if (
-    (entry.flags & 0x08) === 0 &&
-    (crc !== entry.crc ||
-      compressedSize !== entry.compressedSize ||
-      uncompressedSize !== entry.uncompressedSize)
-  ) {
+  const usesDescriptor = (entry.flags & 0x08) !== 0;
+  const matches = usesDescriptor
+    ? (crc === 0 || crc === entry.crc) &&
+      (compressedSize === 0 || compressedSize === entry.compressedSize) &&
+      (uncompressedSize === 0 || uncompressedSize === entry.uncompressedSize)
+    : crc === entry.crc &&
+      compressedSize === entry.compressedSize &&
+      uncompressedSize === entry.uncompressedSize;
+  if (!matches) {
     throw new Error(`ZIP local entry sizes or CRC are inconsistent: ${entry.name}`);
   }
 }

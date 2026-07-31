@@ -63,6 +63,16 @@ test("requires local ZIP sizes and CRC when no data descriptor is present", () =
       { crc: 0, compressedSize: 0, uncompressedSize: 0 },
     ),
   );
+  for (const local of [
+    { crc: 122, compressedSize: 0, uncompressedSize: 0 },
+    { crc: 0, compressedSize: 455, uncompressedSize: 0 },
+    { crc: 0, compressedSize: 0, uncompressedSize: 788 },
+  ]) {
+    assert.throws(
+      () => verifyLocalEntryIntegrity({ ...entry, flags: 0x08 }, local),
+      /local entry sizes or CRC are inconsistent/,
+    );
+  }
 });
 
 test("requires a complete and consistent ZIP data descriptor", () => {
