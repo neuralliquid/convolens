@@ -49,6 +49,12 @@ jobs:
       - name: Test extension capture matrix
         run: pnpm --filter @convolens/chrome-extension test
 
+      - name: Install extension fixture browser
+        run: pnpm --filter @convolens/chrome-extension exec playwright install --with-deps chromium
+
+      - name: Test extension browser fixtures
+        run: xvfb-run --auto-servernum pnpm --filter @convolens/chrome-extension test:browser:fixtures
+
       - name: Test API conversation intake
         run: pnpm --filter @convolens/api exec jest --config=jest.config.js --runInBand src/services/__tests__/conversation-intake.service.test.ts
 
