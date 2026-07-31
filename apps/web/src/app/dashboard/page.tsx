@@ -47,7 +47,12 @@ interface ConversationSummary {
   isGroup: boolean;
   participants: string[];
   status: string;
-  rawArtifactStatus: "pending" | "stored" | "failed" | "not-recorded";
+  rawArtifactStatus:
+    | "pending"
+    | "stored"
+    | "failed"
+    | "not-recorded"
+    | "deleting";
   messageCount: number;
   receivedAt: string;
 }
@@ -227,11 +232,13 @@ export default function DashboardPage() {
               <p className="mt-2 text-xs font-medium text-muted-foreground">
                 {conversation.rawArtifactStatus === "stored"
                   ? "Raw source stored"
-                  : conversation.rawArtifactStatus === "not-recorded"
-                    ? "Legacy intake · raw source not recorded"
-                    : conversation.rawArtifactStatus === "failed"
-                      ? "Raw source storage failed"
-                      : "Raw source storage pending"}
+                  : conversation.rawArtifactStatus === "deleting"
+                    ? "Deletion in progress"
+                    : conversation.rawArtifactStatus === "not-recorded"
+                      ? "Legacy intake · raw source not recorded"
+                      : conversation.rawArtifactStatus === "failed"
+                        ? "Raw source storage failed"
+                        : "Raw source storage pending"}
               </p>
             </StyledCard>
           ))

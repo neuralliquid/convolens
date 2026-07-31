@@ -13,7 +13,7 @@ import { dateColumnType } from '../column-types';
 
 export type ConversationSourceKind = 'extension' | 'upload';
 export type ConversationStatus = 'received' | 'failed';
-export type RawArtifactStatus = 'pending' | 'stored' | 'failed' | 'not-recorded';
+export type RawArtifactStatus = 'pending' | 'stored' | 'failed' | 'not-recorded' | 'deleting';
 
 export interface ConversationProvenance {
   connectorVersion?: string;

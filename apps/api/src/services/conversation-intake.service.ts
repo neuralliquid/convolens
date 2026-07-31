@@ -12,9 +12,6 @@ import { StorageService } from './storage/storage.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
-// Azure upload retries can consume about 127 seconds (four 30-second attempts
-// plus backoff), so an active first writer must not be reclaimed inside that
-// window.
 // Longer than the bounded 24-second Blob write, but short enough that a crashed
 // claim can be reclaimed and persisted inside the callers' 60-second window.
 export const RAW_ARTIFACT_CLAIM_LEASE_MS = 30_000;
@@ -606,6 +603,9 @@ export class ConversationIntakeService {
       if (current.rawArtifactStatus === 'failed') {
         throw new Error('The first raw artifact write failed');
       }
+      if (current.rawArtifactStatus === 'deleting') {
+        throw new Error('Conversation deletion started during the raw artifact write');
+      }
       if (
         current.rawArtifactStatus === 'pending' &&
         (!current.rawArtifactClaimedAt ||
@@ -948,6 +948,12 @@ export class ConversationIntakeService {
     const repository = this.dataSource.getRepository(ConversationIntake);
     const conversation = await repository.findOneBy({ id, userId });
     if (!conversation) return false;
+
+    // Tombstone the claim before touching Blob storage. A concurrent writer's
+    // claim-conditional finalization then fails and that writer cleans up its
+    // own late upload; new retries cannot claim a deleting row.
+    const marked = await repository.update({ id, userId }, { rawArtifactStatus: 'deleting' });
+    if (marked.affected !== 1) return false;
     if (conversation.rawArtifactKey) {
       await this.storage.deleteFile(conversation.rawArtifactKey);
     }

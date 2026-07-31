@@ -355,6 +355,45 @@ describe('ConversationIntakeService', () => {
     }
   });
 
+  it('tombstones deletion so a concurrent late upload cleans itself up', async () => {
+    let releaseUpload!: () => void;
+    let reportUploadStarted!: () => void;
+    const uploadGate = new Promise<void>((resolvePromise) => {
+      releaseUpload = resolvePromise;
+    });
+    const uploadStarted = new Promise<void>((resolvePromise) => {
+      reportUploadStarted = resolvePromise;
+    });
+    const deleteFile = jest.fn().mockResolvedValue(undefined);
+    const storage = {
+      uploadFile: jest.fn(async () => {
+        reportUploadStarted();
+        await uploadGate;
+      }),
+      deleteFile,
+    } as unknown as StorageService;
+    const artifactService = new ConversationIntakeService(dataSource, storage);
+    const saved = await artifactService.save(baseInput);
+
+    const persistence = artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
+      body: '{"late":true}',
+      contentType: 'application/json',
+    });
+    const persistenceAssertion = expect(persistence).rejects.toThrow(
+      /deletion started|Could not find any entity/
+    );
+    await uploadStarted;
+    const deletion = artifactService.deleteForUser(baseInput.userId, saved.conversation.id);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    releaseUpload();
+
+    expect(await deletion).toBe(true);
+    await persistenceAssertion;
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(deleteFile.mock.calls[1][0]).toBe(deleteFile.mock.calls[0][0]);
+    expect(await artifactService.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
+  });
+
   it('deduplicates stable content even when connector IDs change', async () => {
     const first = await service.save(baseInput);
     const second = await service.save({
