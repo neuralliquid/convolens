@@ -77,6 +77,16 @@ describe('Mystira extension authentication', () => {
     expect(claims.role).toBe('user');
   });
 
+  it('matches opaque Mystira subjects case-sensitively', async () => {
+    process.env.MYSTIRA_ADMIN_SUBJECTS = 'Mystira-User-123';
+    mockDiscoveryAndKeys();
+
+    const result = await exchangeMystiraIdToken(createIdToken());
+    const claims = jwt.verify(result.token, JWT_SECRET) as jwt.JwtPayload;
+
+    expect(claims.role).toBe('user');
+  });
+
   function createIdToken(overrides: Record<string, unknown> = {}): string {
     return jwt.sign(
       {

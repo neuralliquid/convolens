@@ -8,13 +8,14 @@ import {
   type ConversationSourceKind,
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
-import { StorageService } from './storage/storage.service';
+import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from './storage/storage.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
 // Longer than the bounded 24-second Blob write, but short enough that a crashed
 // claim can be reclaimed and persisted inside the callers' 60-second window.
 export const RAW_ARTIFACT_CLAIM_LEASE_MS = 30_000;
+export const RAW_ARTIFACT_DELETE_GRACE_MS = 2_000;
 const compatibilityQueues = new Map<string, Promise<void>>();
 const rawArtifactQueues = new Map<string, Promise<void>>();
 
@@ -470,7 +471,11 @@ export class ConversationIntakeService {
     const claimedAt = new Date();
     let supersededKey: string | undefined;
     let claim = await repository.update(
-      { id: conversation.id, rawArtifactKey: IsNull() },
+      {
+        id: conversation.id,
+        rawArtifactKey: IsNull(),
+        rawArtifactStatus: In(['pending', 'failed', 'not-recorded']),
+      },
       {
         rawArtifactKey: key,
         rawArtifactSha256: sha256,
@@ -954,6 +959,16 @@ export class ConversationIntakeService {
     // own late upload; new retries cannot claim a deleting row.
     const marked = await repository.update({ id, userId }, { rawArtifactStatus: 'deleting' });
     if (marked.affected !== 1) return false;
+    if (conversation.rawArtifactClaimId && conversation.rawArtifactClaimedAt) {
+      const cleanupSafeAt =
+        conversation.rawArtifactClaimedAt.getTime() +
+        AZURE_UPLOAD_TOTAL_TIMEOUT_MS +
+        RAW_ARTIFACT_DELETE_GRACE_MS;
+      const remainingUploadWindow = cleanupSafeAt - Date.now();
+      if (remainingUploadWindow > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingUploadWindow));
+      }
+    }
     if (conversation.rawArtifactKey) {
       await this.storage.deleteFile(conversation.rawArtifactKey);
     }

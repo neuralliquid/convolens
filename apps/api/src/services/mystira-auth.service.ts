@@ -30,11 +30,14 @@ export type ExtensionIdentity = {
 const DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
-function configuredValues(name: string): Set<string> {
+function configuredValues(
+  name: string,
+  normalize: (value: string) => string = (value) => value.toLowerCase()
+): Set<string> {
   return new Set(
     (process.env[name] || '')
       .split(',')
-      .map((value) => value.trim().toLowerCase())
+      .map((value) => normalize(value.trim()))
       .filter(Boolean)
   );
 }
@@ -47,7 +50,8 @@ export function resolveMystiraApiRole(profile: MystiraIdTokenClaims): 'admin' | 
 
   if (
     roles.includes('admin') ||
-    (profile.sub && configuredValues('MYSTIRA_ADMIN_SUBJECTS').has(profile.sub.toLowerCase())) ||
+    (profile.sub &&
+      configuredValues('MYSTIRA_ADMIN_SUBJECTS', (value) => value).has(profile.sub)) ||
     (verifiedEmail && configuredValues('MYSTIRA_ADMIN_EMAILS').has(verifiedEmail.toLowerCase()))
   ) {
     return 'admin';

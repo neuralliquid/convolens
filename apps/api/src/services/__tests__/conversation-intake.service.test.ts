@@ -9,6 +9,7 @@ import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import {
   ConversationIntakeService,
   RAW_ARTIFACT_CLAIM_LEASE_MS,
+  RAW_ARTIFACT_DELETE_GRACE_MS,
   createConversationCompatibilityHash,
   createConversationContentHash,
   createConversationContentHashV2,
@@ -95,6 +96,9 @@ describe('ConversationIntakeService', () => {
   it('bounds crash recovery plus a replacement upload below caller timeouts', () => {
     expect(RAW_ARTIFACT_CLAIM_LEASE_MS).toBeGreaterThan(AZURE_UPLOAD_TOTAL_TIMEOUT_MS);
     expect(RAW_ARTIFACT_CLAIM_LEASE_MS + AZURE_UPLOAD_TOTAL_TIMEOUT_MS).toBeLessThan(60_000);
+    expect(AZURE_UPLOAD_TOTAL_TIMEOUT_MS + RAW_ARTIFACT_DELETE_GRACE_MS + 15_000).toBeLessThan(
+      60_000
+    );
   });
 
   afterAll(async () => {
@@ -383,6 +387,11 @@ describe('ConversationIntakeService', () => {
       /deletion started|Could not find any entity/
     );
     await uploadStarted;
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      rawArtifactClaimedAt: new Date(
+        Date.now() - AZURE_UPLOAD_TOTAL_TIMEOUT_MS - RAW_ARTIFACT_DELETE_GRACE_MS
+      ),
+    });
     const deletion = artifactService.deleteForUser(baseInput.userId, saved.conversation.id);
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
     releaseUpload();
@@ -392,6 +401,53 @@ describe('ConversationIntakeService', () => {
     expect(deleteFile).toHaveBeenCalledTimes(2);
     expect(deleteFile.mock.calls[1][0]).toBe(deleteFile.mock.calls[0][0]);
     expect(await artifactService.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
+  });
+
+  it('never claims a null-key intake after deletion is tombstoned', async () => {
+    const uploadFile = jest.fn().mockResolvedValue(undefined);
+    const artifactService = new ConversationIntakeService(dataSource, {
+      uploadFile,
+    } as unknown as StorageService);
+    const saved = await artifactService.save(baseInput);
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      rawArtifactStatus: 'deleting',
+      rawArtifactKey: undefined,
+    });
+
+    await expect(
+      artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
+        body: '{"tooLate":true}',
+        contentType: 'application/json',
+      })
+    ).rejects.toThrow('cannot be replaced');
+    expect(uploadFile).not.toHaveBeenCalled();
+  });
+
+  it('retains the tombstoned row until Blob cleanup succeeds', async () => {
+    const deleteFile = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('blob delete unavailable'))
+      .mockResolvedValueOnce(undefined);
+    const artifactService = new ConversationIntakeService(dataSource, {
+      uploadFile: jest.fn().mockResolvedValue(undefined),
+      deleteFile,
+    } as unknown as StorageService);
+    const saved = await artifactService.save(baseInput);
+    await artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
+      body: '{"durableCleanup":true}',
+      contentType: 'application/json',
+    });
+
+    await expect(
+      artifactService.deleteForUser(baseInput.userId, saved.conversation.id)
+    ).rejects.toThrow('blob delete unavailable');
+    const retained = await dataSource
+      .getRepository(ConversationIntake)
+      .findOneByOrFail({ id: saved.conversation.id });
+    expect(retained.rawArtifactStatus).toBe('deleting');
+
+    expect(await artifactService.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(deleteFile).toHaveBeenCalledTimes(2);
   });
 
   it('deduplicates stable content even when connector IDs change', async () => {
