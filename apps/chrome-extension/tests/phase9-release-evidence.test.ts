@@ -75,15 +75,31 @@ const jsxRelValue = (
 };
 
 const jsxHasAuthoredPreload = (source: string) => {
-  const sourceFile = ts.createSourceFile(
-    "inventory.tsx",
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
-  const preloadBindings = new Set<string>();
-  const reactDomNamespaces = new Set<string>();
+  const fileName = "inventory.tsx";
+  const compilerOptions: ts.CompilerOptions = {
+    jsx: ts.JsxEmit.React,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+  };
+  const host = ts.createCompilerHost(compilerOptions);
+  host.fileExists = (path) => path === fileName;
+  host.getSourceFile = (path) =>
+    path === fileName
+      ? ts.createSourceFile(
+          fileName,
+          source,
+          ts.ScriptTarget.Latest,
+          true,
+          ts.ScriptKind.TSX,
+        )
+      : undefined;
+  host.readFile = (path) => (path === fileName ? source : undefined);
+  const program = ts.createProgram([fileName], compilerOptions, host);
+  const sourceFile = program.getSourceFile(fileName)!;
+  const checker = program.getTypeChecker();
+  const preloadBindings = new Set<ts.Symbol>();
+  const reactDomNamespaces = new Set<ts.Symbol>();
   for (const statement of sourceFile.statements) {
     if (
       !ts.isImportDeclaration(statement) ||
@@ -96,11 +112,13 @@ const jsxHasAuthoredPreload = (source: string) => {
     if (bindings && ts.isNamedImports(bindings)) {
       for (const element of bindings.elements) {
         if ((element.propertyName ?? element.name).text === "preload") {
-          preloadBindings.add(element.name.text);
+          const symbol = checker.getSymbolAtLocation(element.name);
+          if (symbol) preloadBindings.add(symbol);
         }
       }
     } else if (bindings && ts.isNamespaceImport(bindings)) {
-      reactDomNamespaces.add(bindings.name.text);
+      const symbol = checker.getSymbolAtLocation(bindings.name);
+      if (symbol) reactDomNamespaces.add(symbol);
     }
   }
   let found = false;
@@ -108,10 +126,12 @@ const jsxHasAuthoredPreload = (source: string) => {
     if (ts.isCallExpression(node)) {
       if (
         (ts.isIdentifier(node.expression) &&
-          preloadBindings.has(node.expression.text)) ||
+          preloadBindings.has(checker.getSymbolAtLocation(node.expression)!)) ||
         (ts.isPropertyAccessExpression(node.expression) &&
           ts.isIdentifier(node.expression.expression) &&
-          reactDomNamespaces.has(node.expression.expression.text) &&
+          reactDomNamespaces.has(
+            checker.getSymbolAtLocation(node.expression.expression)!,
+          ) &&
           node.expression.name.text === "preload")
       ) {
         found = true;
@@ -226,6 +246,18 @@ test("records the authored web preload inventory deterministically", () => {
     false,
   );
   assert.equal(jsxHasAuthoredPreload(`preload("/app.js");`), false);
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import { preload } from "react-dom"; function run(preload: () => void) { preload(); }`,
+    ),
+    false,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as ReactDOM from "react-dom"; function run(ReactDOM: { preload(): void }) { ReactDOM.preload(); }`,
+    ),
+    false,
+  );
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
   assert.equal(htmlHasAuthoredPreload('<link data-rel="preload">'), false);
   assert.equal(
