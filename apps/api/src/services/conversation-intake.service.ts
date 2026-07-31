@@ -15,7 +15,9 @@ const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
 // Azure upload retries can consume about 127 seconds (four 30-second attempts
 // plus backoff), so an active first writer must not be reclaimed inside that
 // window.
-const RAW_ARTIFACT_CLAIM_LEASE_MS = 180_000;
+// Longer than the bounded 24-second Blob write, but short enough that a crashed
+// claim can be reclaimed and persisted inside the callers' 60-second window.
+export const RAW_ARTIFACT_CLAIM_LEASE_MS = 30_000;
 const compatibilityQueues = new Map<string, Promise<void>>();
 const rawArtifactQueues = new Map<string, Promise<void>>();
 

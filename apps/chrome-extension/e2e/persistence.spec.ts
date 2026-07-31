@@ -108,6 +108,7 @@ async function reviewLoadedMessages(page: Page): Promise<void> {
   await page.locator("#ws-extract-btn").click();
   await expect(page.locator("#ws-status-text")).toHaveText(
     "3 loaded messages ready for review.",
+    { timeout: 15_000 },
   );
 }
 

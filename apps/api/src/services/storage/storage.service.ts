@@ -35,10 +35,10 @@ const AZURE_API_VERSION = '2023-11-03';
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
-export const AZURE_MANAGED_IDENTITY_TIMEOUT_MS = 10_000;
-export const AZURE_UPLOAD_REQUEST_TIMEOUT_MS = 15_000;
+export const AZURE_MANAGED_IDENTITY_TIMEOUT_MS = 5_000;
+export const AZURE_UPLOAD_REQUEST_TIMEOUT_MS = 8_000;
 export const AZURE_UPLOAD_MAX_RETRIES = 1;
-export const AZURE_UPLOAD_TOTAL_TIMEOUT_MS = 45_000;
+export const AZURE_UPLOAD_TOTAL_TIMEOUT_MS = 24_000;
 
 // =============================================================================
 // Types

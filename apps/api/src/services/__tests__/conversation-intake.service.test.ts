@@ -8,12 +8,13 @@ import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import {
   ConversationIntakeService,
+  RAW_ARTIFACT_CLAIM_LEASE_MS,
   createConversationCompatibilityHash,
   createConversationContentHash,
   createConversationContentHashV2,
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
-import { StorageService } from '../storage/storage.service';
+import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from '../storage/storage.service';
 
 const baseInput: ConversationIntakeInput = {
   userId: 'mystira-user-1',
@@ -89,6 +90,11 @@ describe('ConversationIntakeService', () => {
   beforeEach(async () => {
     await dataSource.getRepository(ConversationMessage).clear();
     await dataSource.getRepository(ConversationIntake).clear();
+  });
+
+  it('bounds crash recovery plus a replacement upload below caller timeouts', () => {
+    expect(RAW_ARTIFACT_CLAIM_LEASE_MS).toBeGreaterThan(AZURE_UPLOAD_TOTAL_TIMEOUT_MS);
+    expect(RAW_ARTIFACT_CLAIM_LEASE_MS + AZURE_UPLOAD_TOTAL_TIMEOUT_MS).toBeLessThan(60_000);
   });
 
   afterAll(async () => {
@@ -275,7 +281,7 @@ describe('ConversationIntakeService', () => {
       rawArtifactSize: 8,
       rawArtifactStatus: 'pending',
       rawArtifactClaimId: '00000000-0000-4000-8000-000000000001',
-      rawArtifactClaimedAt: new Date(Date.now() - 179_900),
+      rawArtifactClaimedAt: new Date(Date.now() - (RAW_ARTIFACT_CLAIM_LEASE_MS - 100)),
     });
 
     const persisted = await artifactService.ensureRawArtifact(
