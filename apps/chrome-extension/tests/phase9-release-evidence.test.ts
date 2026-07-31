@@ -103,7 +103,7 @@ const jsxSourcesWithAuthoredPreload = (
     {
       fileName: ambientFile,
       source:
-        'declare module "react-dom" { export function preload(href: string, options?: unknown): void; }',
+        'declare module "react-dom" { export function preload(href: string, options?: unknown): void; } declare module "react" { export function createElement(...args: unknown[]): unknown; }',
     },
   ];
   const sourceByPath = new Map(
@@ -155,21 +155,120 @@ const jsxSourcesWithAuthoredPreload = (
     host,
   );
   const checker = program.getTypeChecker();
-  const isReactDomPreload = (symbol: ts.Symbol | undefined) => {
+  const declarationComesFrom = (
+    declaration: ts.Declaration,
+    moduleName: "react" | "react-dom",
+  ) => {
+    const path = canonical(declaration.getSourceFile().fileName);
+    if (path === canonical(ambientFile)) {
+      let current: ts.Node | undefined = declaration;
+      while (current) {
+        if (
+          ts.isModuleDeclaration(current) &&
+          ts.isStringLiteral(current.name)
+        ) {
+          return current.name.text === moduleName;
+        }
+        current = current.parent;
+      }
+    }
+    const packagePath = moduleName === "react" ? "react" : "react-dom";
+    return path.includes(`/node_modules/@types/${packagePath}/index.d.ts`);
+  };
+  const resolvesToModuleExport = (
+    initial: ts.Symbol | undefined,
+    moduleName: "react" | "react-dom",
+    exportName: string,
+    seen = new Set<ts.Symbol>(),
+  ): boolean => {
+    let symbol = initial;
     if (!symbol) return false;
+    if (seen.has(symbol)) return false;
+    seen.add(symbol);
     while (symbol.flags & ts.SymbolFlags.Alias) {
       const target = checker.getAliasedSymbol(symbol);
       if (target === symbol) break;
       symbol = target;
+      if (seen.has(symbol)) return false;
+      seen.add(symbol);
     }
-    if (symbol.name !== "preload") return false;
-    return symbol.declarations?.some((declaration) => {
-      const path = canonical(declaration.getSourceFile().fileName);
-      return (
-        path === canonical(ambientFile) ||
-        path.includes("/node_modules/@types/react-dom/index.d.ts")
-      );
-    });
+    if (
+      symbol.name === exportName &&
+      symbol.declarations?.some((declaration) =>
+        declarationComesFrom(declaration, moduleName),
+      )
+    ) {
+      return true;
+    }
+    return (
+      symbol.declarations?.some((declaration) => {
+        if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+          const expression = ts.isPropertyAccessExpression(
+            declaration.initializer,
+          )
+            ? declaration.initializer.name
+            : declaration.initializer;
+          return resolvesToModuleExport(
+            checker.getSymbolAtLocation(expression),
+            moduleName,
+            exportName,
+            seen,
+          );
+        }
+        if (
+          ts.isBindingElement(declaration) &&
+          ts.isObjectBindingPattern(declaration.parent) &&
+          ts.isVariableDeclaration(declaration.parent.parent) &&
+          declaration.parent.parent.initializer
+        ) {
+          const propertyName = (declaration.propertyName ?? declaration.name)
+            .getText(declaration.getSourceFile());
+          if (propertyName !== exportName) return false;
+          const receiverType = checker.getTypeAtLocation(
+            declaration.parent.parent.initializer,
+          );
+          return resolvesToModuleExport(
+            receiverType.getProperty(exportName),
+            moduleName,
+            exportName,
+            seen,
+          );
+        }
+        return false;
+      }) ?? false
+    );
+  };
+  const createElementHasPreload = (node: ts.CallExpression) => {
+    if (
+      !resolvesToModuleExport(
+        checker.getSymbolAtLocation(
+          ts.isPropertyAccessExpression(node.expression)
+            ? node.expression.name
+            : node.expression,
+        ),
+        "react",
+        "createElement",
+      ) ||
+      !node.arguments[0] ||
+      !ts.isStringLiteral(node.arguments[0]) ||
+      node.arguments[0].text !== "link"
+    ) {
+      return false;
+    }
+    const props = node.arguments[1];
+    if (!props || props.kind === ts.SyntaxKind.NullKeyword) return false;
+    if (!ts.isObjectLiteralExpression(props)) return true;
+    if (props.properties.some(ts.isSpreadAssignment)) return true;
+    const rel = props.properties.find(
+      (property) => property.name?.getText().toLowerCase() === "rel",
+    );
+    if (!rel) return false;
+    if (!ts.isPropertyAssignment(rel)) return true;
+    return (
+      (!ts.isStringLiteral(rel.initializer) &&
+        !ts.isNoSubstitutionTemplateLiteral(rel.initializer)) ||
+      includesPreloadToken(rel.initializer.text)
+    );
   };
   const authored = new Set<string>();
   for (const { fileName } of sources) {
@@ -181,7 +280,14 @@ const jsxSourcesWithAuthoredPreload = (
         const callee = ts.isPropertyAccessExpression(node.expression)
           ? node.expression.name
           : node.expression;
-        if (isReactDomPreload(checker.getSymbolAtLocation(callee))) {
+        if (
+          resolvesToModuleExport(
+            checker.getSymbolAtLocation(callee),
+            "react-dom",
+            "preload",
+          ) ||
+          createElementHasPreload(node)
+        ) {
           found = true;
           return;
         }
@@ -303,6 +409,36 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload(`preload("/app.js");`), false);
   assert.equal(
     jsxHasAuthoredPreload(
+      `import * as React from "react"; React.createElement("link", { rel: "preload", href: "/app.js" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import { createElement as h } from "react"; h("link", { rel: "stylesheet preload" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as React from "react"; React.createElement("link", dynamicProps);`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `const React = { createElement() {} }; React.createElement("link", { rel: "preload" });`,
+    ),
+    false,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as React from "react"; React.createElement("link", { rel: "preloader" });`,
+    ),
+    false,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
       `import { preload } from "react-dom"; function run(preload: () => void) { preload(); }`,
     ),
     false,
@@ -312,6 +448,18 @@ test("records the authored web preload inventory deterministically", () => {
       `import * as ReactDOM from "react-dom"; function run(ReactDOM: { preload(): void }) { ReactDOM.preload(); }`,
     ),
     false,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import { preload } from "react-dom"; const warm = preload; warm("/app.js", { as: "script" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as ReactDOM from "react-dom"; const { preload: warm } = ReactDOM; warm("/app.js", { as: "script" });`,
+    ),
+    true,
   );
   assert.equal(
     jsxSourcesWithAuthoredPreload([
