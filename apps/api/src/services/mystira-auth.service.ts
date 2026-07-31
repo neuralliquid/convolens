@@ -12,6 +12,7 @@ type MystiraIdTokenClaims = jwt.JwtPayload & {
   email?: string;
   name?: string;
   preferred_username?: string;
+  email_verified?: boolean;
   role?: string;
   roles?: string[];
 };
@@ -42,12 +43,12 @@ export function resolveMystiraApiRole(profile: MystiraIdTokenClaims): 'admin' | 
   const roles = [profile.role, ...(Array.isArray(profile.roles) ? profile.roles : [])]
     .filter((role): role is string => typeof role === 'string')
     .map((role) => role.toLowerCase());
-  const email = profile.email || profile.preferred_username;
+  const verifiedEmail = profile.email_verified === true ? profile.email : undefined;
 
   if (
     roles.includes('admin') ||
     (profile.sub && configuredValues('MYSTIRA_ADMIN_SUBJECTS').has(profile.sub.toLowerCase())) ||
-    (email && configuredValues('MYSTIRA_ADMIN_EMAILS').has(email.toLowerCase()))
+    (verifiedEmail && configuredValues('MYSTIRA_ADMIN_EMAILS').has(verifiedEmail.toLowerCase()))
   ) {
     return 'admin';
   }

@@ -35,6 +35,10 @@ const AZURE_API_VERSION = '2023-11-03';
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+export const AZURE_MANAGED_IDENTITY_TIMEOUT_MS = 10_000;
+export const AZURE_UPLOAD_REQUEST_TIMEOUT_MS = 15_000;
+export const AZURE_UPLOAD_MAX_RETRIES = 1;
+export const AZURE_UPLOAD_TOTAL_TIMEOUT_MS = 45_000;
 
 // =============================================================================
 // Types
@@ -104,6 +108,10 @@ async function fetchWithTimeout(
   timeoutMs: number = REQUEST_TIMEOUT_MS
 ): Promise<Response> {
   const controller = new AbortController();
+  const parentSignal = options.signal;
+  const abortFromParent = () => controller.abort();
+  if (parentSignal?.aborted) controller.abort();
+  else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -114,6 +122,7 @@ async function fetchWithTimeout(
     return response;
   } finally {
     clearTimeout(timeoutId);
+    parentSignal?.removeEventListener('abort', abortFromParent);
   }
 }
 
@@ -356,9 +365,11 @@ export class StorageService {
     const tokenUrl = new URL(endpoint);
     tokenUrl.searchParams.set('api-version', '2019-08-01');
     tokenUrl.searchParams.set('resource', 'https://storage.azure.com/');
-    const response = await fetchWithTimeout(tokenUrl.toString(), {
-      headers: { 'X-IDENTITY-HEADER': identityHeader },
-    });
+    const response = await fetchWithTimeout(
+      tokenUrl.toString(),
+      { headers: { 'X-IDENTITY-HEADER': identityHeader } },
+      AZURE_MANAGED_IDENTITY_TIMEOUT_MS
+    );
     if (!response.ok) {
       throw new Error(`Managed identity token request failed: ${response.status}`);
     }
@@ -398,39 +409,50 @@ export class StorageService {
       'x-ms-date': new Date().toUTCString(),
     };
 
-    // Add SAS token or account key authentication
-    let authUrl = url;
-    if (config.sasToken) {
-      authUrl = `${url}?${config.sasToken}`;
-    } else if (config.accountKey) {
-      // For production, use Azure SDK or proper HMAC signing
-      // This is a simplified version for POC
-      headers['Authorization'] = this.createAzureAuthHeader(
-        'PUT',
-        config.accountName,
-        config.containerName,
-        key,
-        config.accountKey,
-        headers
-      );
-    } else {
-      headers['Authorization'] = await this.getAzureBearerAuthorization();
-    }
+    const uploadController = new AbortController();
+    const totalTimeout = setTimeout(() => uploadController.abort(), AZURE_UPLOAD_TOTAL_TIMEOUT_MS);
 
-    const response = await withRetry(async () => {
-      const res = await fetchWithTimeout(authUrl, {
-        method: 'PUT',
-        headers,
-        body: buffer,
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Azure Blob upload failed: ${res.status} - ${errorText}`);
+    try {
+      // Add SAS token or account key authentication
+      let authUrl = url;
+      if (config.sasToken) {
+        authUrl = `${url}?${config.sasToken}`;
+      } else if (config.accountKey) {
+        // For production, use Azure SDK or proper HMAC signing
+        // This is a simplified version for POC
+        headers['Authorization'] = this.createAzureAuthHeader(
+          'PUT',
+          config.accountName,
+          config.containerName,
+          key,
+          config.accountKey,
+          headers
+        );
+      } else {
+        headers['Authorization'] = await this.getAzureBearerAuthorization();
       }
 
-      return res;
-    });
+      await withRetry(async () => {
+        const res = await fetchWithTimeout(
+          authUrl,
+          {
+            method: 'PUT',
+            headers,
+            body: buffer,
+            signal: uploadController.signal,
+          },
+          AZURE_UPLOAD_REQUEST_TIMEOUT_MS
+        );
+
+        if (!res.ok) {
+          throw Object.assign(new Error(`Azure Blob upload failed: ${res.status}`), {
+            status: res.status,
+          });
+        }
+      }, AZURE_UPLOAD_MAX_RETRIES);
+    } finally {
+      clearTimeout(totalTimeout);
+    }
 
     logger.info(`[StorageService] Uploaded to Azure: ${key}`);
 

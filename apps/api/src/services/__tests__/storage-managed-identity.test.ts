@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { StorageService } from '../storage/storage.service';
+import {
+  AZURE_MANAGED_IDENTITY_TIMEOUT_MS,
+  AZURE_UPLOAD_MAX_RETRIES,
+  AZURE_UPLOAD_REQUEST_TIMEOUT_MS,
+  AZURE_UPLOAD_TOTAL_TIMEOUT_MS,
+  StorageService,
+} from '../storage/storage.service';
 
 const originalEnvironment = {
   account: process.env.AZURE_STORAGE_ACCOUNT_NAME,
@@ -22,6 +28,16 @@ afterEach(() => {
 });
 
 describe('StorageService managed identity', () => {
+  it('bounds identity lookup and Blob retries below the 60-second caller timeout', () => {
+    const worstCaseConfiguredDuration =
+      AZURE_MANAGED_IDENTITY_TIMEOUT_MS +
+      AZURE_UPLOAD_REQUEST_TIMEOUT_MS * (AZURE_UPLOAD_MAX_RETRIES + 1) +
+      1_000;
+
+    expect(worstCaseConfiguredDuration).toBeLessThan(AZURE_UPLOAD_TOTAL_TIMEOUT_MS);
+    expect(AZURE_UPLOAD_TOTAL_TIMEOUT_MS).toBeLessThan(60_000);
+  });
+
   it('uses and caches a Container Apps identity token for private Blob writes', async () => {
     process.env.AZURE_STORAGE_ACCOUNT_NAME = 'fixturestorage';
     process.env.AZURE_STORAGE_CONTAINER = 'chat-exports';

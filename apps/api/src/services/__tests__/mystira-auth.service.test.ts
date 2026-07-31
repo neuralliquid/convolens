@@ -51,7 +51,7 @@ describe('Mystira extension authentication', () => {
     process.env.MYSTIRA_ADMIN_EMAILS = 'other@example.com, operator@example.com';
     mockDiscoveryAndKeys();
 
-    const result = await exchangeMystiraIdToken(createIdToken());
+    const result = await exchangeMystiraIdToken(createIdToken({ email_verified: true }));
     const claims = jwt.verify(result.token, JWT_SECRET) as jwt.JwtPayload;
 
     expect(claims.role).toBe('admin');
@@ -62,6 +62,16 @@ describe('Mystira extension authentication', () => {
     mockDiscoveryAndKeys();
 
     const result = await exchangeMystiraIdToken(createIdToken());
+    const claims = jwt.verify(result.token, JWT_SECRET) as jwt.JwtPayload;
+
+    expect(claims.role).toBe('user');
+  });
+
+  it('does not elevate an allow-listed email unless Mystira verified it', async () => {
+    process.env.MYSTIRA_ADMIN_EMAILS = 'operator@example.com';
+    mockDiscoveryAndKeys();
+
+    const result = await exchangeMystiraIdToken(createIdToken({ email_verified: false }));
     const claims = jwt.verify(result.token, JWT_SECRET) as jwt.JwtPayload;
 
     expect(claims.role).toBe('user');
