@@ -10,10 +10,33 @@ const read = (path: string) =>
 const includesPreloadToken = (value: string) =>
   value.split(/\s+/).some((token) => token.toLowerCase() === "preload");
 
+type HtmlNode = {
+  tagName?: string;
+  attrs?: Array<{ name: string; value: string }>;
+  childNodes?: HtmlNode[];
+};
+
+const directHtmlRelValue = (source: string): string | undefined => {
+  const document = parse(`<link rel="${source}">`) as HtmlNode;
+  const visit = (node: HtmlNode): string | undefined => {
+    if (node.tagName === "link") {
+      return node.attrs?.find((attribute) => attribute.name === "rel")?.value;
+    }
+    for (const child of node.childNodes ?? []) {
+      const value = visit(child);
+      if (value !== undefined) return value;
+    }
+    return undefined;
+  };
+  return visit(document);
+};
+
 const jsxRelValue = (attribute: ts.JsxAttribute): string | undefined => {
   const initializer = attribute.initializer;
   if (!initializer) return undefined;
-  if (ts.isStringLiteral(initializer)) return initializer.text;
+  if (ts.isStringLiteral(initializer)) {
+    return directHtmlRelValue(initializer.text);
+  }
   if (
     ts.isJsxExpression(initializer) &&
     initializer.expression &&
@@ -59,12 +82,6 @@ const jsxHasAuthoredPreload = (source: string) => {
   return found;
 };
 
-type HtmlNode = {
-  tagName?: string;
-  attrs?: Array<{ name: string; value: string }>;
-  childNodes?: HtmlNode[];
-};
-
 const htmlHasAuthoredPreload = (source: string) => {
   const document = parse(source) as HtmlNode;
   const visit = (node: HtmlNode): boolean => {
@@ -106,6 +123,7 @@ test("records the authored web preload inventory deterministically", () => {
     "<link rel = {'preload'} />",
     "<link rel={`preload`} />",
     '<link rel="stylesheet preload" />',
+    '<link rel="pre&#108;oad" />',
   ]) {
     assert.equal(jsxHasAuthoredPreload(source), true);
   }
@@ -114,6 +132,7 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(jsxHasAuthoredPreload("<link {...linkProps} />"), true);
   assert.equal(jsxHasAuthoredPreload("<link rel={relation} />"), true);
   assert.equal(jsxHasAuthoredPreload('<link rel="preloader" />'), false);
+  assert.equal(jsxHasAuthoredPreload('<link rel={"pre&#108;oad"} />'), false);
   assert.equal(jsxHasAuthoredPreload('<Widget rel="preload" />'), false);
   assert.equal(jsxHasAuthoredPreload("<Link {...props} />"), false);
   assert.equal(htmlHasAuthoredPreload('<link-preview rel="preload">'), false);
