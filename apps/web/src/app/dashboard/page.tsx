@@ -47,6 +47,7 @@ interface ConversationSummary {
   isGroup: boolean;
   participants: string[];
   status: string;
+  rawArtifactStatus: "pending" | "stored" | "failed" | "not-recorded";
   messageCount: number;
   receivedAt: string;
 }
@@ -222,6 +223,15 @@ export default function DashboardPage() {
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 Received {new Date(conversation.receivedAt).toLocaleString()}
+              </p>
+              <p className="mt-2 text-xs font-medium text-muted-foreground">
+                {conversation.rawArtifactStatus === "stored"
+                  ? "Raw source stored"
+                  : conversation.rawArtifactStatus === "not-recorded"
+                    ? "Legacy intake · raw source not recorded"
+                    : conversation.rawArtifactStatus === "failed"
+                      ? "Raw source storage failed"
+                      : "Raw source storage pending"}
               </p>
             </StyledCard>
           ))

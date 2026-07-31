@@ -55,8 +55,18 @@ jobs:
       - name: Test extension browser fixtures
         run: xvfb-run --auto-servernum pnpm --filter @convolens/chrome-extension test:browser:fixtures
 
+      - name: Test extension persistence fixtures
+        run: xvfb-run --auto-servernum pnpm --filter @convolens/chrome-extension test:browser:persistence
+
       - name: Test API conversation intake
-        run: pnpm --filter @convolens/api exec jest --config=jest.config.js --runInBand src/services/__tests__/conversation-intake.service.test.ts
+        run: >-
+          pnpm --filter @convolens/api exec jest --config=jest.config.js --runInBand
+          src/services/__tests__/conversation-intake.service.test.ts
+          src/services/__tests__/selector-report.service.test.ts
+          src/services/__tests__/storage-managed-identity.test.ts
+          src/db/migrations/__tests__/conversation-intake.migration.test.ts
+          src/routes/__tests__/chat-export.routes.test.ts
+          src/routes/__tests__/extension.routes.test.ts
 
       - name: Package and inspect extension
         run: pnpm --filter @convolens/chrome-extension package

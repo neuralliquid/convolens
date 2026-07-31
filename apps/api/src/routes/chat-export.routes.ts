@@ -308,6 +308,11 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         isMedia: message.isMedia,
       })),
     });
+    const persisted = await conversationIntakeService.ensureRawArtifact(
+      saved.conversation,
+      userId,
+      { body: req.file.buffer, contentType: 'text/plain' }
+    );
 
     return res.status(200).json({
       message: saved.duplicate
@@ -320,6 +325,11 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         messageCount: chatData.messages.length,
         participants: chatData.participants,
         receivedAt: saved.conversation.receivedAt,
+        persistence: {
+          rawArtifact: persisted.rawArtifactStatus,
+          normalizedMessages: 'stored',
+          status: persisted.status,
+        },
         dashboardUrl: `/dashboard/conversations/${saved.conversation.id}`,
         dateRange: {
           start: chatData.messages[0]?.timestamp,
@@ -415,6 +425,11 @@ router.post('/extension', authenticateToken, async (req, res) => {
         replyToSourceMessageId: message.replyTo,
       })),
     });
+    const persisted = await conversationIntakeService.ensureRawArtifact(
+      saved.conversation,
+      userId,
+      { body: JSON.stringify(chatData), contentType: 'application/json' }
+    );
 
     const result = {
       chatId: chatData.chatId,
@@ -424,6 +439,11 @@ router.post('/extension', authenticateToken, async (req, res) => {
       receivedAt: saved.conversation.receivedAt,
       dashboardUrl: `/dashboard/conversations/${saved.conversation.id}`,
       reconciliationRequired: saved.reconciliationRequired,
+      persistence: {
+        rawArtifact: persisted.rawArtifactStatus,
+        normalizedMessages: 'stored',
+        status: persisted.status,
+      },
     };
 
     metrics.trackExtraction(true, 'chrome-extension', chatData.messages.length);
@@ -500,6 +520,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
           reconciliationCandidateIds: conversation.reconciliationCandidateIds || [],
           status: conversation.status,
           errorCode: conversation.errorCode,
+          rawArtifact: {
+            status: conversation.rawArtifactStatus,
+            sha256: conversation.rawArtifactSha256,
+            size: conversation.rawArtifactSize,
+          },
           sourceExtractedAt: conversation.sourceExtractedAt,
           provenance: conversation.provenance,
           receivedAt: conversation.receivedAt,

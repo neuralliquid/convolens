@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource, IsNull } from 'typeorm';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import {
@@ -9,6 +12,7 @@ import {
   createConversationContentHashV2,
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
+import { StorageService } from '../storage/storage.service';
 
 const baseInput: ConversationIntakeInput = {
   userId: 'mystira-user-1',
@@ -112,6 +116,55 @@ describe('ConversationIntakeService', () => {
       'Ready for alpha.',
     ]);
     expect(await service.getForUser('other-user', saved.conversation.id)).toBeNull();
+  });
+
+  it('stores an integrity-addressed raw artifact and deletes it with the intake', async () => {
+    const artifactRoot = await mkdtemp(resolve(tmpdir(), 'convolens-artifact-test-'));
+    try {
+      const artifactService = new ConversationIntakeService(
+        dataSource,
+        new StorageService({ provider: 'local', localBasePath: artifactRoot })
+      );
+      const saved = await artifactService.save(baseInput);
+      const persisted = await artifactService.ensureRawArtifact(
+        saved.conversation,
+        baseInput.userId,
+        { body: '{"fixture":true}', contentType: 'application/json' }
+      );
+
+      expect(persisted.rawArtifactStatus).toBe('stored');
+      expect(persisted.rawArtifactSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(persisted.rawArtifactKey).toMatch(
+        /^raw-intakes\/[a-f0-9]{32}\/[a-f0-9-]+\/[a-f0-9]{64}\.json$/
+      );
+      expect(await readFile(resolve(artifactRoot, persisted.rawArtifactKey!), 'utf8')).toBe(
+        '{"fixture":true}'
+      );
+
+      const duplicate = await artifactService.save({
+        ...baseInput,
+        messages: baseInput.messages.map((message, index) => ({
+          ...message,
+          sourceMessageId: `retry-${index}`,
+        })),
+      });
+      const retained = await artifactService.ensureRawArtifact(
+        duplicate.conversation,
+        baseInput.userId,
+        { body: '{"fixture":"retry"}', contentType: 'application/json' }
+      );
+      expect(retained.rawArtifactKey).toBe(persisted.rawArtifactKey);
+      expect(await readFile(resolve(artifactRoot, retained.rawArtifactKey!), 'utf8')).toBe(
+        '{"fixture":true}'
+      );
+
+      expect(await artifactService.deleteForUser(baseInput.userId, persisted.id)).toBe(true);
+      await expect(
+        readFile(resolve(artifactRoot, persisted.rawArtifactKey!))
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(artifactRoot, { recursive: true, force: true });
+    }
   });
 
   it('deduplicates stable content even when connector IDs change', async () => {

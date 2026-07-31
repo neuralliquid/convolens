@@ -21,7 +21,11 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 import { createHmac } from 'crypto';
 import { logger } from '../../utils/logger.js';
-import { getStorageProvider, getAzureBlobStorageConfig, type StorageProvider } from '../../config/azure/index.js';
+import {
+  getStorageProvider,
+  getAzureBlobStorageConfig,
+  type StorageProvider,
+} from '../../config/azure/index.js';
 
 // =============================================================================
 // Constants
@@ -153,6 +157,7 @@ async function withRetry<T>(
 export class StorageService {
   private provider: StorageProvider;
   private localBasePath: string;
+  private azureAccessToken?: { value: string; expiresAt: number };
 
   constructor(config: StorageServiceConfig = {}) {
     this.provider = config.provider || getStorageProvider();
@@ -253,7 +258,11 @@ export class StorageService {
   // Local Storage Implementation
   // ===========================================================================
 
-  private async uploadToLocal(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
+  private async uploadToLocal(
+    key: string,
+    data: Buffer | string,
+    options: UploadOptions
+  ): Promise<StorageFile> {
     const filePath = join(this.localBasePath, key);
     const dirPath = dirname(filePath);
 
@@ -327,7 +336,48 @@ export class StorageService {
   // Azure Blob Storage Implementation
   // ===========================================================================
 
-  private async uploadToAzure(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
+  private async getAzureBearerAuthorization(): Promise<string> {
+    if (this.azureAccessToken && this.azureAccessToken.expiresAt > Date.now() + 300_000) {
+      return `Bearer ${this.azureAccessToken.value}`;
+    }
+
+    const endpoint = process.env.IDENTITY_ENDPOINT;
+    const identityHeader = process.env.IDENTITY_HEADER;
+    if (!endpoint || !identityHeader) {
+      throw new Error(
+        'Azure Blob Storage requires a SAS token, account key, or Container Apps managed identity'
+      );
+    }
+
+    const tokenUrl = new URL(endpoint);
+    tokenUrl.searchParams.set('api-version', '2019-08-01');
+    tokenUrl.searchParams.set('resource', 'https://storage.azure.com/');
+    const response = await fetchWithTimeout(tokenUrl.toString(), {
+      headers: { 'X-IDENTITY-HEADER': identityHeader },
+    });
+    if (!response.ok) {
+      throw new Error(`Managed identity token request failed: ${response.status}`);
+    }
+    const payload = (await response.json()) as {
+      access_token?: string;
+      expires_on?: string | number;
+    };
+    if (!payload.access_token) {
+      throw new Error('Managed identity token response did not contain an access token');
+    }
+    const parsedExpiry = Number(payload.expires_on);
+    this.azureAccessToken = {
+      value: payload.access_token,
+      expiresAt: Number.isFinite(parsedExpiry) ? parsedExpiry * 1000 : Date.now() + 3_600_000,
+    };
+    return `Bearer ${payload.access_token}`;
+  }
+
+  private async uploadToAzure(
+    key: string,
+    data: Buffer | string,
+    options: UploadOptions
+  ): Promise<StorageFile> {
     const config = getAzureBlobStorageConfig();
     if (!config) throw new Error('Azure Blob Storage not configured');
 
@@ -359,6 +409,8 @@ export class StorageService {
         config.accountKey,
         headers
       );
+    } else {
+      headers['Authorization'] = await this.getAzureBearerAuthorization();
     }
 
     const response = await withRetry(async () => {
@@ -397,11 +449,9 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`Azure Blob download failed: ${response.status}`);
@@ -420,12 +470,9 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { method: 'DELETE', headers });
 
     if (!response.ok && response.status !== 404) {
       throw new Error(`Azure Blob delete failed: ${response.status}`);
@@ -455,12 +502,9 @@ export class StorageService {
       url = `${url}?${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      method: 'HEAD',
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { method: 'HEAD', headers });
 
     return response.ok;
   }
@@ -476,11 +520,9 @@ export class StorageService {
       url = `${url}&${config.sasToken}`;
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'x-ms-version': '2023-11-03',
-      },
-    });
+    const headers: Record<string, string> = { 'x-ms-version': AZURE_API_VERSION };
+    if (!config.sasToken) headers.Authorization = await this.getAzureBearerAuthorization();
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`Azure Blob list failed: ${response.status}`);
@@ -525,7 +567,8 @@ export class StorageService {
       const lastModified = this.extractXmlElement(blobContent, 'Last-Modified');
 
       // Extract Content-Type if available
-      const contentType = this.extractXmlElement(blobContent, 'Content-Type') || 'application/octet-stream';
+      const contentType =
+        this.extractXmlElement(blobContent, 'Content-Type') || 'application/octet-stream';
 
       files.push({
         key: this.decodeXmlEntities(name),
@@ -588,9 +631,9 @@ export class StorageService {
   ): string {
     // Build canonicalized headers (x-ms-* headers, sorted alphabetically)
     const canonicalizedHeaders = Object.keys(headers)
-      .filter(key => key.toLowerCase().startsWith('x-ms-'))
+      .filter((key) => key.toLowerCase().startsWith('x-ms-'))
       .sort()
-      .map(key => `${key.toLowerCase()}:${headers[key].trim()}`)
+      .map((key) => `${key.toLowerCase()}:${headers[key].trim()}`)
       .join('\n');
 
     // Build canonicalized resource
@@ -602,24 +645,23 @@ export class StorageService {
     const contentType = headers['Content-Type'] || '';
 
     const stringToSign = [
-      method,                              // HTTP Verb
-      '',                                  // Content-Encoding
-      '',                                  // Content-Language
-      contentLength,                       // Content-Length
-      '',                                  // Content-MD5
-      contentType,                         // Content-Type
-      '',                                  // Date (empty when x-ms-date is used)
-      '',                                  // If-Modified-Since
-      '',                                  // If-Match
-      '',                                  // If-None-Match
-      '',                                  // If-Unmodified-Since
-      '',                                  // Range
-      canonicalizedHeaders,                // Canonicalized headers
-      canonicalizedResource,               // Canonicalized resource
+      method, // HTTP Verb
+      '', // Content-Encoding
+      '', // Content-Language
+      contentLength, // Content-Length
+      '', // Content-MD5
+      contentType, // Content-Type
+      '', // Date (empty when x-ms-date is used)
+      '', // If-Modified-Since
+      '', // If-Match
+      '', // If-None-Match
+      '', // If-Unmodified-Since
+      '', // Range
+      canonicalizedHeaders, // Canonicalized headers
+      canonicalizedResource, // Canonicalized resource
     ].join('\n');
 
     // Create HMAC-SHA256 signature
-    const { createHmac } = require('crypto');
     const decodedKey = Buffer.from(accountKey, 'base64');
     const signature = createHmac('sha256', decodedKey)
       .update(stringToSign, 'utf8')
@@ -644,7 +686,11 @@ export class StorageService {
     throw new Error(message);
   }
 
-  private async uploadToS3(key: string, data: Buffer | string, options: UploadOptions): Promise<StorageFile> {
+  private async uploadToS3(
+    key: string,
+    data: Buffer | string,
+    options: UploadOptions
+  ): Promise<StorageFile> {
     this.assertS3NotImplemented();
   }
 

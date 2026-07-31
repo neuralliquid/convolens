@@ -8,6 +8,7 @@ import {
   type ConversationSourceKind,
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
+import { StorageService } from './storage/storage.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
@@ -67,6 +68,7 @@ export interface ConversationIntakeSummary {
   isGroup: boolean;
   participants: string[];
   status: string;
+  rawArtifactStatus: string;
   messageCount: number;
   sourceExtractedAt?: Date;
   receivedAt: Date;
@@ -76,6 +78,11 @@ export interface SaveConversationResult {
   conversation: ConversationIntake;
   duplicate: boolean;
   reconciliationRequired: boolean;
+}
+
+export interface RawConversationArtifact {
+  body: Buffer | string;
+  contentType: 'application/json' | 'text/plain';
 }
 
 function normalizeHashValue(value: string): string {
@@ -400,7 +407,58 @@ function isContentHashUniqueConstraintError(error: unknown): boolean {
 }
 
 export class ConversationIntakeService {
-  constructor(private readonly dataSource: DataSource = AppDataSource) {}
+  constructor(
+    private readonly dataSource: DataSource = AppDataSource,
+    private readonly storage: StorageService = new StorageService()
+  ) {}
+
+  async ensureRawArtifact(
+    conversation: ConversationIntake,
+    userId: string,
+    artifact: RawConversationArtifact
+  ): Promise<ConversationIntake> {
+    const buffer = Buffer.isBuffer(artifact.body) ? artifact.body : Buffer.from(artifact.body);
+    const sha256 = createHash('sha256').update(buffer).digest('hex');
+    // A duplicate normalized intake retains the exact first accepted raw evidence.
+    // Connector-generated ids and extraction timestamps may differ on a retry,
+    // so replacing the artifact would create unowned blobs and weaken provenance.
+    if (conversation.rawArtifactStatus === 'stored' && conversation.rawArtifactKey) {
+      return conversation;
+    }
+
+    const ownerScope = createHash('sha256').update(userId).digest('hex').slice(0, 32);
+    const extension = artifact.contentType === 'application/json' ? 'json' : 'txt';
+    const key = `raw-intakes/${ownerScope}/${conversation.id}/${sha256}.${extension}`;
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    await repository.update(conversation.id, {
+      rawArtifactKey: key,
+      rawArtifactSha256: sha256,
+      rawArtifactSize: buffer.length,
+      rawArtifactStatus: 'pending',
+      errorCode: undefined,
+    });
+
+    try {
+      await this.storage.uploadFile(key, buffer, {
+        contentType: artifact.contentType,
+        metadata: { intakeId: conversation.id },
+      });
+      await repository.update(conversation.id, {
+        rawArtifactStatus: 'stored',
+        status: 'received',
+        errorCode: undefined,
+      });
+    } catch (error) {
+      await repository.update(conversation.id, {
+        rawArtifactStatus: 'failed',
+        status: 'failed',
+        errorCode: 'raw_artifact_write_failed',
+      });
+      throw error;
+    }
+
+    return (await repository.findOneByOrFail({ id: conversation.id })) as ConversationIntake;
+  }
 
   private async updateDuplicate(
     conversation: ConversationIntake,
@@ -713,6 +771,7 @@ export class ConversationIntakeService {
       isGroup: conversation.isGroup,
       participants: conversation.participants || [],
       status: conversation.status,
+      rawArtifactStatus: conversation.rawArtifactStatus,
       messageCount: conversation.messageCount,
       sourceExtractedAt: conversation.sourceExtractedAt,
       receivedAt: conversation.receivedAt,
@@ -728,7 +787,13 @@ export class ConversationIntakeService {
   }
 
   async deleteForUser(userId: string, id: string): Promise<boolean> {
-    const result = await this.dataSource.getRepository(ConversationIntake).delete({ id, userId });
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    const conversation = await repository.findOneBy({ id, userId });
+    if (!conversation) return false;
+    if (conversation.rawArtifactKey) {
+      await this.storage.deleteFile(conversation.rawArtifactKey);
+    }
+    const result = await repository.delete({ id, userId });
     return result.affected === 1;
   }
 }
