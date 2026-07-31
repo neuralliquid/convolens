@@ -250,7 +250,7 @@ const jsxSourcesWithAuthoredPreload = (
         "createElement",
       ) ||
       !node.arguments[0] ||
-      !ts.isStringLiteral(node.arguments[0]) ||
+      !ts.isStringLiteralLike(node.arguments[0]) ||
       node.arguments[0].text !== "link"
     ) {
       return false;
@@ -259,8 +259,25 @@ const jsxSourcesWithAuthoredPreload = (
     if (!props || props.kind === ts.SyntaxKind.NullKeyword) return false;
     if (!ts.isObjectLiteralExpression(props)) return true;
     if (props.properties.some(ts.isSpreadAssignment)) return true;
+    const propertyName = (name: ts.PropertyName | undefined) => {
+      if (!name) return undefined;
+      if (
+        ts.isIdentifier(name) ||
+        ts.isStringLiteral(name) ||
+        ts.isNoSubstitutionTemplateLiteral(name)
+      ) {
+        return name.text;
+      }
+      if (
+        ts.isComputedPropertyName(name) &&
+        ts.isStringLiteralLike(name.expression)
+      ) {
+        return name.expression.text;
+      }
+      return undefined;
+    };
     const rel = props.properties.find(
-      (property) => property.name?.getText().toLowerCase() === "rel",
+      (property) => propertyName(property.name)?.toLowerCase() === "rel",
     );
     if (!rel) return false;
     if (!ts.isPropertyAssignment(rel)) return true;
@@ -416,6 +433,24 @@ test("records the authored web preload inventory deterministically", () => {
   assert.equal(
     jsxHasAuthoredPreload(
       `import { createElement as h } from "react"; h("link", { rel: "stylesheet preload" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      "import * as React from \"react\"; React.createElement(`link`, { rel: \"preload\" });",
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      `import * as React from "react"; React.createElement("link", { "rel": "preload" });`,
+    ),
+    true,
+  );
+  assert.equal(
+    jsxHasAuthoredPreload(
+      "import * as React from \"react\"; React.createElement(\"link\", { [`rel`]: \"preload\" });",
     ),
     true,
   );
