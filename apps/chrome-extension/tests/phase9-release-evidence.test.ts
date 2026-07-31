@@ -5,6 +5,7 @@ import {
   verifyDataDescriptor,
   verifyCentralDirectoryExtent,
   verifyEndOfCentralDirectory,
+  verifyEntryRequirements,
   verifyLocalEntryIntegrity,
   verifySingleDiskEntry,
 } from "../scripts/verify-package.mjs";
@@ -144,5 +145,27 @@ test("requires a complete, internally consistent single-disk ZIP EOCD", () => {
   assert.throws(
     () => verifyCentralDirectoryExtent(40, 59, 100),
     /central directory does not end at the EOCD/,
+  );
+});
+
+test("accepts only the supported ZIP extraction versions and flags", () => {
+  const entry = {
+    name: "manifest.json",
+    versionNeeded: 20,
+    compressionMethod: 8,
+    flags: 0x08,
+  };
+  assert.doesNotThrow(() => verifyEntryRequirements(entry, 20));
+  assert.throws(
+    () => verifyEntryRequirements({ ...entry, versionNeeded: 99 }, 99),
+    /requires an unsupported version/,
+  );
+  assert.throws(
+    () => verifyEntryRequirements(entry, 10),
+    /requires an unsupported version/,
+  );
+  assert.throws(
+    () => verifyEntryRequirements({ ...entry, flags: 0x48 }, 20),
+    /uses unsupported flags/,
   );
 });

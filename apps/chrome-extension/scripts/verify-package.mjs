@@ -123,6 +123,21 @@ export function verifyCentralDirectoryExtent(
   }
 }
 
+export function verifyEntryRequirements(entry, localVersionNeeded) {
+  if (
+    localVersionNeeded !== entry.versionNeeded ||
+    entry.versionNeeded < 10 ||
+    entry.versionNeeded > 20 ||
+    (entry.compressionMethod === 8 && entry.versionNeeded < 20)
+  ) {
+    throw new Error(`ZIP entry requires an unsupported version: ${entry.name}`);
+  }
+  const allowedFlags = 0x0808 | (entry.compressionMethod === 8 ? 0x0006 : 0);
+  if ((entry.flags & ~allowedFlags) !== 0) {
+    throw new Error(`ZIP entry uses unsupported flags: ${entry.name}`);
+  }
+}
+
 function verifyEntryPayload(buffer, entry) {
   const offset = entry.localHeaderOffset;
   if (
@@ -131,6 +146,7 @@ function verifyEntryPayload(buffer, entry) {
   ) {
     throw new Error(`ZIP entry has an invalid local header: ${entry.name}`);
   }
+  const localVersionNeeded = buffer.readUInt16LE(offset + 4);
   const localFlags = buffer.readUInt16LE(offset + 6);
   const localMethod = buffer.readUInt16LE(offset + 8);
   const localCrc = buffer.readUInt32LE(offset + 14);
@@ -152,6 +168,7 @@ function verifyEntryPayload(buffer, entry) {
   if ((entry.flags & 1) !== 0) {
     throw new Error(`ZIP entry must not be encrypted: ${entry.name}`);
   }
+  verifyEntryRequirements(entry, localVersionNeeded);
   verifyLocalEntryIntegrity(entry, {
     crc: localCrc,
     compressedSize: localCompressedSize,
@@ -211,6 +228,7 @@ export function inspectZip(buffer) {
       throw new Error(`ZIP central entry ${index + 1} is malformed.`);
     }
     const entry = {
+      versionNeeded: buffer.readUInt16LE(cursor + 6),
       flags: buffer.readUInt16LE(cursor + 8),
       compressionMethod: buffer.readUInt16LE(cursor + 10),
       crc: buffer.readUInt32LE(cursor + 16),
