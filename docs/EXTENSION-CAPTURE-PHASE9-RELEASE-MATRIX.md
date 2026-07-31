@@ -18,7 +18,7 @@ This matrix consolidates repository-owned automated evidence. It is not a record
 | Legacy migration, in-memory retry, recapture-required    | `phase1-capture-safety.test.ts`, `phase8-operational-actions.test.ts`                                                                                | Automated                  |
 | API new/duplicate and user isolation                     | `conversation-intake.service.test.ts`                                                                                                                | Automated                  |
 | Messaging-channel teardown                               | `phase1-capture-safety.test.ts`, `popup-runtime.test.ts`                                                                                             | Automated                  |
-| Authored preload inventory                               | `phase9-release-evidence.test.ts` inventories web source and finds no explicit authored preload links                                                | Automated source inventory |
+| Preload warning attribution                              | No browser performance trace was run; source scanning cannot prove absence across JSX, React APIs, native DOM APIs, CommonJS, aliases, and fixtures | Operator-held runtime evidence |
 | Web performance baseline                                 | Clean production build compiles 24 routes; no browser performance trace was run                                                                      | Build evidence only        |
 | Tests, typecheck, build, package, version, ZIP           | CI plus `verify-package.mjs` validates aligned 1.0.20 metadata and exactly 13 safe ZIP entries by local header, decompression, payload size, and CRC | Automated                  |
 
