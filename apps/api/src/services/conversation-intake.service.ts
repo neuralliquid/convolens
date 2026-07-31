@@ -959,9 +959,11 @@ export class ConversationIntakeService {
     // own late upload; new retries cannot claim a deleting row.
     const marked = await repository.update({ id, userId }, { rawArtifactStatus: 'deleting' });
     if (marked.affected !== 1) return false;
-    if (conversation.rawArtifactClaimId && conversation.rawArtifactClaimedAt) {
+    const tombstoned = await repository.findOneBy({ id, userId });
+    if (!tombstoned) return false;
+    if (tombstoned.rawArtifactClaimId && tombstoned.rawArtifactClaimedAt) {
       const cleanupSafeAt =
-        conversation.rawArtifactClaimedAt.getTime() +
+        tombstoned.rawArtifactClaimedAt.getTime() +
         AZURE_UPLOAD_TOTAL_TIMEOUT_MS +
         RAW_ARTIFACT_DELETE_GRACE_MS;
       const remainingUploadWindow = cleanupSafeAt - Date.now();
@@ -969,8 +971,8 @@ export class ConversationIntakeService {
         await new Promise((resolve) => setTimeout(resolve, remainingUploadWindow));
       }
     }
-    if (conversation.rawArtifactKey) {
-      await this.storage.deleteFile(conversation.rawArtifactKey);
+    if (tombstoned.rawArtifactKey) {
+      await this.storage.deleteFile(tombstoned.rawArtifactKey);
     }
     const result = await repository.delete({ id, userId });
     return result.affected === 1;

@@ -450,6 +450,34 @@ describe('ConversationIntakeService', () => {
     expect(deleteFile).toHaveBeenCalledTimes(2);
   });
 
+  it('reloads a claim won by another replica immediately before tombstoning', async () => {
+    const deleteFile = jest.fn().mockResolvedValue(undefined);
+    const artifactService = new ConversationIntakeService(dataSource, {
+      deleteFile,
+    } as unknown as StorageService);
+    const saved = await artifactService.save(baseInput);
+    const repository = dataSource.getRepository(ConversationIntake);
+    const update = repository.update.bind(repository);
+    const racedKey = `raw-intakes/raced/${saved.conversation.id}/claim/artifact.json`;
+    jest.spyOn(repository, 'update').mockImplementationOnce(async (criteria, partialEntity) => {
+      await update(saved.conversation.id, {
+        rawArtifactKey: racedKey,
+        rawArtifactSha256: createHash('sha256').update('raced').digest('hex'),
+        rawArtifactSize: 5,
+        rawArtifactStatus: 'pending',
+        rawArtifactClaimId: '00000000-0000-4000-8000-000000000099',
+        rawArtifactClaimedAt: new Date(
+          Date.now() - AZURE_UPLOAD_TOTAL_TIMEOUT_MS - RAW_ARTIFACT_DELETE_GRACE_MS
+        ),
+      });
+      return update(criteria, partialEntity);
+    });
+
+    expect(await artifactService.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(deleteFile).toHaveBeenCalledWith(racedKey);
+    expect(await repository.findOneBy({ id: saved.conversation.id })).toBeNull();
+  });
+
   it('deduplicates stable content even when connector IDs change', async () => {
     const first = await service.save(baseInput);
     const second = await service.save({
