@@ -156,11 +156,7 @@ export class TicketCandidateService {
       await this.acquireCandidatePublishClaim(current, claimId);
       const attemptRepository = this.dataSource.getRepository(BatonPublishAttempt);
       const recordedSuccess = (current.publishAttempts || [])
-        .filter(
-          (candidateAttempt) =>
-            candidateAttempt.batonTaskId &&
-            (candidateAttempt.status === 'succeeded' || candidateAttempt.status === 'duplicate')
-        )
+        .filter((candidateAttempt) => candidateAttempt.batonTaskId && candidateAttempt.completedAt)
         .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
       if (recordedSuccess?.batonTaskId) {
         const finalized = await repository.update(

@@ -224,9 +224,10 @@ describe('TicketCandidateService', () => {
       candidateId: candidate.id,
       userId: 'user-1',
       attemptNumber: 1,
-      status: 'succeeded',
+      status: 'failed',
       batonTaskId: 'task-recorded',
       responseStatus: 201,
+      errorCode: 'baton_ambiguous',
       completedAt: new Date(),
     });
 
