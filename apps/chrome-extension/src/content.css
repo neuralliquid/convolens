@@ -163,7 +163,8 @@
 
 .ws-launcher-header span,
 .ws-scope-copy,
-.ws-position-controls > span,
+.ws-position-heading span,
+.ws-position-field > span,
 .ws-legacy-attention span {
   color: var(--ws-text-muted);
   font-size: 12px;
@@ -511,35 +512,65 @@
 
 .ws-position-controls {
   display: grid;
-  gap: 7px;
+  gap: 11px;
   margin-top: 13px;
   padding-top: 11px;
   border-top: 1px solid var(--ws-border);
 }
 
-.ws-position-controls div {
+.ws-position-heading {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  gap: 2px;
 }
 
-.ws-position-controls div button,
+.ws-position-heading strong {
+  color: var(--ws-text);
+  font-size: 12px;
+}
+
+.ws-position-field {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-position-field > span {
+  font-weight: 650;
+}
+
+.ws-position-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  background: var(--ws-surface-muted);
+}
+
+.ws-position-side-options {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.ws-position-options button,
 .ws-link-btn {
   min-height: 30px;
   padding: 5px 8px;
-  border: 1px solid var(--ws-border);
-  border-radius: 8px;
-  background: var(--ws-surface);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
   color: var(--ws-text);
   font-size: 11px;
   font-weight: 650;
   cursor: pointer;
 }
 
-.ws-position-controls div button[aria-pressed="true"] {
-  border-color: var(--ws-green);
-  background: #eaf8f1;
+.ws-position-options button[aria-pressed="true"] {
+  border-color: rgba(8, 122, 85, 0.35);
+  background: var(--ws-surface);
   color: #05603a;
+  box-shadow: 0 1px 3px rgba(15, 23, 20, 0.12);
 }
 
 .ws-link-btn {
@@ -584,7 +615,7 @@
   }
 
   .ws-status-success,
-  .ws-position-controls div button[aria-pressed="true"] {
+  .ws-position-options button[aria-pressed="true"] {
     background: #123d2d;
     color: #a6f4c5;
   }
@@ -643,7 +674,7 @@
   .ws-launcher-toggle,
   .ws-launcher-panel,
   .ws-capture-btn,
-  .ws-position-controls div button,
+  .ws-position-options button,
   .ws-legacy-attention {
     border: 2px solid currentColor;
     forced-color-adjust: auto;

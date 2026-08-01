@@ -121,3 +121,31 @@ test("attributes browser console output without leaking credentials", async ({
   expect(serialized).not.toContain("fixture-owner-a-token");
   expect(serialized).not.toContain("fixture-only");
 });
+
+test("moves the launcher with explicit height and side controls", async ({
+  harness,
+}) => {
+  await openCapturePanel(harness.page);
+
+  const bottom = harness.page.locator('[data-launcher-preset="lower"]');
+  const left = harness.page.locator('[data-launcher-edge="left"]');
+  await expect(
+    harness.page.locator('[data-launcher-preset="middle"]'),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    harness.page.locator('[data-launcher-edge="right"]'),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await bottom.click();
+  await left.click();
+
+  await expect(bottom).toHaveAttribute("aria-pressed", "true");
+  await expect(left).toHaveAttribute("aria-pressed", "true");
+  await expect(harness.page.locator("#convolens-fab")).toHaveClass(
+    /ws-edge-left/,
+  );
+  await expect(harness.page.locator("#convolens-fab")).toHaveAttribute(
+    "data-preset",
+    "lower",
+  );
+});

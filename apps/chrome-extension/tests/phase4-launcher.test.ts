@@ -65,6 +65,11 @@ test("renders a compact inward-opening launcher with explicit position controls"
   assert.match(contentSource, /data-launcher-preset="upper"/);
   assert.match(contentSource, /data-launcher-preset="middle"/);
   assert.match(contentSource, /data-launcher-preset="lower"/);
+  assert.match(contentSource, /data-launcher-edge="left"/);
+  assert.match(contentSource, /data-launcher-edge="right"/);
+  assert.match(contentSource, /aria-labelledby="ws-position-height-label"/);
+  assert.match(contentSource, /aria-labelledby="ws-position-side-label"/);
+  assert.doesNotMatch(contentSource, /Move to .* edge/);
   assert.match(contentSource, /setPointerCapture/);
   assert.match(contentSource, /resolveLauncherEdge/);
   assert.match(contentSource, /resolveLauncherPreset/);
@@ -80,6 +85,8 @@ test("renders a compact inward-opening launcher with explicit position controls"
   );
   assert.match(styles, /position: absolute/);
   assert.match(styles, /data-preset="lower"[\s\S]*bottom: 0/);
+  assert.match(styles, /\.ws-position-options \{/);
+  assert.match(styles, /\.ws-position-side-options \{/);
 });
 
 test("keeps operation, migration, and accessibility state inside the panel", () => {
