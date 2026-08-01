@@ -57,6 +57,7 @@ test("publishes only a validated extension ZIP and checksum to releases", () => 
   );
   assert.match(workflow, /permissions:\s*\n\s*contents: write/);
   assert.match(workflow, /actions\/download-artifact@/);
+  assert.match(workflow, /GH_REPO: \$\{\{ github\.repository \}\}/);
   assert.match(workflow, /gh release upload "\$RELEASE_TAG"/);
   assert.match(workflow, /convolens-extension\.zip\.sha256/);
 });
