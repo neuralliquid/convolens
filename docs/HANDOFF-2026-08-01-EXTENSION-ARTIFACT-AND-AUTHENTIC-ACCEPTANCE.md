@@ -35,6 +35,7 @@ Download and verify:
 
 ```powershell
 gh run download 30710724769 `
+  --repo neuralliquid/convolens `
   --name convolens-extension-d91ab0ea3b98d041991d9820be8705992f7eeb4b `
   --dir C:\tmp\convolens-extension-main-d91ab0e
 
