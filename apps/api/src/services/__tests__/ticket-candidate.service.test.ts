@@ -224,6 +224,53 @@ describe('TicketCandidateService', () => {
     expect(intake.batonPublishClaimId).toBeNull();
   });
 
+  it('does not reclaim an intake lease renewed during the stale-claim CAS', async () => {
+    const fetcher = jest.fn<typeof fetch>();
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      PROJECT_ID
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
+    const repository = dataSource.getRepository(ConversationIntake);
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await repository.update(intakeId, {
+      batonPublishClaimId: 'renewed-intake-claim',
+      batonPublishClaimedAt: staleAt,
+    });
+    const originalUpdate = Object.getPrototypeOf(repository).update.bind(repository) as typeof repository.update;
+    let renewed = false;
+    const updateSpy = jest.spyOn(repository, 'update').mockImplementation(async (criteria, partial) => {
+      if (
+        !renewed &&
+        typeof criteria === 'object' &&
+        'batonPublishClaimId' in criteria &&
+        criteria.batonPublishClaimId === 'renewed-intake-claim' &&
+        partial.batonPublishClaimId !== null
+      ) {
+        renewed = true;
+        await originalUpdate(intakeId, { batonPublishClaimedAt: new Date() });
+      }
+      return originalUpdate(criteria, partial);
+    });
+
+    try {
+      await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+        'Another Baton publication is in progress'
+      );
+    } finally {
+      updateSpy.mockRestore();
+    }
+
+    const stored = await repository.findOneByOrFail({ id: intakeId });
+    expect(renewed).toBe(true);
+    expect(stored.batonPublishClaimId).toBe('renewed-intake-claim');
+    expect(stored.batonPublishClaimedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('fences a delayed publisher after its stale claim is reclaimed', async () => {
     let releaseOriginalLookup!: (response: Response) => void;
     let markOriginalLookupStarted!: () => void;

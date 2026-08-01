@@ -18,6 +18,7 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - the Baton create boundary is persisted before POST; first stale recovery converts `baton_create_started` into a fresh durable ambiguity boundary so the full reconciliation window occurs after the publication lease expires and before any later POST;
 - after claiming publication, the service reloads attempts; the pre-POST boundary atomically renews both intake and candidate claims, and terminal attempt/candidate writes are transactional so a delayed stale publisher cannot create or finalize under a reclaimed claim;
 - stale deletion cleanup CAS-compares both the Baton claim ID and its observed lease timestamp, so a concurrent pre-POST renewal forces deletion to reload and block;
+- stale publication reclaim uses the same claim-ID-plus-observed-timestamp CAS, so it cannot overwrite or later clear a concurrently renewed intake lease;
 - Baton project IDs are normalized and UUID-validated before candidate update or acceptance persistence;
 - ambiguous Baton creates retain the original reconciliation deadline across lookup failures, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
 - Mystira access-token expiry is tracked independently from ID-token expiry before the token is forwarded;
@@ -37,9 +38,9 @@ The headed persistence fixture now exercises the production extension, built API
 
 Validated locally:
 
-- candidate service suite: 12/12;
-- candidate, intake, and migration suite: 57/57;
-- complete API Jest suite: 152/152;
+- candidate service suite: 13/13;
+- candidate, intake, and migration suite: 58/58;
+- complete API Jest suite: 153/153;
 - focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
 - headed extension UI/console fixtures: 4/4;

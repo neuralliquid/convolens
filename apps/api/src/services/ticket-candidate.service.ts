@@ -460,6 +460,7 @@ export class TicketCandidateService {
           userId,
           rawArtifactStatus: intake.rawArtifactStatus,
           batonPublishClaimId: intake.batonPublishClaimId || IsNull(),
+          batonPublishClaimedAt: intake.batonPublishClaimedAt || IsNull(),
         },
         { batonPublishClaimId: claimId, batonPublishClaimedAt: new Date() }
       );
