@@ -14,7 +14,7 @@ await Promise.all([
     outfile: "./dist/content.js",
     format: "iife",
     platform: "browser",
-    target: "chrome102",
+    target: "chrome111",
   }),
   build({
     entryPoints: ["./src/whatsapp-page-identity.ts"],
@@ -22,7 +22,7 @@ await Promise.all([
     outfile: "./dist/whatsapp-page-identity.js",
     format: "iife",
     platform: "browser",
-    target: "chrome102",
+    target: "chrome111",
   }),
   build({
     entryPoints: ["./src/background.ts"],
@@ -30,7 +30,7 @@ await Promise.all([
     outfile: "./dist/background.js",
     format: "esm",
     platform: "browser",
-    target: "chrome102",
+    target: "chrome111",
   }),
   copyFile(resolve("src/content.css"), resolve("dist/content.css")),
 ]);

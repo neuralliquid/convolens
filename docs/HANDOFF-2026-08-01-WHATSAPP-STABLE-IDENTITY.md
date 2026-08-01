@@ -15,12 +15,14 @@ The current WhatsApp DOM no longer exposes `data-jid` or `data-chat-id` for the 
 The shipped bridge:
 
 - runs as a manifest-declared `MAIN`-world content script at `document_start`;
+- requires Chrome 111 or newer, matching declarative `MAIN`-world support;
 - reads only the active header's React properties and only the active chat model's `id`/`__x_id` serialized value;
 - accepts only recognized WhatsApp JID domains and canonicalizes direct-chat `@c.us` identity;
 - rejects missing or conflicting candidates;
 - returns the JID to the isolated content script only through an ephemeral request/response event;
 - does not store the page object graph, cookies, tokens, chat labels, participants, or message content;
 - rechecks identity during collection and on chat DOM changes, invalidating an unconfirmed review when the verified identity changes or disappears.
+- restores the bridge in `MAIN` before the isolated content script during popup self-healing after an extension reload, replacing any prior bridge listener.
 
 This relies on a private WhatsApp React shape and may drift. Drift fails closed: confirmation remains unavailable and the status states that no data was sent.
 

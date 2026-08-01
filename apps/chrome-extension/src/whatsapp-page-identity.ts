@@ -121,4 +121,11 @@ export function installWhatsAppIdentityBridge(): () => void {
   };
 }
 
-if (typeof document !== "undefined") installWhatsAppIdentityBridge();
+if (typeof document !== "undefined") {
+  const bridgeDocument = document as Document & {
+    __convolensWhatsAppIdentityBridgeCleanup?: () => void;
+  };
+  bridgeDocument.__convolensWhatsAppIdentityBridgeCleanup?.();
+  bridgeDocument.__convolensWhatsAppIdentityBridgeCleanup =
+    installWhatsAppIdentityBridge();
+}
