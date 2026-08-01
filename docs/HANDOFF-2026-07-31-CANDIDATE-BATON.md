@@ -45,6 +45,7 @@ Validated locally:
 - complete API Jest suite: 157/157;
 - focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
+- headed authenticated Playwright no-send fixture: 1/1, with the guarded send case skipped;
 - headed extension UI/console fixtures: 4/4;
 - extension unit and release-evidence suite: 149/149;
 - monorepo build: 8/8;
@@ -56,4 +57,6 @@ PR #162 merged as `8eaa6d7fc68947d7b119603d19f008f3079305bd`. Production deploym
 
 PR #163 merged the test-only auth-fixture follow-up as `31a31d3fa79d9aa9cdb712c8f6e06e46eb938aa3`. Authentic provisioning and no-send acceptance now share the production WhatsApp readiness selectors while keeping allowlisted target-chat selection separately scoped. No additional production deployment is required for that test-only change.
 
-Authentic WhatsApp acceptance remains open. Two staffed provisioning attempts used only the dedicated profile outside the repository and timed out because no WhatsApp chat-list readiness selector became visible; therefore the authenticated no-send fixture and any explicitly authorized one-chat send were not run. No cookies or tokens were printed or copied, and no authentic conversation or Baton task is claimed by the synthetic fixture.
+Two initial staffed provisioning attempts used only the dedicated profile outside the repository and timed out because no WhatsApp chat-list readiness selector became visible. A later staffed retry succeeded, provisioned `C:\Users\smitj\AppData\Local\ConvoLens\Playwright\acceptance-profile`, and the headed authenticated no-send fixture passed against real WhatsApp and ConvoLens sessions. No cookies or tokens were printed or copied.
+
+Authentic send/persistence acceptance remains open. The guarded send case was skipped because no exact allowlisted test-chat name, verified WhatsApp chat JID, or one-intake confirmation phrase was supplied to the runner. Consequently no authentic conversation upload or Baton task is claimed; duplicate submission, session reload, production restart persistence, and one-task Baton replay remain operator-held.
