@@ -72,14 +72,17 @@ The current integration is an operator-assisted Chrome extension path:
 
 1. Build the extension in `apps/chrome-extension`.
 2. Open `chrome://extensions`, enable Developer mode, and choose Load unpacked.
-3. Select the extension directory or its built output according to the extension
-   README.
+3. Select the extracted extension ZIP root (the directory containing
+   `manifest.json`) or the local built output according to the extension README.
 4. In ConvoLens, open Dashboard -> Import -> WhatsApp Web and complete the
    import flow.
 
 The extension targets the production API and dashboard through
-`apps/chrome-extension/src/config.ts`. There is no browser-store release or
-unattended WhatsApp ingestion service at present.
+`apps/chrome-extension/src/config.ts`. Successful `main` CI runs retain the
+verified extension ZIP and SHA-256 checksum as a 30-day Actions artifact.
+Created GitHub Releases attach the same validated ZIP and checksum. Chrome still
+requires extracting the ZIP and using **Load unpacked**; there is no signed CRX,
+browser-store release, or unattended WhatsApp ingestion service at present.
 
 ## Monitoring and diagnostics
 

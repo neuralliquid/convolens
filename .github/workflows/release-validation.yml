@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to validate'
+        description: "Environment to validate"
         required: true
         type: choice
         options:
@@ -17,7 +17,7 @@ on:
           - staging
           - prod
       skip_infra_check:
-        description: 'Skip infrastructure validation'
+        description: "Skip infrastructure validation"
         required: false
         type: boolean
         default: false
@@ -28,7 +28,7 @@ permissions:
   issues: write
 
 env:
-  ARM_USE_OIDC: 'true'
+  ARM_USE_OIDC: "true"
   ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -290,7 +290,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@fe02f16a352d659b7a8b369e36afe6af41e57315 # v4.0.0
@@ -308,6 +308,23 @@ jobs:
 
       - name: Build applications
         run: pnpm run build
+
+      - name: Package and inspect extension
+        run: pnpm --filter @convolens/chrome-extension package
+
+      - name: Write extension checksum
+        working-directory: apps/chrome-extension
+        run: sha256sum convolens-extension.zip > convolens-extension.zip.sha256
+
+      - name: Upload validated extension artifact
+        uses: actions/upload-artifact@834a144ee995460fba8ed112a2fc961b36a5ec5a # v4.3.6
+        with:
+          name: convolens-extension-${{ github.sha }}
+          path: |
+            apps/chrome-extension/convolens-extension.zip
+            apps/chrome-extension/convolens-extension.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Validate build outputs
         run: |
@@ -332,12 +349,40 @@ jobs:
           echo "✅ All build validations passed"
 
   # =============================================================================
+  # Publish validated browser extension assets
+  # =============================================================================
+  publish-extension-release:
+    name: Publish Extension Release Asset
+    runs-on: ubuntu-latest
+    needs: validate-application
+    if: github.event_name == 'release' && needs.validate-application.result == 'success'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download validated extension artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: convolens-extension-${{ github.sha }}
+
+      - name: Attach extension to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: >-
+          gh release upload "$RELEASE_TAG"
+          convolens-extension.zip
+          convolens-extension.zip.sha256
+          --clobber
+
+  # =============================================================================
   # Release Summary
   # =============================================================================
   release-summary:
     name: Release Summary
     runs-on: ubuntu-latest
-    needs: [validate-infrastructure, validate-application]
+    needs:
+      [validate-infrastructure, validate-application, publish-extension-release]
     if: always()
 
     steps:
@@ -349,9 +394,10 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Infrastructure | ${{ needs.validate-infrastructure.result == 'success' && '✅ Passed' || (needs.validate-infrastructure.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Application | ${{ needs.validate-application.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extension asset | ${{ github.event_name != 'release' && '⏭️ Not a release' || (needs.publish-extension-release.result == 'success' && '✅ Published' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.validate-infrastructure.result }}" == "success" ] && [ "${{ needs.validate-application.result }}" == "success" ]; then
+          if [ "${{ needs.validate-infrastructure.result }}" == "success" ] && [ "${{ needs.validate-application.result }}" == "success" ] && { [ "${{ github.event_name }}" != "release" ] || [ "${{ needs.publish-extension-release.result }}" == "success" ]; }; then
             echo "## ✅ Ready for Release" >> $GITHUB_STEP_SUMMARY
           else
             echo "## ❌ Not Ready for Release" >> $GITHUB_STEP_SUMMARY
@@ -359,7 +405,7 @@ jobs:
           fi
 
       - name: Fail if any check failed
-        if: needs.validate-infrastructure.result == 'failure' || needs.validate-application.result == 'failure'
+        if: needs.validate-infrastructure.result == 'failure' || needs.validate-application.result == 'failure' || needs.publish-extension-release.result == 'failure'
         run: |
           echo "Release validation failed!"
           exit 1
