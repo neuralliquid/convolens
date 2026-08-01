@@ -9,7 +9,10 @@ import {
   BATON_PUBLISH_LEASE_MS,
   TicketCandidateConflict,
   TicketCandidateService,
+  TicketCandidateValidation,
 } from '../ticket-candidate.service';
+
+const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 
 describe('TicketCandidateService', () => {
   let dataSource: DataSource;
@@ -67,7 +70,7 @@ describe('TicketCandidateService', () => {
   afterAll(() => dataSource.destroy());
 
   it('generates evidence-linked deterministic candidates idempotently', async () => {
-    const service = new TicketCandidateService(dataSource, '', fetch, 'project-1');
+    const service = new TicketCandidateService(dataSource, '', fetch, PROJECT_ID);
     const first = await service.generate('user-1', intakeId);
     const second = await service.generate('user-1', intakeId);
     expect(first).toHaveLength(2);
@@ -82,7 +85,7 @@ describe('TicketCandidateService', () => {
       ['Verify the deployment', 'high', 1],
       ['attach the acceptance evidence?', 'medium', 2],
     ]);
-    expect(first.every((candidate) => candidate.projectId === 'project-1')).toBe(true);
+    expect(first.every((candidate) => candidate.projectId === PROJECT_ID)).toBe(true);
   });
 
   it('uses revision CAS and never publishes before acceptance', async () => {
@@ -91,7 +94,7 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
     await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
@@ -106,13 +109,32 @@ describe('TicketCandidateService', () => {
   });
 
   it('requires a fresh acceptance after editing', async () => {
-    const service = new TicketCandidateService(dataSource, '', fetch, 'project-1');
+    const service = new TicketCandidateService(dataSource, '', fetch, PROJECT_ID);
     const [candidate] = await service.generate('user-1', intakeId);
-    const accepted = await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    const accepted = await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
 
     await expect(
       service.update('user-1', candidate.id, accepted.revision, { title: 'Changed after review' })
     ).rejects.toBeInstanceOf(TicketCandidateConflict);
+  });
+
+  it('rejects invalid Baton project IDs before persistence', async () => {
+    const service = new TicketCandidateService(dataSource);
+    const [candidate] = await service.generate('user-1', intakeId);
+
+    await expect(
+      service.update('user-1', candidate.id, 1, { projectId: 'not-a-project-uuid' })
+    ).rejects.toBeInstanceOf(TicketCandidateValidation);
+    await expect(
+      service.decide('user-1', candidate.id, 1, 'accepted', 'x'.repeat(37))
+    ).rejects.toBeInstanceOf(TicketCandidateValidation);
+
+    const stored = await dataSource.getRepository(TicketCandidate).findOneByOrFail({
+      id: candidate.id,
+    });
+    expect(stored.projectId).toBeNull();
+    expect(stored.status).toBe('pending');
+    expect(stored.revision).toBe(1);
   });
 
   it('publishes one accepted candidate once and returns the persisted result on replay', async () => {
@@ -124,11 +146,11 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1',
+      PROJECT_ID,
       'https://baton-ui.example'
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     const first = await service.publish('user-1', candidate.id, 'mystira-token');
     const replay = await service.publish('user-1', candidate.id, 'mystira-token');
     expect(first.candidate.batonTaskId).toBe('task-1');
@@ -145,10 +167,10 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow('network down');
     const stored = await dataSource
       .getRepository(TicketCandidate)
@@ -178,10 +200,10 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
     await dataSource.getRepository(TicketCandidate).update(candidate.id, {
       publishStatus: 'pending',
@@ -202,16 +224,64 @@ describe('TicketCandidateService', () => {
     expect(intake.batonPublishClaimId).toBeNull();
   });
 
+  it('fences a delayed publisher after its stale claim is reclaimed', async () => {
+    let releaseOriginalLookup!: (response: Response) => void;
+    let markOriginalLookupStarted!: () => void;
+    const originalLookupStarted = new Promise<void>((resolve) => {
+      markOriginalLookupStarted = resolve;
+    });
+    const originalLookup = new Promise<Response>((resolve) => {
+      releaseOriginalLookup = resolve;
+    });
+    let lookupCount = 0;
+    const fetcher = jest.fn<typeof fetch>().mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'task-fenced' }), { status: 201 });
+      }
+      lookupCount += 1;
+      if (lookupCount === 1) {
+        markOriginalLookupStarted();
+        return originalLookup;
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    });
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      PROJECT_ID
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
+
+    const originalPublish = service.publish('user-1', candidate.id, 'token');
+    await originalLookupStarted;
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await dataSource.getRepository(TicketCandidate).update(candidate.id, {
+      publishClaimedAt: staleAt,
+    });
+    await dataSource.getRepository(ConversationIntake).update(intakeId, {
+      batonPublishClaimedAt: staleAt,
+    });
+
+    const recovered = await service.publish('user-1', candidate.id, 'token');
+    releaseOriginalLookup(new Response(JSON.stringify([]), { status: 200 }));
+
+    await expect(originalPublish).rejects.toBeInstanceOf(TicketCandidateConflict);
+    expect(recovered.candidate.batonTaskId).toBe('task-fenced');
+    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+  });
+
   it('finalizes a recorded Baton success before any remote retry', async () => {
     const fetcher = jest.fn<typeof fetch>();
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
     await dataSource.getRepository(TicketCandidate).update(candidate.id, {
       publishStatus: 'pending',
@@ -255,10 +325,10 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
       'connection lost after POST'
     );
@@ -297,10 +367,10 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
     await dataSource.getRepository(TicketCandidate).update(candidate.id, {
       publishStatus: 'pending',
@@ -349,10 +419,10 @@ describe('TicketCandidateService', () => {
       dataSource,
       'https://baton.example',
       fetcher,
-      'project-1'
+      PROJECT_ID
     );
     const [candidate] = await service.generate('user-1', intakeId);
-    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
     await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
       'connection lost after POST'
     );

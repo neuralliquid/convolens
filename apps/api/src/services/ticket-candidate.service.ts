@@ -15,6 +15,18 @@ export class TicketCandidateConflict extends Error {}
 export class TicketCandidateValidation extends Error {}
 class BatonReconciliationPending extends Error {}
 
+const BATON_PROJECT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeBatonProjectId(projectId?: string): string | null {
+  const normalized = projectId?.trim() || '';
+  if (!normalized) return null;
+  if (!BATON_PROJECT_ID.test(normalized)) {
+    throw new TicketCandidateValidation('Baton project ID must be a valid UUID');
+  }
+  return normalized;
+}
+
 interface BatonTask {
   id: string;
   context?: string | null;
@@ -64,7 +76,7 @@ export class TicketCandidateService {
           title,
           confidence,
           idempotencyKey,
-          projectId: this.defaultProjectId || null,
+          projectId: normalizeBatonProjectId(this.defaultProjectId),
           description: `Evidence from ${intake.displayName}, stored message ${message.position + 1}.`,
           evidence: [
             {
@@ -105,7 +117,9 @@ export class TicketCandidateService {
     const partial: Partial<TicketCandidate> = { revision: expectedRevision + 1 };
     if (title !== undefined) partial.title = title;
     if (changes.description !== undefined) partial.description = changes.description.trim();
-    if (changes.projectId !== undefined) partial.projectId = changes.projectId.trim();
+    if (changes.projectId !== undefined) {
+      partial.projectId = normalizeBatonProjectId(changes.projectId);
+    }
     const result = await this.dataSource
       .getRepository(TicketCandidate)
       .update({ id, userId, status: 'pending', revision: expectedRevision }, partial);
@@ -121,14 +135,15 @@ export class TicketCandidateService {
     decision: 'accepted' | 'rejected',
     projectId?: string
   ): Promise<TicketCandidate> {
-    if (decision === 'accepted' && !projectId?.trim()) {
+    const normalizedProjectId = normalizeBatonProjectId(projectId);
+    if (decision === 'accepted' && !normalizedProjectId) {
       throw new TicketCandidateValidation('Choose a Baton project before accepting');
     }
     const result = await this.dataSource.getRepository(TicketCandidate).update(
       { id, userId, status: 'pending', revision: expectedRevision },
       {
         status: decision,
-        projectId: decision === 'accepted' ? projectId!.trim() : null,
+        projectId: decision === 'accepted' ? normalizedProjectId : null,
         decidedAt: new Date(),
         revision: expectedRevision + 1,
       }
@@ -155,8 +170,9 @@ export class TicketCandidateService {
     await this.acquireIntakePublishClaim(userId, current.intakeId, claimId);
     try {
       await this.acquireCandidatePublishClaim(current, claimId);
+      const claimedCurrent = await this.get(userId, id);
       const attemptRepository = this.dataSource.getRepository(BatonPublishAttempt);
-      const recordedSuccess = (current.publishAttempts || [])
+      const recordedSuccess = (claimedCurrent.publishAttempts || [])
         .filter((candidateAttempt) => candidateAttempt.batonTaskId && candidateAttempt.completedAt)
         .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
       if (recordedSuccess?.batonTaskId) {
@@ -182,11 +198,11 @@ export class TicketCandidateService {
       const attempt = await attemptRepository.save(
         attemptRepository.create({ candidateId: id, userId, attemptNumber, status: 'pending' })
       );
-      const marker = `[convolens:${current.idempotencyKey}]`;
+      const marker = `[convolens:${claimedCurrent.idempotencyKey}]`;
       let createStarted = false;
       let reconcilingAmbiguousCreate = false;
       try {
-        const lastAmbiguousCreate = (current.publishAttempts || [])
+        const lastAmbiguousCreate = (claimedCurrent.publishAttempts || [])
           .filter((candidateAttempt) =>
             ['baton_create_started', 'baton_ambiguous'].includes(
               candidateAttempt.errorCode || ''
@@ -212,62 +228,52 @@ export class TicketCandidateService {
         );
         let duplicate: BatonTask | null;
         if (reconcilingAmbiguousCreate) {
-          duplicate = await this.reconcileAmbiguousCreate(current.projectId, marker, batonToken);
+          duplicate = await this.reconcileAmbiguousCreate(
+            claimedCurrent.projectId!,
+            marker,
+            batonToken
+          );
           if (!duplicate) {
             throw new BatonReconciliationPending(
               'Baton is still reconciling the prior publish; retry after the safety window'
             );
           }
         } else {
-          duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
+          duplicate = await this.findDuplicate(claimedCurrent.projectId!, marker, batonToken);
         }
         createStarted = !duplicate;
         if (createStarted) {
-          await attemptRepository.update(attempt.id, { errorCode: 'baton_create_started' });
-        }
-        const task = duplicate || (await this.createBatonTask(current, marker, batonToken));
-        const completedAt = new Date();
-        await attemptRepository.update(attempt.id, {
-          status: duplicate ? 'duplicate' : 'succeeded',
-          batonTaskId: task.id,
-          responseStatus: duplicate ? 200 : 201,
-          completedAt,
-        });
-        const finalized = await repository.update(
-          { id, userId, publishStatus: 'pending', publishClaimId: claimId },
-          {
-            status: 'published',
-            publishStatus: 'succeeded',
-            publishClaimId: null,
-            publishClaimedAt: null,
-            batonTaskId: task.id,
-            batonTaskUrl: this.batonTaskUrl(task.id),
-            publishedAt: completedAt,
-            lastPublishErrorCode: null,
-          }
-        );
-        if (finalized.affected !== 1) {
-          throw new TicketCandidateConflict(
-            'Baton task created but local finalization must reconcile'
+          await this.persistCreateBoundary(
+            userId,
+            claimedCurrent.intakeId,
+            id,
+            claimId,
+            attempt.id
           );
         }
+        const task =
+          duplicate || (await this.createBatonTask(claimedCurrent, marker, batonToken));
+        const completedAt = new Date();
+        await this.finalizePublish(
+          userId,
+          id,
+          claimId,
+          attempt.id,
+          task.id,
+          Boolean(duplicate),
+          completedAt
+        );
         return { candidate: await this.get(userId, id), duplicate: Boolean(duplicate) };
       } catch (error) {
         const code =
           createStarted || reconcilingAmbiguousCreate ? 'baton_ambiguous' : 'baton_unavailable';
-        await attemptRepository.update(attempt.id, {
-          status: 'failed',
-          errorCode: reconcilingAmbiguousCreate && !createStarted ? 'baton_reconciling' : code,
-          completedAt: new Date(),
-        });
-        await repository.update(
-          { id, userId, publishStatus: 'pending', publishClaimId: claimId },
-          {
-            publishStatus: 'failed',
-            publishClaimId: null,
-            publishClaimedAt: null,
-            lastPublishErrorCode: code,
-          }
+        await this.recordPublishFailure(
+          userId,
+          id,
+          claimId,
+          attempt.id,
+          reconcilingAmbiguousCreate && !createStarted ? 'baton_reconciling' : code,
+          code
         );
         throw error;
       }
@@ -329,6 +335,107 @@ export class TicketCandidateService {
       if (result.affected === 1) return;
     }
     throw new TicketCandidateConflict('Candidate publication is already in progress');
+  }
+
+  private async persistCreateBoundary(
+    userId: string,
+    intakeId: string,
+    candidateId: string,
+    claimId: string,
+    attemptId: string
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const claimedAt = new Date();
+      const intake = await manager
+        .getRepository(ConversationIntake)
+        .update(
+          { id: intakeId, userId, batonPublishClaimId: claimId },
+          { batonPublishClaimedAt: claimedAt }
+        );
+      const candidate = await manager.getRepository(TicketCandidate).update(
+        {
+          id: candidateId,
+          userId,
+          publishStatus: 'pending',
+          publishClaimId: claimId,
+        },
+        { publishClaimedAt: claimedAt }
+      );
+      const attempt = await manager
+        .getRepository(BatonPublishAttempt)
+        .update(
+          { id: attemptId, candidateId, userId, status: 'pending' },
+          { errorCode: 'baton_create_started' }
+        );
+      if (intake.affected !== 1 || candidate.affected !== 1 || attempt.affected !== 1) {
+        throw new TicketCandidateConflict('Baton publication claim changed before create');
+      }
+    });
+  }
+
+  private async finalizePublish(
+    userId: string,
+    candidateId: string,
+    claimId: string,
+    attemptId: string,
+    taskId: string,
+    duplicate: boolean,
+    completedAt: Date
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const attempt = await manager.getRepository(BatonPublishAttempt).update(
+        { id: attemptId, candidateId, userId, status: 'pending' },
+        {
+          status: duplicate ? 'duplicate' : 'succeeded',
+          batonTaskId: taskId,
+          responseStatus: duplicate ? 200 : 201,
+          errorCode: null,
+          completedAt,
+        }
+      );
+      const candidate = await manager.getRepository(TicketCandidate).update(
+        { id: candidateId, userId, publishStatus: 'pending', publishClaimId: claimId },
+        {
+          status: 'published',
+          publishStatus: 'succeeded',
+          publishClaimId: null,
+          publishClaimedAt: null,
+          batonTaskId: taskId,
+          batonTaskUrl: this.batonTaskUrl(taskId),
+          publishedAt: completedAt,
+          lastPublishErrorCode: null,
+        }
+      );
+      if (attempt.affected !== 1 || candidate.affected !== 1) {
+        throw new TicketCandidateConflict('Baton task created but local finalization must reconcile');
+      }
+    });
+  }
+
+  private async recordPublishFailure(
+    userId: string,
+    candidateId: string,
+    claimId: string,
+    attemptId: string,
+    attemptErrorCode: string,
+    candidateErrorCode: string
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const candidate = await manager.getRepository(TicketCandidate).update(
+        { id: candidateId, userId, publishStatus: 'pending', publishClaimId: claimId },
+        {
+          publishStatus: 'failed',
+          publishClaimId: null,
+          publishClaimedAt: null,
+          lastPublishErrorCode: candidateErrorCode,
+        }
+      );
+      if (candidate.affected !== 1) return;
+      await manager.getRepository(BatonPublishAttempt).update(
+        { id: attemptId, candidateId, userId, status: 'pending' },
+        { status: 'failed', errorCode: attemptErrorCode, completedAt: new Date() }
+      );
+    });
   }
 
   private async acquireIntakePublishClaim(
