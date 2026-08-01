@@ -746,23 +746,18 @@ describe('ConversationIntakeService', () => {
       batonPublishClaimId: 'renewed-publish-claim',
       batonPublishClaimedAt: staleAt,
     });
-    const originalUpdate = Object.getPrototypeOf(repository).update.bind(
-      repository
-    ) as typeof repository.update;
+    const originalTransaction = Object.getPrototypeOf(dataSource).transaction.bind(
+      dataSource
+    ) as typeof dataSource.transaction;
     let renewed = false;
-    const updateSpy = jest
-      .spyOn(repository, 'update')
-      .mockImplementation(async (criteria, partial) => {
-        if (
-          !renewed &&
-          typeof criteria === 'object' &&
-          'batonPublishClaimId' in criteria &&
-          partial.batonPublishClaimId === null
-        ) {
+    const transactionSpy = jest
+      .spyOn(dataSource, 'transaction')
+      .mockImplementation(async (operation: Parameters<typeof originalTransaction>[0]) => {
+        if (!renewed) {
           renewed = true;
-          await originalUpdate(saved.conversation.id, { batonPublishClaimedAt: new Date() });
+          await repository.update(saved.conversation.id, { batonPublishClaimedAt: new Date() });
         }
-        return originalUpdate(criteria, partial);
+        return originalTransaction(operation);
       });
 
     try {
@@ -770,7 +765,7 @@ describe('ConversationIntakeService', () => {
         'Baton publication is in progress'
       );
     } finally {
-      updateSpy.mockRestore();
+      transactionSpy.mockRestore();
     }
 
     const stored = await repository.findOneByOrFail({ id: saved.conversation.id });

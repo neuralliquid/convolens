@@ -1025,7 +1025,6 @@ export class ConversationIntakeService {
   async deleteForUser(userId: string, id: string): Promise<boolean> {
     const repository = this.dataSource.getRepository(ConversationIntake);
     let conversation: ConversationIntake | null = null;
-    let reclaimedStaleBatonLease = false;
 
     // Compare-and-swap the complete claim identity into a tombstone. If another
     // replica changes the key/claim/status after our read, retry from its new
@@ -1040,20 +1039,47 @@ export class ConversationIntakeService {
         if (claimActive) {
           throw new Error('A Baton publication is in progress; retry deletion after it completes');
         }
-        const cleared = await repository.update(
-          {
-            id,
-            userId,
-            rawArtifactStatus: candidate.rawArtifactStatus,
-            batonPublishClaimId: candidate.batonPublishClaimId,
-            batonPublishClaimedAt: candidate.batonPublishClaimedAt || IsNull(),
-          },
-          { batonPublishClaimId: null, batonPublishClaimedAt: null }
-        );
-        if (cleared.affected === 1) {
-          reclaimedStaleBatonLease = true;
-          continue;
+        const reclaimed = await this.dataSource.transaction(async (manager) => {
+          const cleared = await manager.getRepository(ConversationIntake).update(
+            {
+              id,
+              userId,
+              rawArtifactStatus: candidate.rawArtifactStatus,
+              batonPublishClaimId: candidate.batonPublishClaimId,
+              batonPublishClaimedAt: candidate.batonPublishClaimedAt || IsNull(),
+            },
+            { batonPublishClaimId: null, batonPublishClaimedAt: null }
+          );
+          if (cleared.affected !== 1) return { cleared: false, reanchored: false };
+          const strandedBoundary = await manager
+            .getRepository(BatonPublishAttempt)
+            .createQueryBuilder('attempt')
+            .innerJoin(TicketCandidate, 'ticket', 'ticket.id = attempt.candidateId')
+            .where('ticket.intakeId = :id', { id })
+            .andWhere('ticket.userId = :userId', { userId })
+            .andWhere('(ticket.publishStatus != :succeeded OR ticket.batonTaskId IS NULL)', {
+              succeeded: 'succeeded',
+            })
+            .andWhere('attempt.errorCode IN (:...errorCodes)', {
+              errorCodes: ['baton_create_started', 'baton_ambiguous'],
+            })
+            .orderBy('attempt.createdAt', 'DESC')
+            .getOne();
+          if (!strandedBoundary) return { cleared: true, reanchored: false };
+          const reanchored = await manager
+            .getRepository(BatonPublishAttempt)
+            .update(
+              { id: strandedBoundary.id, errorCode: strandedBoundary.errorCode },
+              { status: 'failed', errorCode: 'baton_ambiguous', completedAt: new Date() }
+            );
+          return { cleared: true, reanchored: reanchored.affected === 1 };
+        });
+        if (reclaimed.reanchored) {
+          throw new Error(
+            'A Baton publication is still within its reconciliation safety window; retry deletion later'
+          );
         }
+        if (reclaimed.cleared) continue;
         continue;
       }
       const unresolvedBoundaries = await this.dataSource
@@ -1073,15 +1099,11 @@ export class ConversationIntakeService {
       const createStartedBoundary = unresolvedBoundaries.find(
         (boundary) => boundary.errorCode === 'baton_create_started'
       );
-      const strandedAmbiguousBoundary = reclaimedStaleBatonLease
-        ? unresolvedBoundaries.find((boundary) => boundary.errorCode === 'baton_ambiguous')
-        : undefined;
-      const boundaryToReanchor = createStartedBoundary || strandedAmbiguousBoundary;
-      if (boundaryToReanchor) {
+      if (createStartedBoundary) {
         const reanchored = await this.dataSource
           .getRepository(BatonPublishAttempt)
           .update(
-            { id: boundaryToReanchor.id, errorCode: boundaryToReanchor.errorCode },
+            { id: createStartedBoundary.id, errorCode: 'baton_create_started' },
             { status: 'failed', errorCode: 'baton_ambiguous', completedAt: new Date() }
           );
         if (reanchored.affected !== 1) continue;
