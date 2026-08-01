@@ -1043,6 +1043,7 @@ export class ConversationIntakeService {
             userId,
             rawArtifactStatus: candidate.rawArtifactStatus,
             batonPublishClaimId: candidate.batonPublishClaimId,
+            batonPublishClaimedAt: candidate.batonPublishClaimedAt || IsNull(),
           },
           { batonPublishClaimId: null, batonPublishClaimedAt: null }
         );

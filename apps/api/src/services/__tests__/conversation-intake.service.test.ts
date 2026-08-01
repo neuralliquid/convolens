@@ -578,6 +578,44 @@ describe('ConversationIntakeService', () => {
     expect(await service.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
   });
 
+  it('does not clear a Baton lease renewed during stale deletion cleanup', async () => {
+    const saved = await service.save(baseInput);
+    const repository = dataSource.getRepository(ConversationIntake);
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await repository.update(saved.conversation.id, {
+      batonPublishClaimId: 'renewed-publish-claim',
+      batonPublishClaimedAt: staleAt,
+    });
+    const originalUpdate = Object.getPrototypeOf(repository).update.bind(repository) as typeof repository.update;
+    let renewed = false;
+    const updateSpy = jest.spyOn(repository, 'update').mockImplementation(async (criteria, partial) => {
+      if (
+        !renewed &&
+        typeof criteria === 'object' &&
+        'batonPublishClaimId' in criteria &&
+        partial.batonPublishClaimId === null
+      ) {
+        renewed = true;
+        await originalUpdate(saved.conversation.id, { batonPublishClaimedAt: new Date() });
+      }
+      return originalUpdate(criteria, partial);
+    });
+
+    try {
+      await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+        'Baton publication is in progress'
+      );
+    } finally {
+      updateSpy.mockRestore();
+    }
+
+    const stored = await repository.findOneByOrFail({ id: saved.conversation.id });
+    expect(renewed).toBe(true);
+    expect(stored.rawArtifactStatus).not.toBe('deleting');
+    expect(stored.batonPublishClaimId).toBe('renewed-publish-claim');
+    expect(stored.batonPublishClaimedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+  });
+
   it('excludes generated source IDs from the durable content hash', () => {
     const firstHash = createConversationContentHash(baseInput);
     const secondHash = createConversationContentHash({
