@@ -31,6 +31,7 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - publication attempts, failures, retries, task ids, and links are persisted;
 - an admin-only retry endpoint is available in addition to the owner retry control;
 - deleting the source intake cascades its local candidates and attempt audit.
+- launcher placement now uses explicit, accessible Height and Side segmented controls with visible selected state instead of an ambiguous edge-action link.
 
 The canonical Baton API is configured as `https://baton-backend.up.railway.app`, with the Convolens project `d20d739a-89b0-4a48-8f9b-dcb0724c149d` as the editable default suggestion.
 
@@ -46,7 +47,7 @@ Validated locally:
 - focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
 - headed authenticated Playwright no-send fixture: 1/1, with the guarded send case skipped;
-- headed extension UI/console fixtures: 4/4;
+- headed extension UI/console fixtures: 5/5, including persisted launcher height/side interaction;
 - extension unit and release-evidence suite: 149/149;
 - monorepo build: 8/8;
 - production Terraform validation: passed.
@@ -59,4 +60,6 @@ PR #163 merged the test-only auth-fixture follow-up as `31a31d3fa79d9aa9cdb712c8
 
 Two initial staffed provisioning attempts used only the dedicated profile outside the repository and timed out because no WhatsApp chat-list readiness selector became visible. A later staffed retry succeeded, provisioned `C:\Users\smitj\AppData\Local\ConvoLens\Playwright\acceptance-profile`, and the headed authenticated no-send fixture passed against real WhatsApp and ConvoLens sessions. No cookies or tokens were printed or copied.
 
-Authentic send/persistence acceptance remains open. The guarded send case was skipped because no exact allowlisted test-chat name, verified WhatsApp chat JID, or one-intake confirmation phrase was supplied to the runner. Consequently no authentic conversation upload or Baton task is claimed; duplicate submission, session reload, production restart persistence, and one-task Baton replay remain operator-held.
+Authentic send/persistence acceptance remains open. On 2026-08-01 the operator supplied the exact one-intake confirmation and authorized any visible chat. The guarded runner selected a real chat, completed loaded-message review, and stopped before confirmation because the reviewed payload contained no stable `sourceConversationId`. A follow-up read-only redacted DOM-shape check found no `data-jid` or `data-chat-id` in either the active conversation or sidebar, and current message `data-id` values were opaque rather than WhatsApp JIDs. Scanning the first 20 visible chats found no supported stable identity. No authentic conversation upload or Baton task occurred.
+
+The remaining blocker is current WhatsApp compatibility for stable conversation identity. Do not weaken the guard or substitute a display label. Until a verified stable JID source is implemented and covered by fixtures, duplicate submission, session reload, production restart persistence, and one-task Baton replay remain operator-held.

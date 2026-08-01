@@ -449,13 +449,25 @@ async function injectUI(): Promise<void> {
         <button id="ws-open-settings" class="ws-link-btn" type="button">Open migration settings</button>
       </div>
       <div class="ws-position-controls" aria-label="Launcher position">
-        <span>Position</span>
-        <div role="group" aria-label="Vertical launcher position">
-          <button type="button" data-launcher-preset="upper">Top</button>
-          <button type="button" data-launcher-preset="middle">Middle</button>
-          <button type="button" data-launcher-preset="lower">Bottom</button>
+        <div class="ws-position-heading">
+          <strong>Launcher position</strong>
+          <span>Pin the button where it stays out of the way.</span>
         </div>
-        <button id="ws-launcher-side" class="ws-link-btn" type="button"></button>
+        <div class="ws-position-field">
+          <span id="ws-position-height-label">Height</span>
+          <div class="ws-position-options" role="group" aria-labelledby="ws-position-height-label">
+            <button type="button" data-launcher-preset="upper">Top</button>
+            <button type="button" data-launcher-preset="middle">Middle</button>
+            <button type="button" data-launcher-preset="lower">Bottom</button>
+          </div>
+        </div>
+        <div class="ws-position-field">
+          <span id="ws-position-side-label">Side</span>
+          <div class="ws-position-options ws-position-side-options" role="group" aria-labelledby="ws-position-side-label">
+            <button type="button" data-launcher-edge="left">Left</button>
+            <button type="button" data-launcher-edge="right">Right</button>
+          </div>
+        </div>
       </div>
     </section>
     <button id="ws-launcher-toggle" class="ws-launcher-toggle" type="button" aria-expanded="false" aria-controls="ws-launcher-panel" aria-label="Open ConvoLens capture panel. Drag to move.">
@@ -629,12 +641,16 @@ function setupLauncherInteraction(): void {
         });
       });
     });
-  document.getElementById("ws-launcher-side")?.addEventListener("click", () => {
-    void setLauncherPosition({
-      ...launcherPosition,
-      edge: launcherPosition.edge === "right" ? "left" : "right",
+  fab
+    .querySelectorAll<HTMLButtonElement>("[data-launcher-edge]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        void setLauncherPosition({
+          ...launcherPosition,
+          edge: button.dataset.launcherEdge as LauncherPosition["edge"],
+        });
+      });
     });
-  });
   fab.addEventListener("keydown", (event) => {
     if (event.key === "Escape") setLauncherExpanded(false, true);
   });
@@ -678,10 +694,14 @@ function applyLauncherPosition(): void {
         String(button.dataset.launcherPreset === launcherPosition.preset),
       );
     });
-  const side = document.getElementById("ws-launcher-side");
-  if (side) {
-    side.textContent = `Move to ${launcherPosition.edge === "right" ? "left" : "right"} edge`;
-  }
+  fab
+    .querySelectorAll<HTMLButtonElement>("[data-launcher-edge]")
+    .forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.launcherEdge === launcherPosition.edge),
+      );
+    });
 }
 
 function handleViewportResize(): void {
