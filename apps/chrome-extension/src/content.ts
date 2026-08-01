@@ -167,6 +167,9 @@ let authToken: string | null = null;
 let currentChatId: string | null = null;
 let chatObserver: MutationObserver | null = null;
 let isInitialized = false;
+let pageSourceConversationId: string | null = null;
+const WHATSAPP_IDENTITY_REQUEST_EVENT = "convolens:whatsapp-identity-request";
+const WHATSAPP_IDENTITY_RESPONSE_EVENT = "convolens:whatsapp-identity-response";
 interface ActiveCaptureOperation {
   operationId: string;
   chatIdentity: string;
@@ -1679,7 +1682,7 @@ function getLauncherAccessibleStatus(): string {
   return "Ready.";
 }
 
-function getCurrentChatIdentity(): string {
+function getDomConversationIdentity(): string | undefined {
   const messageList = findConversationRoot(
     document,
     SELECTORS.primary.messageList,
@@ -1692,7 +1695,7 @@ function getCurrentChatIdentity(): string {
         SELECTORS.fallback.messageContainer,
       )
     : [];
-  const stableId = extractStableWhatsAppConversationId([
+  return extractStableWhatsAppConversationId([
     messageList?.getAttribute("data-chat-id"),
     messageList?.getAttribute("data-jid"),
     messageList?.closest("[data-chat-id]")?.getAttribute("data-chat-id"),
@@ -1702,6 +1705,88 @@ function getCurrentChatIdentity(): string {
       .map((container) =>
         findMessageRecord(container as HTMLElement).getAttribute("data-id"),
       ),
+  ]);
+}
+
+function cancelCaptureForIdentityChange(): void {
+  const operation = activeCaptureOperation;
+  if (!operation || operation.state === "uploading") return;
+  if (guidedCaptureSession?.operationId === operation.operationId) {
+    teardownGuidedCaptureSession(operation.operationId);
+  }
+  activeCaptureOperation = null;
+  sendRuntimeLifecycleMessage({
+    action: "CANCEL_CAPTURE_OPERATION",
+    operationId: operation.operationId,
+    reason: "The selected chat changed. Nothing was sent.",
+  });
+}
+
+async function requestPageConversationIdentity(): Promise<string | undefined> {
+  const requestId = crypto.randomUUID();
+  return await new Promise((resolve) => {
+    const timeoutId = window.setTimeout(() => {
+      document.removeEventListener(
+        WHATSAPP_IDENTITY_RESPONSE_EVENT,
+        handleResponse,
+      );
+      resolve(undefined);
+    }, 500);
+    const handleResponse = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          requestId?: unknown;
+          sourceConversationId?: unknown;
+        }>
+      ).detail;
+      if (detail?.requestId !== requestId) return;
+      window.clearTimeout(timeoutId);
+      document.removeEventListener(
+        WHATSAPP_IDENTITY_RESPONSE_EVENT,
+        handleResponse,
+      );
+      const identity =
+        typeof detail.sourceConversationId === "string"
+          ? extractStableWhatsAppConversationId([detail.sourceConversationId])
+          : undefined;
+      resolve(identity);
+    };
+    document.addEventListener(WHATSAPP_IDENTITY_RESPONSE_EVENT, handleResponse);
+    document.dispatchEvent(
+      new CustomEvent(WHATSAPP_IDENTITY_REQUEST_EVENT, {
+        detail: { requestId },
+      }),
+    );
+  });
+}
+
+async function resolveCurrentStableConversationIdentity(): Promise<
+  string | undefined
+> {
+  const pageIdentity = await requestPageConversationIdentity();
+  const identity = extractStableWhatsAppConversationId([
+    getDomConversationIdentity(),
+    pageIdentity,
+  ]);
+  pageSourceConversationId = identity || null;
+  return identity;
+}
+
+async function refreshPageConversationIdentity(): Promise<void> {
+  const identity = await resolveCurrentStableConversationIdentity();
+  const operation = activeCaptureOperation;
+  if (
+    operation?.chatIdentity.startsWith("whatsapp:") &&
+    identity !== operation.chatIdentity
+  ) {
+    cancelCaptureForIdentityChange();
+  }
+}
+
+function getCurrentChatIdentity(): string {
+  const stableId = extractStableWhatsAppConversationId([
+    getDomConversationIdentity(),
+    pageSourceConversationId,
   ]);
   if (stableId) return stableId;
 
@@ -2653,7 +2738,12 @@ async function collectCaptureOperation(
     throw new Error("Another capture operation is already active in this tab.");
   }
 
-  const chatIdentity = getCurrentChatIdentity();
+  const chatIdentity = await resolveCurrentStableConversationIdentity();
+  if (!chatIdentity) {
+    throw new Error(
+      "ConvoLens could not verify a stable WhatsApp conversation identity. Nothing was sent.",
+    );
+  }
   activeCaptureOperation = {
     operationId,
     chatIdentity,
@@ -2796,17 +2886,12 @@ async function extractCurrentChat(
   const participantRefs = new Map<string, string>();
   const totalMessages = messageContainers.length;
   const diagnostics = createExtractionDiagnostics(totalMessages);
-  const sourceConversationId = extractStableWhatsAppConversationId([
-    messageList.getAttribute("data-chat-id"),
-    messageList.getAttribute("data-jid"),
-    messageList.closest("[data-chat-id]")?.getAttribute("data-chat-id"),
-    messageList.closest("[data-jid]")?.getAttribute("data-jid"),
-    ...messageContainers
-      .slice(0, 20)
-      .map((container) =>
-        findMessageRecord(container as HTMLElement).getAttribute("data-id"),
-      ),
-  ]);
+  const sourceConversationId = await resolveCurrentStableConversationIdentity();
+  if (!sourceConversationId) {
+    throw new Error(
+      "ConvoLens could not verify a stable WhatsApp conversation identity. Nothing was sent.",
+    );
+  }
 
   for (let i = 0; i < messageContainers.length; i++) {
     // Update progress
@@ -3266,6 +3351,7 @@ function observeChatChanges(): void {
   }
 
   chatObserver = new MutationObserver(() => {
+    void refreshPageConversationIdentity();
     const header = querySelector(
       SELECTORS.primary.chatHeader,
       SELECTORS.fallback.chatHeader,
@@ -3282,15 +3368,7 @@ function observeChatChanges(): void {
           operation.chatIdentity !== newChatId &&
           operation.state !== "uploading"
         ) {
-          if (guidedCaptureSession?.operationId === operation.operationId) {
-            teardownGuidedCaptureSession(operation.operationId);
-          }
-          activeCaptureOperation = null;
-          sendRuntimeLifecycleMessage({
-            action: "CANCEL_CAPTURE_OPERATION",
-            operationId: operation.operationId,
-            reason: "The selected chat changed. Nothing was sent.",
-          });
+          cancelCaptureForIdentityChange();
         }
       }
     }

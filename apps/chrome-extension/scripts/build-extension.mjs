@@ -17,6 +17,14 @@ await Promise.all([
     target: "chrome102",
   }),
   build({
+    entryPoints: ["./src/whatsapp-page-identity.ts"],
+    bundle: true,
+    outfile: "./dist/whatsapp-page-identity.js",
+    format: "iife",
+    platform: "browser",
+    target: "chrome102",
+  }),
+  build({
     entryPoints: ["./src/background.ts"],
     bundle: true,
     outfile: "./dist/background.js",

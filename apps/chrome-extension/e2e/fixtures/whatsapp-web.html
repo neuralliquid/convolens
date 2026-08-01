@@ -9,10 +9,7 @@
       <button type="button">Fixture Group</button>
     </aside>
     <main id="main" data-testid="conversation-panel-wrapper">
-      <header
-        data-testid="conversation-header"
-        data-chat-id="120363000000000000@g.us"
-      >
+      <header data-testid="conversation-header">
         <span data-testid="conversation-info-header-chat-title"
           >Fixture Group</span
         >
@@ -21,7 +18,6 @@
       <section data-testid="conversation-panel-body">
         <section
           data-testid="conversation-panel-messages"
-          data-jid="120363000000000000@g.us"
           aria-label="Synthetic messages"
         >
           <article
@@ -58,5 +54,26 @@
         </section>
       </section>
     </main>
+    <script>
+      (() => {
+        const header = document.querySelector(
+          '[data-testid="conversation-header"]',
+        );
+        const reactProperty = "__reactProps$convolensFixture";
+        window.__convolensFixtureSetConversationIdentity = (jid) => {
+          const id = jid ? { _serialized: jid } : {};
+          Object.defineProperty(header, reactProperty, {
+            configurable: true,
+            value: {
+              children: [{ props: { chat: { id, __x_id: id } } }],
+            },
+          });
+          header.appendChild(document.createComment("identity changed"));
+        };
+        window.__convolensFixtureSetConversationIdentity(
+          "120363000000000000@g.us",
+        );
+      })();
+    </script>
   </body>
 </html>

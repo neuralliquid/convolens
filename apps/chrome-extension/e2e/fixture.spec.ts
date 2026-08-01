@@ -102,6 +102,45 @@ test("invalidates a reviewed payload when the authenticated owner changes", asyn
   expect(harness.apiRequests).toHaveLength(0);
 });
 
+test("keeps confirmation unavailable without a verified conversation identity", async ({
+  harness,
+}) => {
+  await openCapturePanel(harness.page);
+  await harness.page.evaluate(() => {
+    (
+      window as typeof window & {
+        __convolensFixtureSetConversationIdentity: (jid?: string) => void;
+      }
+    ).__convolensFixtureSetConversationIdentity();
+  });
+
+  await harness.page.locator("#ws-extract-btn").click();
+  await expect(harness.page.locator("#ws-status-text")).toContainText(
+    "could not verify a stable WhatsApp conversation identity",
+  );
+  await expect(harness.page.locator("#ws-capture-review")).toBeHidden();
+  expect(harness.apiRequests).toHaveLength(0);
+});
+
+test("invalidates a reviewed payload when the verified chat identity changes", async ({
+  harness,
+}) => {
+  await reviewLoadedMessages(harness.page);
+  await harness.page.evaluate(() => {
+    (
+      window as typeof window & {
+        __convolensFixtureSetConversationIdentity: (jid: string) => void;
+      }
+    ).__convolensFixtureSetConversationIdentity("120363999999999999@g.us");
+  });
+
+  await expect(harness.page.locator("#ws-status-text")).toContainText(
+    "selected chat changed",
+  );
+  await expect(harness.page.locator("#ws-capture-review")).toBeHidden();
+  expect(harness.apiRequests).toHaveLength(0);
+});
+
 test("attributes browser console output without leaking credentials", async ({
   harness,
 }) => {

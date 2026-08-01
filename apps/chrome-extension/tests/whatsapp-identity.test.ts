@@ -78,4 +78,11 @@ test("uses only a WhatsApp JID as stable conversation identity", () => {
     extractStableWhatsAppConversationId(["Team chat", "message_123"]),
     undefined,
   );
+  assert.equal(
+    extractStableWhatsAppConversationId([
+      "120363123456789@g.us",
+      "120363987654321@g.us",
+    ]),
+    undefined,
+  );
 });
