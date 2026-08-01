@@ -29,6 +29,10 @@ export const RAW_ARTIFACT_DELETE_GRACE_MS = 2_000;
 const compatibilityQueues = new Map<string, Promise<void>>();
 const rawArtifactQueues = new Map<string, Promise<void>>();
 
+export function createPostgresCompatibilityAdvisoryLockKey(key: string): string {
+  return createHash('sha256').update(key, 'utf8').digest('hex');
+}
+
 async function withLocalCompatibilityLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
   const previous = compatibilityQueues.get(key) || Promise.resolve();
   let release!: () => void;
@@ -822,7 +826,7 @@ export class ConversationIntakeService {
         this.dataSource.transaction(async (manager) => {
           if (manager.connection.options.type === 'postgres') {
             await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-              compatibilityLockKey,
+              createPostgresCompatibilityAdvisoryLockKey(compatibilityLockKey),
             ]);
           }
 

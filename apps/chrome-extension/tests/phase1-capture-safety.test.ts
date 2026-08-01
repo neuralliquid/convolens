@@ -51,6 +51,15 @@ test("does not persist or automatically transmit new or legacy raw captures", ()
   assert.ok(!manifest.permissions.includes("alarms"));
 });
 
+test("uses one network attempt for each explicitly confirmed capture", () => {
+  assert.match(
+    backgroundSource,
+    /async function fetchWithRetry\([\s\S]*maxAttempts: number = 1/,
+  );
+  assert.match(backgroundSource, /attempt < maxAttempts/);
+  assert.doesNotMatch(backgroundSource, /maxRetries: number = [2-9]/);
+});
+
 test("offers export or confirmed deletion for unowned legacy entries", () => {
   assert.match(optionsHtml, /Export Local Queue/);
   assert.match(optionsHtml, /Delete Local Queue/);

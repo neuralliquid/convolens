@@ -15,6 +15,7 @@ import {
   createConversationCompatibilityHash,
   createConversationContentHash,
   createConversationContentHashV2,
+  createPostgresCompatibilityAdvisoryLockKey,
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from '../storage/storage.service';
@@ -104,6 +105,16 @@ describe('ConversationIntakeService', () => {
     expect(AZURE_UPLOAD_TOTAL_TIMEOUT_MS + RAW_ARTIFACT_DELETE_GRACE_MS + 15_000).toBeLessThan(
       60_000
     );
+  });
+
+  it('encodes compatibility advisory lock keys as PostgreSQL-safe deterministic text', () => {
+    const rawKey = ['owner-a', 'whatsapp', 'compatibility-hash'].join('\u0000');
+    const encoded = createPostgresCompatibilityAdvisoryLockKey(rawKey);
+
+    expect(encoded).toMatch(/^[a-f0-9]{64}$/);
+    expect(encoded).not.toContain('\u0000');
+    expect(createPostgresCompatibilityAdvisoryLockKey(rawKey)).toBe(encoded);
+    expect(createPostgresCompatibilityAdvisoryLockKey(`${rawKey}-other`)).not.toBe(encoded);
   });
 
   afterAll(async () => {
