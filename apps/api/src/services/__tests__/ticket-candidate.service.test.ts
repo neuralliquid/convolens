@@ -289,6 +289,48 @@ describe('TicketCandidateService', () => {
     expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(2);
   }, 15_000);
 
+  it('reconciles a durable create boundary after a crash before issuing another POST', async () => {
+    const fetcher = jest
+      .fn<typeof fetch>()
+      .mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      'project-1'
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', 'project-1');
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await dataSource.getRepository(TicketCandidate).update(candidate.id, {
+      publishStatus: 'pending',
+      publishClaimId: 'crashed-candidate-claim',
+      publishClaimedAt: staleAt,
+    });
+    await dataSource.getRepository(ConversationIntake).update(intakeId, {
+      batonPublishClaimId: 'crashed-intake-claim',
+      batonPublishClaimedAt: staleAt,
+    });
+    await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: 'user-1',
+      attemptNumber: 1,
+      status: 'pending',
+      errorCode: 'baton_create_started',
+    });
+
+    await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
+      'still reconciling'
+    );
+
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls.every((call) => call[1]?.method !== 'POST')).toBe(true);
+    const stored = await dataSource
+      .getRepository(TicketCandidate)
+      .findOneByOrFail({ id: candidate.id });
+    expect(stored.lastPublishErrorCode).toBe('baton_ambiguous');
+  }, 10_000);
+
   it('preserves the ambiguous window when reconciliation lookup fails', async () => {
     const fetcher = jest
       .fn<typeof fetch>()

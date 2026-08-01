@@ -187,11 +187,17 @@ export class TicketCandidateService {
       let reconcilingAmbiguousCreate = false;
       try {
         const lastAmbiguousCreate = (current.publishAttempts || [])
-          .filter((candidateAttempt) => candidateAttempt.errorCode === 'baton_ambiguous')
+          .filter((candidateAttempt) =>
+            ['baton_create_started', 'baton_ambiguous'].includes(
+              candidateAttempt.errorCode || ''
+            )
+          )
           .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
+        const ambiguousCreateStartedAt =
+          lastAmbiguousCreate?.completedAt || lastAmbiguousCreate?.createdAt;
         reconcilingAmbiguousCreate = Boolean(
-          lastAmbiguousCreate?.completedAt &&
-            Date.now() - lastAmbiguousCreate.completedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
+          ambiguousCreateStartedAt &&
+            Date.now() - ambiguousCreateStartedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
         );
         let duplicate: BatonTask | null;
         if (reconcilingAmbiguousCreate) {
@@ -205,6 +211,9 @@ export class TicketCandidateService {
           duplicate = await this.findDuplicate(current.projectId, marker, batonToken);
         }
         createStarted = !duplicate;
+        if (createStarted) {
+          await attemptRepository.update(attempt.id, { errorCode: 'baton_create_started' });
+        }
         const task = duplicate || (await this.createBatonTask(current, marker, batonToken));
         const completedAt = new Date();
         await attemptRepository.update(attempt.id, {

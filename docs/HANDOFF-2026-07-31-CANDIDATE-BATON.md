@@ -15,6 +15,7 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - accepted candidates become immutable and render read-only, so edits require a fresh review decision;
 - candidate and intake publication claims use reclaimable 90-second leases and serialize deletion with remote publication;
 - any completed durable Baton attempt carrying a task ID finalizes the candidate locally before any recovery path can call Baton again, including attempts later marked failed by local finalization errors;
+- the Baton create boundary is persisted before POST, and stale `baton_create_started` attempts reconcile without issuing another POST during the ambiguity window;
 - ambiguous Baton creates retain the original reconciliation deadline across lookup failures, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
 - Mystira access-token expiry is tracked independently from ID-token expiry before the token is forwarded;
 - the publish proxy resolves one refreshed Mystira session and derives both downstream credentials from it;
@@ -33,9 +34,9 @@ The headed persistence fixture now exercises the production extension, built API
 
 Validated locally:
 
-- candidate service suite: 9/9;
-- candidate, intake, and migration suite: 53/53;
-- complete API Jest suite: 148/148;
+- candidate service suite: 10/10;
+- candidate, intake, and migration suite: 54/54;
+- complete API Jest suite: 149/149;
 - focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
 - headed extension UI/console fixtures: 4/4;
