@@ -37,6 +37,29 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   );
   assert.match(workflow, /test:browser:persistence/);
   assert.match(workflow, /@convolens\/chrome-extension package/);
+  assert.match(workflow, /Upload current-main extension artifact/);
+  assert.match(
+    workflow,
+    /github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/,
+  );
+  assert.match(workflow, /convolens-extension\.zip\.sha256/);
+  assert.match(workflow, /if-no-files-found: error/);
+});
+
+test("publishes only a validated extension ZIP and checksum to releases", () => {
+  const workflow = read("../../../.github/workflows/release-validation.yml");
+  assert.match(workflow, /@convolens\/chrome-extension package/);
+  assert.match(workflow, /sha256sum convolens-extension\.zip/);
+  assert.match(workflow, /name: Publish Extension Release Asset/);
+  assert.match(
+    workflow,
+    /github\.event_name == 'release' && needs\.validate-application\.result == 'success'/,
+  );
+  assert.match(workflow, /permissions:\s*\n\s*contents: write/);
+  assert.match(workflow, /actions\/download-artifact@/);
+  assert.match(workflow, /GH_REPO: \$\{\{ github\.repository \}\}/);
+  assert.match(workflow, /gh release upload "\$RELEASE_TAG"/);
+  assert.match(workflow, /convolens-extension\.zip\.sha256/);
 });
 
 test("shares production WhatsApp readiness selectors with authentic fixtures", () => {
