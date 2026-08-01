@@ -2,6 +2,8 @@
 
 Date: 2026-08-01
 
+Current continuation: [WhatsApp stable conversation identity handoff](HANDOFF-2026-08-01-WHATSAPP-STABLE-IDENTITY.md). This file retains the artifact and predecessor acceptance evidence.
+
 ## Current stop point
 
 The implementation baseline before this documentation-only handoff is `d91ab0ea3b98d041991d9820be8705992f7eeb4b`, the squash merge of PR #167. The current extension version is `1.0.20`.

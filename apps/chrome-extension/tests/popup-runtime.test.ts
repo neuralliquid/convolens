@@ -24,7 +24,7 @@ test("renders the runtime manifest version and keeps release versions aligned", 
     /extensionVersion\.textContent = `v\$\{chrome\.runtime\.getManifest\(\)\.version\}`/,
   );
   assert.equal(manifest.version, packageJson.version);
-  assert.equal(manifest.version, "1.0.20");
+  assert.equal(manifest.version, "1.0.21");
 });
 
 test("opens the conversation dashboard from both popup entry points", () => {
@@ -54,11 +54,21 @@ test("self-heals a missing content-script receiver and retries the message", () 
   assert.ok(manifest.permissions.includes("scripting"));
   assert.match(popupSource, /chrome\.scripting\.insertCSS/);
   assert.match(popupSource, /chrome\.scripting\.executeScript/);
+  assert.equal(manifest.minimum_chrome_version, "111");
 
   const receiverError = popupSource.indexOf("Receiving end does not exist");
-  const injection = popupSource.indexOf("chrome.scripting.executeScript");
+  const bridgeInjection = popupSource.indexOf(
+    'files: ["dist/whatsapp-page-identity.js"]',
+  );
+  const mainWorld = popupSource.indexOf('world: "MAIN"', bridgeInjection);
+  const contentInjection = popupSource.indexOf(
+    'files: ["dist/content.js"]',
+    bridgeInjection,
+  );
   const retry = popupSource.lastIndexOf("chrome.tabs.sendMessage");
 
-  assert.ok(receiverError < injection);
-  assert.ok(injection < retry);
+  assert.ok(receiverError < bridgeInjection);
+  assert.ok(bridgeInjection < mainWorld);
+  assert.ok(mainWorld < contentInjection);
+  assert.ok(contentInjection < retry);
 });

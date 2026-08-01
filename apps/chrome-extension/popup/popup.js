@@ -444,6 +444,11 @@ async function sendToWhatsApp(tabId, message) {
     });
     await chrome.scripting.executeScript({
       target: { tabId },
+      files: ["dist/whatsapp-page-identity.js"],
+      world: "MAIN",
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId },
       files: ["dist/content.js"],
     });
 

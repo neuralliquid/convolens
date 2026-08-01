@@ -65,12 +65,13 @@ export function combineSenderEvidence(input: SenderEvidenceInput): {
 export function extractStableWhatsAppConversationId(
   values: Array<string | null | undefined>,
 ): string | undefined {
+  const identities = new Set<string>();
   for (const value of values) {
     const jid = value
       ?.match(WHATSAPP_JID_PATTERN)?.[1]
       ?.toLowerCase()
       .replace(/@c\.us$/, "@s.whatsapp.net");
-    if (jid) return `whatsapp:${jid}`;
+    if (jid) identities.add(`whatsapp:${jid}`);
   }
-  return undefined;
+  return identities.size === 1 ? [...identities][0] : undefined;
 }

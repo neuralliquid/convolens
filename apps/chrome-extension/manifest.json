@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ConvoLens - WhatsApp Intake",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "Send the WhatsApp Web conversation you choose into your ConvoLens workspace.",
 
   "icons": {
@@ -35,6 +35,12 @@
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
+      "js": ["dist/whatsapp-page-identity.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
       "js": ["dist/content.js"],
       "css": ["dist/content.css"],
       "run_at": "document_idle"
@@ -52,5 +58,5 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
 
-  "minimum_chrome_version": "102"
+  "minimum_chrome_version": "111"
 }
