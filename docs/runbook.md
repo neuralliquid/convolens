@@ -79,10 +79,13 @@ The current integration is an operator-assisted Chrome extension path:
 
 The extension targets the production API and dashboard through
 `apps/chrome-extension/src/config.ts`. Successful `main` CI runs retain the
-verified extension ZIP and SHA-256 checksum as a 30-day Actions artifact.
-Created GitHub Releases attach the same validated ZIP and checksum. Chrome still
-requires extracting the ZIP and using **Load unpacked**; there is no signed CRX,
-browser-store release, or unattended WhatsApp ingestion service at present.
+verified extension ZIP and SHA-256 checksum as a 30-day Actions artifact and
+publish them to the immutable `extension-v<manifest version>` GitHub Release.
+If the version already exists, CI compares extracted payloads and succeeds only
+when they are identical; changed extension payloads require a version bump.
+Chrome still requires extracting the ZIP and using **Load unpacked**; there is
+no signed CRX, browser-store release, or unattended WhatsApp ingestion service
+at present.
 
 ## Monitoring and diagnostics
 
