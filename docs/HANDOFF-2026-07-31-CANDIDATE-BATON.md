@@ -1,6 +1,7 @@
 # Candidate review and Baton publication handoff
 
 Date: 2026-07-31
+Updated: 2026-08-01
 
 ## Outcome
 
@@ -45,11 +46,14 @@ Validated locally:
 - focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
 - headed extension UI/console fixtures: 4/4;
+- extension unit and release-evidence suite: 149/149;
 - monorepo build: 8/8;
 - production Terraform validation: passed.
 
 ## Live boundary
 
-The prior Phase 4 production deployment completed in run `30665499678` from merge `05e7fd222bc3e8ff51220c479bd654549cf3f13f`; Azure revision `nl-prod-convolens-api--0000040` is ready on that exact image and independent health returned HTTP 200.
+PR #162 merged as `8eaa6d7fc68947d7b119603d19f008f3079305bd`. Production deployment run `30693790497` completed successfully from that exact merge, including API/web build, Terraform applies, API image rollout, web deployment, and smoke tests. Independent verification confirmed Azure revision `nl-prod-convolens-api--0000042` ready on image `nlprodconvolensacr.azurecr.io/convolens-api:8eaa6d7fc68947d7b119603d19f008f3079305bd`; API `/health` and `/ready`, web `/features`, and web `/api/runtime/auth-status` returned HTTP 200, with `mystiraConfigured: true`.
 
-This candidate/Baton slice is not deployed until its own PR is reviewed and merged. Authentic WhatsApp acceptance remains open because the staffed auth provisioner timed out waiting for WhatsApp Web to reach its chat list. No cookies or tokens were printed or copied, and no authentic conversation or Baton task is claimed by the synthetic fixture.
+PR #163 merged the test-only auth-fixture follow-up as `31a31d3fa79d9aa9cdb712c8f6e06e46eb938aa3`. Authentic provisioning and no-send acceptance now share the production WhatsApp readiness selectors while keeping allowlisted target-chat selection separately scoped. No additional production deployment is required for that test-only change.
+
+Authentic WhatsApp acceptance remains open. Two staffed provisioning attempts used only the dedicated profile outside the repository and timed out because no WhatsApp chat-list readiness selector became visible; therefore the authenticated no-send fixture and any explicitly authorized one-chat send were not run. No cookies or tokens were printed or copied, and no authentic conversation or Baton task is claimed by the synthetic fixture.
