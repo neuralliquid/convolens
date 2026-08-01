@@ -46,8 +46,11 @@ test("shares production WhatsApp readiness selectors with authentic fixtures", (
   assert.match(readiness, /import \{ SELECTORS \} from "\.\.\/src\/config"/);
   assert.match(readiness, /SELECTORS\.primary\.chatList/);
   assert.match(readiness, /SELECTORS\.fallback\.chatList/);
+  assert.match(readiness, /export function whatsappChatTarget/);
+  assert.match(readiness, /containerTarget\.or\(fallbackRowTarget\)/);
   assert.match(provisioner, /authenticatedWhatsAppReady\(whatsapp\)/);
   assert.match(acceptance, /authenticatedWhatsAppReady\(page\)/);
+  assert.match(acceptance, /whatsappChatTarget\(page, targetChat!\)/);
   assert.doesNotMatch(provisioner, /data-testid=\\?"chat-list/);
   assert.doesNotMatch(acceptance, /data-testid=\\?"chat-list/);
 });
