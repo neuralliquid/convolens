@@ -23,7 +23,7 @@ The failure occurred when the NUL-delimited local compatibility-lock key was pas
 
 ## Bounded fix
 
-The hotfix:
+Draft PR `#170` carries the hotfix from branch `agent/postgres-advisory-lock-key` (initial implementation commit `56e4997aacf046463fd1b5a690b106840f4965ef`). The hotfix:
 
 - retains the NUL-delimited key for collision-safe in-process queueing;
 - SHA-256 encodes that key to deterministic 64-character hexadecimal text before the PostgreSQL advisory-lock query;
