@@ -2,7 +2,7 @@
  * ConvoLens Chrome Extension - Background Service Worker (Production)
  *
  * Handles all background operations for the extension:
- * - API communication with retry logic
+ * - API communication with one attempt per explicit confirmation
  * - Authentication state management
  * - Explicit retry-required responses without persisting new raw captures
  * - Settings management
@@ -1459,11 +1459,11 @@ async function sendChatData(
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries: number = 2,
+  maxAttempts: number = 1,
 ): Promise<any> {
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const controller = new AbortController();
     let didTimeout = false;
     const timeoutId = setTimeout(() => {
@@ -1532,7 +1532,7 @@ async function fetchWithRetry(
         throw normalizedError;
       }
 
-      if (attempt < maxRetries - 1) {
+      if (attempt < maxAttempts - 1) {
         const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }

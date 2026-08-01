@@ -2,6 +2,8 @@
 
 Date: 2026-08-01
 
+Current continuation: [Authentic intake PostgreSQL blocker](HANDOFF-2026-08-01-AUTHENTIC-INTAKE-POSTGRES-BLOCKER.md).
+
 ## Outcome
 
 The implementation portion of Baton task `afabf0bd-5a6b-4272-b37a-b4bfd5601227` is complete on branch `agent/stable-whatsapp-identity`. Extension version `1.0.21` restores a privacy-safe stable identity source for the current WhatsApp Web runtime while remaining fail-closed.
