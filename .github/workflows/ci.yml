@@ -157,6 +157,16 @@ jobs:
             exit 0
           fi
 
+          TAG_TARGET=$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk 'NR == 1 { print $1 }')
+          if [ -z "$TAG_TARGET" ]; then
+            TAG_TARGET=$(git ls-remote --tags origin "refs/tags/${TAG}" | awk 'NR == 1 { print $1 }')
+          fi
+          if [ -n "$TAG_TARGET" ] && [ "$TAG_TARGET" != "$GITHUB_SHA" ]; then
+            echo "Tag $TAG already points to $TAG_TARGET, not validated commit $GITHUB_SHA." >&2
+            echo "Delete or repair the orphaned tag before publishing this release." >&2
+            exit 1
+          fi
+
           gh release create "$TAG" \
             "convolens-extension.zip#ConvoLens extension v${VERSION}" \
             "convolens-extension.zip.sha256#SHA-256 checksum" \

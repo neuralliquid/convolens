@@ -69,6 +69,10 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
     /cd "\$RUNNER_TEMP\/assets"[\s\S]*sha256sum --check convolens-extension\.zip\.sha256/,
   );
   assert.match(workflow, /cmp -s/);
+  assert.match(workflow, /git ls-remote --tags origin/);
+  assert.match(workflow, /refs\/tags\/\$\{TAG\}\^\{\}/);
+  assert.match(workflow, /TAG_TARGET.*GITHUB_SHA/);
+  assert.match(workflow, /orphaned tag/);
   assert.match(workflow, /gh release create "\$TAG"/);
   assert.match(workflow, /--target "\$GITHUB_SHA"/);
 });
