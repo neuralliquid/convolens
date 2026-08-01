@@ -4,9 +4,9 @@ Date: 2026-08-01
 
 ## Current stop point
 
-`origin/main` is `d91ab0ea3b98d041991d9820be8705992f7eeb4b`, the squash merge of PR #167. The current extension version is `1.0.20`.
+The implementation baseline before this documentation-only handoff is `d91ab0ea3b98d041991d9820be8705992f7eeb4b`, the squash merge of PR #167. The current extension version is `1.0.20`.
 
-The implementation, repeatable fixtures, launcher polish, and downloadable current-main package are complete. Authentic WhatsApp intake is not complete: the staffed runner stopped before confirmation because current WhatsApp Web exposed no verified stable conversation identifier.
+The implementation, repeatable fixtures, launcher polish, and downloadable verified implementation-baseline package are complete. Authentic WhatsApp intake is not complete: the staffed runner stopped before confirmation because current WhatsApp Web exposed no verified stable conversation identifier.
 
 ## Landed work
 
@@ -21,7 +21,7 @@ The implementation, repeatable fixtures, launcher polish, and downloadable curre
 
 PR #162 was deployed by production run `30693790497`. Independent verification identified Azure revision `nl-prod-convolens-api--0000042` on image `nlprodconvolensacr.azurecr.io/convolens-api:8eaa6d7fc68947d7b119603d19f008f3079305bd`; API health/readiness and the web feature/auth-status probes returned HTTP 200. PRs #163-#167 changed tests, documentation, extension UX, or packaging workflows and did not require another API/web deployment.
 
-## Downloadable current-main extension
+## Downloadable verified implementation baseline
 
 Post-merge CI run `30710724769` passed on exact SHA `d91ab0ea3b98d041991d9820be8705992f7eeb4b`, including build, extension tests, headed browser fixtures, persistence fixtures, API intake tests, package inspection, checksum generation, and artifact upload.
 
