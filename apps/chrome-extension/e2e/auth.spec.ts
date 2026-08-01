@@ -6,6 +6,10 @@ import {
   type Page,
 } from "@playwright/test";
 import { isAbsolute, relative, resolve } from "node:path";
+import {
+  authenticatedWhatsAppReady,
+  whatsappChatTarget,
+} from "./whatsapp-readiness";
 
 const enabled = process.env.CONVOLENS_AUTHENTIC_ACCEPTANCE === "1";
 const profileDir = process.env.CONVOLENS_PW_PROFILE_DIR;
@@ -61,9 +65,7 @@ test.describe("operator-held authentic extension acceptance", () => {
     try {
       const page = await context.newPage();
       await page.goto("https://web.whatsapp.com/");
-      const chatList = page
-        .locator('[data-testid="chat-list"], #pane-side')
-        .first();
+      const chatList = authenticatedWhatsAppReady(page);
       await chatList.waitFor();
       await page.locator("#convolens-fab").waitFor();
       await page.locator("#ws-launcher-toggle").click();
@@ -113,11 +115,9 @@ test.describe("operator-held authentic extension acceptance", () => {
       const extensionPage = await openExtensionControlPage(context);
       const page = await context.newPage();
       await page.goto("https://web.whatsapp.com/");
-      const chatList = page
-        .locator('[data-testid="chat-list"], #pane-side')
-        .first();
+      const chatList = authenticatedWhatsAppReady(page);
       await chatList.waitFor();
-      const target = chatList.getByText(targetChat!, { exact: true });
+      const target = whatsappChatTarget(page, targetChat!);
       await expect(target).toHaveCount(1);
       await expect(target).toBeVisible();
       await target.click();
