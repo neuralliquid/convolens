@@ -193,8 +193,19 @@ export class TicketCandidateService {
             )
           )
           .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
-        const ambiguousCreateStartedAt =
+        let ambiguousCreateStartedAt =
           lastAmbiguousCreate?.completedAt || lastAmbiguousCreate?.createdAt;
+        if (lastAmbiguousCreate?.errorCode === 'baton_create_started') {
+          ambiguousCreateStartedAt = new Date();
+          await attemptRepository.update(
+            { id: lastAmbiguousCreate.id, errorCode: 'baton_create_started' },
+            {
+              status: 'failed',
+              errorCode: 'baton_ambiguous',
+              completedAt: ambiguousCreateStartedAt,
+            }
+          );
+        }
         reconcilingAmbiguousCreate = Boolean(
           ambiguousCreateStartedAt &&
             Date.now() - ambiguousCreateStartedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS

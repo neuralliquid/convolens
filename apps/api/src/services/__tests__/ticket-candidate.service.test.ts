@@ -317,6 +317,7 @@ describe('TicketCandidateService', () => {
       attemptNumber: 1,
       status: 'pending',
       errorCode: 'baton_create_started',
+      createdAt: staleAt,
     });
 
     await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
@@ -329,6 +330,12 @@ describe('TicketCandidateService', () => {
       .getRepository(TicketCandidate)
       .findOneByOrFail({ id: candidate.id });
     expect(stored.lastPublishErrorCode).toBe('baton_ambiguous');
+    const attempts = await dataSource
+      .getRepository(BatonPublishAttempt)
+      .find({ where: { candidateId: candidate.id }, order: { attemptNumber: 'ASC' } });
+    expect(attempts[0].errorCode).toBe('baton_ambiguous');
+    expect(attempts[0].completedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+    expect(attempts[1].errorCode).toBe('baton_reconciling');
   }, 10_000);
 
   it('preserves the ambiguous window when reconciliation lookup fails', async () => {

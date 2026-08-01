@@ -15,7 +15,7 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - accepted candidates become immutable and render read-only, so edits require a fresh review decision;
 - candidate and intake publication claims use reclaimable 90-second leases and serialize deletion with remote publication;
 - any completed durable Baton attempt carrying a task ID finalizes the candidate locally before any recovery path can call Baton again, including attempts later marked failed by local finalization errors;
-- the Baton create boundary is persisted before POST, and stale `baton_create_started` attempts reconcile without issuing another POST during the ambiguity window;
+- the Baton create boundary is persisted before POST; first stale recovery converts `baton_create_started` into a fresh durable ambiguity boundary so the full reconciliation window occurs after the publication lease expires and before any later POST;
 - ambiguous Baton creates retain the original reconciliation deadline across lookup failures, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
 - Mystira access-token expiry is tracked independently from ID-token expiry before the token is forwarded;
 - the publish proxy resolves one refreshed Mystira session and derives both downstream credentials from it;
