@@ -15,8 +15,10 @@ import {
   type ConversationSourceKind,
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
+import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
+import { TicketCandidate } from '../db/entities/TicketCandidate';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from './storage/storage.service';
-import { BATON_PUBLISH_LEASE_MS } from './ticket-candidate.service';
+import { BATON_AMBIGUOUS_HOLD_MS, BATON_PUBLISH_LEASE_MS } from './ticket-candidate.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
@@ -1049,6 +1051,24 @@ export class ConversationIntakeService {
         );
         if (cleared.affected === 1) continue;
         continue;
+      }
+      const ambiguousBoundary = await this.dataSource
+        .getRepository(BatonPublishAttempt)
+        .createQueryBuilder('attempt')
+        .innerJoin(TicketCandidate, 'ticket', 'ticket.id = attempt.candidateId')
+        .where('ticket.intakeId = :id', { id })
+        .andWhere('ticket.userId = :userId', { userId })
+        .andWhere('attempt.errorCode IN (:...errorCodes)', {
+          errorCodes: ['baton_create_started', 'baton_ambiguous'],
+        })
+        .andWhere('COALESCE(attempt.completedAt, attempt.createdAt) > :holdStartedAt', {
+          holdStartedAt: new Date(Date.now() - BATON_AMBIGUOUS_HOLD_MS),
+        })
+        .getOne();
+      if (ambiguousBoundary) {
+        throw new Error(
+          'A Baton publication is still within its reconciliation safety window; retry deletion later'
+        );
       }
       const marked = await repository.update(
         {

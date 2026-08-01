@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
+import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
+import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import {
   ConversationIntakeService,
   RAW_ARTIFACT_CLAIM_LEASE_MS,
@@ -16,7 +18,7 @@ import {
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from '../storage/storage.service';
-import { BATON_PUBLISH_LEASE_MS } from '../ticket-candidate.service';
+import { BATON_AMBIGUOUS_HOLD_MS, BATON_PUBLISH_LEASE_MS } from '../ticket-candidate.service';
 
 const baseInput: ConversationIntakeInput = {
   userId: 'mystira-user-1',
@@ -83,13 +85,15 @@ describe('ConversationIntakeService', () => {
       type: 'sqlite',
       database: ':memory:',
       synchronize: true,
-      entities: [ConversationIntake, ConversationMessage],
+      entities: [ConversationIntake, ConversationMessage, TicketCandidate, BatonPublishAttempt],
     });
     await dataSource.initialize();
     service = new ConversationIntakeService(dataSource);
   });
 
   beforeEach(async () => {
+    await dataSource.getRepository(BatonPublishAttempt).clear();
+    await dataSource.getRepository(TicketCandidate).clear();
     await dataSource.getRepository(ConversationMessage).clear();
     await dataSource.getRepository(ConversationIntake).clear();
   });
@@ -578,6 +582,53 @@ describe('ConversationIntakeService', () => {
     expect(await service.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
   });
 
+  it('preserves an ambiguous Baton create boundary until its reconciliation window expires', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'ambiguous-delete-fingerprint',
+      title: 'Preserve ambiguous publish',
+      confidence: 'high',
+      evidence: [],
+      status: 'accepted',
+      revision: 1,
+      publishStatus: 'failed',
+      idempotencyKey: 'ambiguous-delete-marker',
+      lastPublishErrorCode: 'baton_ambiguous',
+    });
+    const boundary = await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'failed',
+      errorCode: 'baton_ambiguous',
+      completedAt: new Date(),
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'reconciliation safety window'
+    );
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+    expect(
+      await dataSource.getRepository(TicketCandidate).findOneBy({ id: candidate.id })
+    ).not.toBeNull();
+    expect(
+      await dataSource.getRepository(BatonPublishAttempt).findOneBy({ id: boundary.id })
+    ).not.toBeNull();
+
+    await dataSource.getRepository(BatonPublishAttempt).update(boundary.id, {
+      completedAt: new Date(Date.now() - BATON_AMBIGUOUS_HOLD_MS - 1_000),
+    });
+    expect(await service.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(
+      await dataSource.getRepository(TicketCandidate).findOneBy({ id: candidate.id })
+    ).toBeNull();
+    expect(
+      await dataSource.getRepository(BatonPublishAttempt).findOneBy({ id: boundary.id })
+    ).toBeNull();
+  });
+
   it('does not clear a Baton lease renewed during stale deletion cleanup', async () => {
     const saved = await service.save(baseInput);
     const repository = dataSource.getRepository(ConversationIntake);
@@ -586,20 +637,24 @@ describe('ConversationIntakeService', () => {
       batonPublishClaimId: 'renewed-publish-claim',
       batonPublishClaimedAt: staleAt,
     });
-    const originalUpdate = Object.getPrototypeOf(repository).update.bind(repository) as typeof repository.update;
+    const originalUpdate = Object.getPrototypeOf(repository).update.bind(
+      repository
+    ) as typeof repository.update;
     let renewed = false;
-    const updateSpy = jest.spyOn(repository, 'update').mockImplementation(async (criteria, partial) => {
-      if (
-        !renewed &&
-        typeof criteria === 'object' &&
-        'batonPublishClaimId' in criteria &&
-        partial.batonPublishClaimId === null
-      ) {
-        renewed = true;
-        await originalUpdate(saved.conversation.id, { batonPublishClaimedAt: new Date() });
-      }
-      return originalUpdate(criteria, partial);
-    });
+    const updateSpy = jest
+      .spyOn(repository, 'update')
+      .mockImplementation(async (criteria, partial) => {
+        if (
+          !renewed &&
+          typeof criteria === 'object' &&
+          'batonPublishClaimId' in criteria &&
+          partial.batonPublishClaimId === null
+        ) {
+          renewed = true;
+          await originalUpdate(saved.conversation.id, { batonPublishClaimedAt: new Date() });
+        }
+        return originalUpdate(criteria, partial);
+      });
 
     try {
       await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
