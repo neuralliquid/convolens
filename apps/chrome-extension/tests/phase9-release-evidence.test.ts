@@ -39,6 +39,19 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   assert.match(workflow, /@convolens\/chrome-extension package/);
 });
 
+test("shares production WhatsApp readiness selectors with authentic fixtures", () => {
+  const readiness = read("../e2e/whatsapp-readiness.ts");
+  const provisioner = read("../e2e/provision-auth.ts");
+  const acceptance = read("../e2e/auth.spec.ts");
+  assert.match(readiness, /import \{ SELECTORS \} from "\.\.\/src\/config"/);
+  assert.match(readiness, /SELECTORS\.primary\.chatList/);
+  assert.match(readiness, /SELECTORS\.fallback\.chatList/);
+  assert.match(provisioner, /authenticatedWhatsAppReady\(whatsapp\)/);
+  assert.match(acceptance, /authenticatedWhatsAppReady\(page\)/);
+  assert.doesNotMatch(provisioner, /data-testid=\\?"chat-list/);
+  assert.doesNotMatch(acceptance, /data-testid=\\?"chat-list/);
+});
+
 test("requires local ZIP sizes and CRC when no data descriptor is present", () => {
   const entry = {
     name: "manifest.json",

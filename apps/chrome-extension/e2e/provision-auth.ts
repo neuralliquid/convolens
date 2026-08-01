@@ -2,6 +2,7 @@ import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
+import { authenticatedWhatsAppReady } from "./whatsapp-readiness";
 
 const extensionRoot = resolve(import.meta.dirname, "..");
 const extensionPath = extensionRoot;
@@ -64,10 +65,9 @@ try {
     "Complete WhatsApp QR and ConvoLens/Mystira sign-in in the visible browser. No cookie or token values will be printed.",
   );
 
-  await whatsapp
-    .locator('[data-testid="chat-list"], #pane-side')
-    .first()
-    .waitFor({ timeout: 10 * 60_000 });
+  await authenticatedWhatsAppReady(whatsapp).waitFor({
+    timeout: 10 * 60_000,
+  });
 
   const deadline = Date.now() + 10 * 60_000;
   let authenticated = false;
