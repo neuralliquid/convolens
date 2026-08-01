@@ -1052,19 +1052,40 @@ export class ConversationIntakeService {
         if (cleared.affected === 1) continue;
         continue;
       }
-      const ambiguousBoundary = await this.dataSource
+      const unresolvedBoundaries = await this.dataSource
         .getRepository(BatonPublishAttempt)
         .createQueryBuilder('attempt')
         .innerJoin(TicketCandidate, 'ticket', 'ticket.id = attempt.candidateId')
         .where('ticket.intakeId = :id', { id })
         .andWhere('ticket.userId = :userId', { userId })
+        .andWhere('(ticket.publishStatus != :succeeded OR ticket.batonTaskId IS NULL)', {
+          succeeded: 'succeeded',
+        })
         .andWhere('attempt.errorCode IN (:...errorCodes)', {
           errorCodes: ['baton_create_started', 'baton_ambiguous'],
         })
-        .andWhere('COALESCE(attempt.completedAt, attempt.createdAt) > :holdStartedAt', {
-          holdStartedAt: new Date(Date.now() - BATON_AMBIGUOUS_HOLD_MS),
-        })
-        .getOne();
+        .getMany();
+      const createStartedBoundary = unresolvedBoundaries.find(
+        (boundary) => boundary.errorCode === 'baton_create_started'
+      );
+      if (createStartedBoundary) {
+        const reanchored = await this.dataSource
+          .getRepository(BatonPublishAttempt)
+          .update(
+            { id: createStartedBoundary.id, errorCode: 'baton_create_started' },
+            { status: 'failed', errorCode: 'baton_ambiguous', completedAt: new Date() }
+          );
+        if (reanchored.affected !== 1) continue;
+        throw new Error(
+          'A Baton publication is still within its reconciliation safety window; retry deletion later'
+        );
+      }
+      const holdStartedAt = Date.now() - BATON_AMBIGUOUS_HOLD_MS;
+      const ambiguousBoundary = unresolvedBoundaries.find(
+        (boundary) =>
+          boundary.errorCode === 'baton_ambiguous' &&
+          (boundary.completedAt || boundary.createdAt).getTime() > holdStartedAt
+      );
       if (ambiguousBoundary) {
         throw new Error(
           'A Baton publication is still within its reconciliation safety window; retry deletion later'

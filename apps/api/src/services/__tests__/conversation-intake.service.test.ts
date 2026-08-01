@@ -629,6 +629,75 @@ describe('ConversationIntakeService', () => {
     ).toBeNull();
   });
 
+  it('re-anchors a stale create-started boundary before deletion can discard it', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'create-started-delete-fingerprint',
+      title: 'Preserve create-started publish',
+      confidence: 'high',
+      evidence: [],
+      status: 'accepted',
+      revision: 1,
+      publishStatus: 'pending',
+      idempotencyKey: 'create-started-delete-marker',
+    });
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    const boundary = await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'pending',
+      errorCode: 'baton_create_started',
+    });
+    await dataSource.getRepository(BatonPublishAttempt).update(boundary.id, { createdAt: staleAt });
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'crashed-publisher',
+      batonPublishClaimedAt: staleAt,
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'reconciliation safety window'
+    );
+    const reanchored = await dataSource
+      .getRepository(BatonPublishAttempt)
+      .findOneByOrFail({ id: boundary.id });
+    expect(reanchored.errorCode).toBe('baton_ambiguous');
+    expect(reanchored.completedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+  });
+
+  it('allows deletion after an ambiguous Baton publication was reconciled successfully', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'reconciled-delete-fingerprint',
+      title: 'Delete reconciled publish',
+      confidence: 'high',
+      evidence: [],
+      status: 'published',
+      revision: 1,
+      publishStatus: 'succeeded',
+      idempotencyKey: 'reconciled-delete-marker',
+      batonTaskId: '77777777-7777-4777-8777-777777777777',
+    });
+    await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'failed',
+      errorCode: 'baton_ambiguous',
+      completedAt: new Date(),
+    });
+
+    expect(await service.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(
+      await dataSource.getRepository(TicketCandidate).findOneBy({ id: candidate.id })
+    ).toBeNull();
+  });
+
   it('does not clear a Baton lease renewed during stale deletion cleanup', async () => {
     const saved = await service.save(baseInput);
     const repository = dataSource.getRepository(ConversationIntake);

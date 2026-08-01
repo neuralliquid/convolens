@@ -18,7 +18,7 @@ This slice implements the Phase 5/6 prerequisite for the serial go-live:
 - the Baton create boundary is persisted before POST; first stale recovery converts `baton_create_started` into a fresh durable ambiguity boundary so the full reconciliation window occurs after the publication lease expires and before any later POST;
 - after claiming publication, the service reloads attempts; the pre-POST boundary atomically renews both intake and candidate claims, and terminal attempt/candidate writes are transactional so a delayed stale publisher cannot create or finalize under a reclaimed claim;
 - stale deletion cleanup CAS-compares both the Baton claim ID and its observed lease timestamp, so a concurrent pre-POST renewal forces deletion to reload and block;
-- deletion also blocks while a durable `baton_create_started` or `baton_ambiguous` boundary remains inside its reconciliation safety window, preserving the candidate, idempotency marker, and attempt evidence until a retry can reconcile safely;
+- deletion re-anchors a stale `baton_create_started` boundary into a fresh `baton_ambiguous` safety window and blocks while an unreconciled boundary remains inside that window, preserving the candidate, idempotency marker, and attempt evidence until a retry can reconcile safely; already reconciled successful candidates are not held by historical ambiguity rows;
 - stale publication reclaim uses the same claim-ID-plus-observed-timestamp CAS, so it cannot overwrite or later clear a concurrently renewed intake lease;
 - Baton project IDs are normalized and UUID-validated before candidate update or acceptance persistence;
 - ambiguous Baton creates retain the original reconciliation deadline across lookup failures, never issue an immediate second POST, and permit a new create only after that deadline expires without a visible duplicate;
@@ -40,8 +40,8 @@ The headed persistence fixture now exercises the production extension, built API
 Validated locally:
 
 - candidate service suite: 13/13;
-- candidate, intake, and migration suite: 59/59;
-- complete API Jest suite: 154/154;
+- candidate, intake, and migration suite: 61/61;
+- complete API Jest suite: 156/156;
 - focused candidate UI plus Mystira auth/session suite: 5/5;
 - headed Playwright persistence fixture: 1/1;
 - headed extension UI/console fixtures: 4/4;
