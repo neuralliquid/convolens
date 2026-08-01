@@ -668,6 +668,46 @@ describe('ConversationIntakeService', () => {
     expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
   });
 
+  it('re-anchors expired ambiguity stranded behind a stale recovery lease', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'stranded-ambiguity-delete-fingerprint',
+      title: 'Preserve stranded ambiguity',
+      confidence: 'high',
+      evidence: [],
+      status: 'accepted',
+      revision: 1,
+      publishStatus: 'failed',
+      idempotencyKey: 'stranded-ambiguity-delete-marker',
+      lastPublishErrorCode: 'baton_ambiguous',
+    });
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    const boundary = await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'failed',
+      errorCode: 'baton_ambiguous',
+      completedAt: staleAt,
+    });
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'crashed-recovery-publisher',
+      batonPublishClaimedAt: staleAt,
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'reconciliation safety window'
+    );
+    const reanchored = await dataSource
+      .getRepository(BatonPublishAttempt)
+      .findOneByOrFail({ id: boundary.id });
+    expect(reanchored.errorCode).toBe('baton_ambiguous');
+    expect(reanchored.completedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+  });
+
   it('allows deletion after an ambiguous Baton publication was reconciled successfully', async () => {
     const saved = await service.save(baseInput);
     const candidate = await dataSource.getRepository(TicketCandidate).save({

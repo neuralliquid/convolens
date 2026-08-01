@@ -1025,6 +1025,7 @@ export class ConversationIntakeService {
   async deleteForUser(userId: string, id: string): Promise<boolean> {
     const repository = this.dataSource.getRepository(ConversationIntake);
     let conversation: ConversationIntake | null = null;
+    let reclaimedStaleBatonLease = false;
 
     // Compare-and-swap the complete claim identity into a tombstone. If another
     // replica changes the key/claim/status after our read, retry from its new
@@ -1049,7 +1050,10 @@ export class ConversationIntakeService {
           },
           { batonPublishClaimId: null, batonPublishClaimedAt: null }
         );
-        if (cleared.affected === 1) continue;
+        if (cleared.affected === 1) {
+          reclaimedStaleBatonLease = true;
+          continue;
+        }
         continue;
       }
       const unresolvedBoundaries = await this.dataSource
@@ -1064,15 +1068,20 @@ export class ConversationIntakeService {
         .andWhere('attempt.errorCode IN (:...errorCodes)', {
           errorCodes: ['baton_create_started', 'baton_ambiguous'],
         })
+        .orderBy('attempt.createdAt', 'DESC')
         .getMany();
       const createStartedBoundary = unresolvedBoundaries.find(
         (boundary) => boundary.errorCode === 'baton_create_started'
       );
-      if (createStartedBoundary) {
+      const strandedAmbiguousBoundary = reclaimedStaleBatonLease
+        ? unresolvedBoundaries.find((boundary) => boundary.errorCode === 'baton_ambiguous')
+        : undefined;
+      const boundaryToReanchor = createStartedBoundary || strandedAmbiguousBoundary;
+      if (boundaryToReanchor) {
         const reanchored = await this.dataSource
           .getRepository(BatonPublishAttempt)
           .update(
-            { id: createStartedBoundary.id, errorCode: 'baton_create_started' },
+            { id: boundaryToReanchor.id, errorCode: boundaryToReanchor.errorCode },
             { status: 'failed', errorCode: 'baton_ambiguous', completedAt: new Date() }
           );
         if (reanchored.affected !== 1) continue;
