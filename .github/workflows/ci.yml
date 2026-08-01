@@ -94,6 +94,9 @@ jobs:
     needs: validate
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: extension-release-${{ github.repository }}
+      cancel-in-progress: false
     permissions:
       contents: write
 
@@ -127,7 +130,12 @@ jobs:
             unzip -qq convolens-extension.zip -d "$RUNNER_TEMP/current"
             gh release download "$TAG" \
               --pattern convolens-extension.zip \
+              --pattern convolens-extension.zip.sha256 \
               --dir "$RUNNER_TEMP/assets"
+            (
+              cd "$RUNNER_TEMP/assets"
+              sha256sum --check convolens-extension.zip.sha256
+            )
             unzip -qq "$RUNNER_TEMP/assets/convolens-extension.zip" \
               -d "$RUNNER_TEMP/released"
             (
