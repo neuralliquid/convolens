@@ -3,6 +3,8 @@
 Date: 2026-07-31
 Updated: 2026-08-01
 
+Current continuation: [Extension artifact and authentic acceptance handoff](HANDOFF-2026-08-01-EXTENSION-ARTIFACT-AND-AUTHENTIC-ACCEPTANCE.md). This file retains the candidate and Baton implementation history.
+
 ## Outcome
 
 This slice implements the Phase 5/6 prerequisite for the serial go-live:
