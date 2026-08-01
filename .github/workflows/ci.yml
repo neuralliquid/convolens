@@ -88,3 +88,88 @@ jobs:
             apps/chrome-extension/convolens-extension.zip.sha256
           if-no-files-found: error
           retention-days: 30
+
+  publish-extension-release:
+    name: Publish Extension Release
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: extension-release-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Download validated extension artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: convolens-extension-${{ github.sha }}
+
+      - name: Verify validated checksum
+        run: sha256sum --check convolens-extension.zip.sha256
+
+      - name: Publish immutable versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version' apps/chrome-extension/manifest.json)
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Extension manifest version is not a supported semantic version: $VERSION" >&2
+            exit 1
+          fi
+          TAG="extension-v${VERSION}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            mkdir -p "$RUNNER_TEMP/current" "$RUNNER_TEMP/released" "$RUNNER_TEMP/assets"
+            unzip -qq convolens-extension.zip -d "$RUNNER_TEMP/current"
+            gh release download "$TAG" \
+              --pattern convolens-extension.zip \
+              --pattern convolens-extension.zip.sha256 \
+              --dir "$RUNNER_TEMP/assets"
+            (
+              cd "$RUNNER_TEMP/assets"
+              sha256sum --check convolens-extension.zip.sha256
+            )
+            unzip -qq "$RUNNER_TEMP/assets/convolens-extension.zip" \
+              -d "$RUNNER_TEMP/released"
+            (
+              cd "$RUNNER_TEMP/current"
+              find . -type f -print0 | sort -z | xargs -0 sha256sum
+            ) > "$RUNNER_TEMP/current-payload.sha256"
+            (
+              cd "$RUNNER_TEMP/released"
+              find . -type f -print0 | sort -z | xargs -0 sha256sum
+            ) > "$RUNNER_TEMP/released-payload.sha256"
+            if ! cmp -s \
+              "$RUNNER_TEMP/current-payload.sha256" \
+              "$RUNNER_TEMP/released-payload.sha256"; then
+              echo "Release $TAG already exists with different extension payloads." >&2
+              echo "Bump manifest and package versions before publishing changed extension code." >&2
+              exit 1
+            fi
+            echo "Release $TAG already contains these validated extension payloads."
+            exit 0
+          fi
+
+          TAG_TARGET=$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk 'NR == 1 { print $1 }')
+          if [ -z "$TAG_TARGET" ]; then
+            TAG_TARGET=$(git ls-remote --tags origin "refs/tags/${TAG}" | awk 'NR == 1 { print $1 }')
+          fi
+          if [ -n "$TAG_TARGET" ] && [ "$TAG_TARGET" != "$GITHUB_SHA" ]; then
+            echo "Tag $TAG already points to $TAG_TARGET, not validated commit $GITHUB_SHA." >&2
+            echo "Delete or repair the orphaned tag before publishing this release." >&2
+            exit 1
+          fi
+
+          gh release create "$TAG" \
+            "convolens-extension.zip#ConvoLens extension v${VERSION}" \
+            "convolens-extension.zip.sha256#SHA-256 checksum" \
+            --target "$GITHUB_SHA" \
+            --title "ConvoLens Extension v${VERSION}" \
+            --notes "Validated unpacked Chrome extension build from commit ${GITHUB_SHA}. Download and extract convolens-extension.zip, then load the extracted directory containing manifest.json through chrome://extensions."

@@ -50,6 +50,31 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   );
   assert.match(workflow, /convolens-extension\.zip\.sha256/);
   assert.match(workflow, /if-no-files-found: error/);
+  assert.match(workflow, /publish-extension-release:/);
+  assert.match(workflow, /name: Publish Extension Release/);
+  assert.match(workflow, /needs: validate/);
+  assert.match(workflow, /permissions:\s*\n\s*contents: write/);
+  assert.match(
+    workflow,
+    /group: extension-release-\$\{\{ github\.repository \}\}/,
+  );
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /actions\/download-artifact@/);
+  assert.match(workflow, /sha256sum --check convolens-extension\.zip\.sha256/);
+  assert.match(workflow, /TAG="extension-v\$\{VERSION\}"/);
+  assert.match(workflow, /gh release download "\$TAG"/);
+  assert.match(workflow, /--pattern convolens-extension\.zip\.sha256/);
+  assert.match(
+    workflow,
+    /cd "\$RUNNER_TEMP\/assets"[\s\S]*sha256sum --check convolens-extension\.zip\.sha256/,
+  );
+  assert.match(workflow, /cmp -s/);
+  assert.match(workflow, /git ls-remote --tags origin/);
+  assert.match(workflow, /refs\/tags\/\$\{TAG\}\^\{\}/);
+  assert.match(workflow, /TAG_TARGET.*GITHUB_SHA/);
+  assert.match(workflow, /orphaned tag/);
+  assert.match(workflow, /gh release create "\$TAG"/);
+  assert.match(workflow, /--target "\$GITHUB_SHA"/);
 });
 
 test("publishes only a validated extension ZIP and checksum to releases", () => {
