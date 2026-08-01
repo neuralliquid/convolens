@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes.js';
 import groupRoutes from './routes/group.routes.js';
 import chatExportRoutes from './routes/chat-export.routes.js';
 import extensionRoutes from './routes/extension.routes.js';
+import ticketCandidateRoutes from './routes/ticket-candidate.routes.js';
 import { logger } from './utils/logger.js';
 import { correlationMiddleware } from './middleware/correlation.js';
 import { metricsMiddleware, metrics } from './services/metrics.service.js';
@@ -98,6 +99,7 @@ export const createApp = (): Application => {
   app.use('/api/groups', groupRoutes);
   app.use('/api/chat-export', chatExportRoutes);
   app.use('/api/extension', extensionRoutes);
+  app.use('/api/ticket-candidates', ticketCandidateRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

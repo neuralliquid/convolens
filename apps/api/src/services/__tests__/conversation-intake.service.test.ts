@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
+import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
+import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import {
   ConversationIntakeService,
   RAW_ARTIFACT_CLAIM_LEASE_MS,
@@ -16,6 +18,7 @@ import {
   type ConversationIntakeInput,
 } from '../conversation-intake.service';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from '../storage/storage.service';
+import { BATON_AMBIGUOUS_HOLD_MS, BATON_PUBLISH_LEASE_MS } from '../ticket-candidate.service';
 
 const baseInput: ConversationIntakeInput = {
   userId: 'mystira-user-1',
@@ -82,13 +85,15 @@ describe('ConversationIntakeService', () => {
       type: 'sqlite',
       database: ':memory:',
       synchronize: true,
-      entities: [ConversationIntake, ConversationMessage],
+      entities: [ConversationIntake, ConversationMessage, TicketCandidate, BatonPublishAttempt],
     });
     await dataSource.initialize();
     service = new ConversationIntakeService(dataSource);
   });
 
   beforeEach(async () => {
+    await dataSource.getRepository(BatonPublishAttempt).clear();
+    await dataSource.getRepository(TicketCandidate).clear();
     await dataSource.getRepository(ConversationMessage).clear();
     await dataSource.getRepository(ConversationIntake).clear();
   });
@@ -551,6 +556,223 @@ describe('ConversationIntakeService', () => {
     expect(await service.getForUser(baseInput.userId, owned.conversation.id)).toBeNull();
     expect(await dataSource.getRepository(ConversationMessage).count()).toBe(2);
     expect(await service.getForUser('mystira-user-2', otherUser.conversation.id)).not.toBeNull();
+  });
+
+  it('blocks deletion while a Baton publication lease is active', async () => {
+    const saved = await service.save(baseInput);
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'active-publish-claim',
+      batonPublishClaimedAt: new Date(),
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'Baton publication is in progress'
+    );
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+  });
+
+  it('reclaims a stale Baton publication lease before deletion', async () => {
+    const saved = await service.save(baseInput);
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'stale-publish-claim',
+      batonPublishClaimedAt: new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000),
+    });
+
+    expect(await service.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
+  });
+
+  it('preserves an ambiguous Baton create boundary until its reconciliation window expires', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'ambiguous-delete-fingerprint',
+      title: 'Preserve ambiguous publish',
+      confidence: 'high',
+      evidence: [],
+      status: 'accepted',
+      revision: 1,
+      publishStatus: 'failed',
+      idempotencyKey: 'ambiguous-delete-marker',
+      lastPublishErrorCode: 'baton_ambiguous',
+    });
+    const boundary = await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'failed',
+      errorCode: 'baton_ambiguous',
+      completedAt: new Date(),
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'reconciliation safety window'
+    );
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+    expect(
+      await dataSource.getRepository(TicketCandidate).findOneBy({ id: candidate.id })
+    ).not.toBeNull();
+    expect(
+      await dataSource.getRepository(BatonPublishAttempt).findOneBy({ id: boundary.id })
+    ).not.toBeNull();
+
+    await dataSource.getRepository(BatonPublishAttempt).update(boundary.id, {
+      completedAt: new Date(Date.now() - BATON_AMBIGUOUS_HOLD_MS - 1_000),
+    });
+    expect(await service.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(
+      await dataSource.getRepository(TicketCandidate).findOneBy({ id: candidate.id })
+    ).toBeNull();
+    expect(
+      await dataSource.getRepository(BatonPublishAttempt).findOneBy({ id: boundary.id })
+    ).toBeNull();
+  });
+
+  it('re-anchors a stale create-started boundary before deletion can discard it', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'create-started-delete-fingerprint',
+      title: 'Preserve create-started publish',
+      confidence: 'high',
+      evidence: [],
+      status: 'accepted',
+      revision: 1,
+      publishStatus: 'pending',
+      idempotencyKey: 'create-started-delete-marker',
+    });
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    const boundary = await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'pending',
+      errorCode: 'baton_create_started',
+    });
+    await dataSource.getRepository(BatonPublishAttempt).update(boundary.id, { createdAt: staleAt });
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'crashed-publisher',
+      batonPublishClaimedAt: staleAt,
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'reconciliation safety window'
+    );
+    const reanchored = await dataSource
+      .getRepository(BatonPublishAttempt)
+      .findOneByOrFail({ id: boundary.id });
+    expect(reanchored.errorCode).toBe('baton_ambiguous');
+    expect(reanchored.completedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+  });
+
+  it('re-anchors expired ambiguity stranded behind a stale recovery lease', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'stranded-ambiguity-delete-fingerprint',
+      title: 'Preserve stranded ambiguity',
+      confidence: 'high',
+      evidence: [],
+      status: 'accepted',
+      revision: 1,
+      publishStatus: 'failed',
+      idempotencyKey: 'stranded-ambiguity-delete-marker',
+      lastPublishErrorCode: 'baton_ambiguous',
+    });
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    const boundary = await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'failed',
+      errorCode: 'baton_ambiguous',
+      completedAt: staleAt,
+    });
+    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+      batonPublishClaimId: 'crashed-recovery-publisher',
+      batonPublishClaimedAt: staleAt,
+    });
+
+    await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+      'reconciliation safety window'
+    );
+    const reanchored = await dataSource
+      .getRepository(BatonPublishAttempt)
+      .findOneByOrFail({ id: boundary.id });
+    expect(reanchored.errorCode).toBe('baton_ambiguous');
+    expect(reanchored.completedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+    expect(await service.getForUser(baseInput.userId, saved.conversation.id)).not.toBeNull();
+  });
+
+  it('allows deletion after an ambiguous Baton publication was reconciled successfully', async () => {
+    const saved = await service.save(baseInput);
+    const candidate = await dataSource.getRepository(TicketCandidate).save({
+      intakeId: saved.conversation.id,
+      userId: baseInput.userId,
+      fingerprint: 'reconciled-delete-fingerprint',
+      title: 'Delete reconciled publish',
+      confidence: 'high',
+      evidence: [],
+      status: 'published',
+      revision: 1,
+      publishStatus: 'succeeded',
+      idempotencyKey: 'reconciled-delete-marker',
+      batonTaskId: '77777777-7777-4777-8777-777777777777',
+    });
+    await dataSource.getRepository(BatonPublishAttempt).save({
+      candidateId: candidate.id,
+      userId: baseInput.userId,
+      attemptNumber: 1,
+      status: 'failed',
+      errorCode: 'baton_ambiguous',
+      completedAt: new Date(),
+    });
+
+    expect(await service.deleteForUser(baseInput.userId, saved.conversation.id)).toBe(true);
+    expect(
+      await dataSource.getRepository(TicketCandidate).findOneBy({ id: candidate.id })
+    ).toBeNull();
+  });
+
+  it('does not clear a Baton lease renewed during stale deletion cleanup', async () => {
+    const saved = await service.save(baseInput);
+    const repository = dataSource.getRepository(ConversationIntake);
+    const staleAt = new Date(Date.now() - BATON_PUBLISH_LEASE_MS - 1_000);
+    await repository.update(saved.conversation.id, {
+      batonPublishClaimId: 'renewed-publish-claim',
+      batonPublishClaimedAt: staleAt,
+    });
+    const originalTransaction = Object.getPrototypeOf(dataSource).transaction.bind(
+      dataSource
+    ) as typeof dataSource.transaction;
+    let renewed = false;
+    const transactionSpy = jest
+      .spyOn(dataSource, 'transaction')
+      .mockImplementation(async (operation: Parameters<typeof originalTransaction>[0]) => {
+        if (!renewed) {
+          renewed = true;
+          await repository.update(saved.conversation.id, { batonPublishClaimedAt: new Date() });
+        }
+        return originalTransaction(operation);
+      });
+
+    try {
+      await expect(service.deleteForUser(baseInput.userId, saved.conversation.id)).rejects.toThrow(
+        'Baton publication is in progress'
+      );
+    } finally {
+      transactionSpy.mockRestore();
+    }
+
+    const stored = await repository.findOneByOrFail({ id: saved.conversation.id });
+    expect(renewed).toBe(true);
+    expect(stored.rawArtifactStatus).not.toBe('deleting');
+    expect(stored.batonPublishClaimId).toBe('renewed-publish-claim');
+    expect(stored.batonPublishClaimedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
   });
 
   it('excludes generated source IDs from the durable content hash', () => {

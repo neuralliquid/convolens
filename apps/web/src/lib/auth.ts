@@ -82,6 +82,7 @@ export async function refreshMystiraToken(token: JWT): Promise<JWT> {
     return {
       ...token,
       accessToken: refreshed.access_token || token.accessToken,
+      accessTokenExpiresAt: Date.now() + (refreshed.expires_in || 3600) * 1000,
       idToken: refreshed.id_token,
       idTokenExpiresAt:
         getIdTokenExpiry(refreshed.id_token) ||
@@ -141,6 +142,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, account }) {
       if (account) {
         token.accessToken = account.access_token;
+        token.accessTokenExpiresAt = account.expires_at
+          ? account.expires_at * 1000
+          : undefined;
         token.idToken = account.id_token;
         token.idTokenExpiresAt =
           getIdTokenExpiry(account.id_token) ||
@@ -150,15 +154,24 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      const expiresAt = token.idTokenExpiresAt as number | undefined;
-      if (token.idToken && expiresAt && Date.now() < expiresAt - 30_000) {
+      const idExpiresAt = token.idTokenExpiresAt as number | undefined;
+      const accessExpiresAt = token.accessTokenExpiresAt as number | undefined;
+      if (
+        token.idToken &&
+        token.accessToken &&
+        idExpiresAt &&
+        accessExpiresAt &&
+        Date.now() < Math.min(idExpiresAt, accessExpiresAt) - 30_000
+      ) {
         return token;
       }
 
       return refreshMystiraToken(token);
     },
     async session({ session, token }) {
-      session.accessToken = token.accessToken as string | undefined;
+      session.accessToken = token.refreshError
+        ? undefined
+        : (token.accessToken as string | undefined);
       session.idToken = token.refreshError
         ? undefined
         : (token.idToken as string | undefined);

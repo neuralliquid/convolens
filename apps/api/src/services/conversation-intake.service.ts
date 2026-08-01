@@ -15,7 +15,10 @@ import {
   type ConversationSourceKind,
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
+import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
+import { TicketCandidate } from '../db/entities/TicketCandidate';
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from './storage/storage.service';
+import { BATON_AMBIGUOUS_HOLD_MS, BATON_PUBLISH_LEASE_MS } from './ticket-candidate.service';
 
 const COMPATIBILITY_BACKFILL_BATCH_SIZE = 100;
 const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
@@ -1029,6 +1032,96 @@ export class ConversationIntakeService {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const candidate = await repository.findOneBy({ id, userId });
       if (!candidate) return false;
+      if (candidate.batonPublishClaimId) {
+        const claimActive =
+          candidate.batonPublishClaimedAt &&
+          candidate.batonPublishClaimedAt.getTime() > Date.now() - BATON_PUBLISH_LEASE_MS;
+        if (claimActive) {
+          throw new Error('A Baton publication is in progress; retry deletion after it completes');
+        }
+        const reclaimed = await this.dataSource.transaction(async (manager) => {
+          const cleared = await manager.getRepository(ConversationIntake).update(
+            {
+              id,
+              userId,
+              rawArtifactStatus: candidate.rawArtifactStatus,
+              batonPublishClaimId: candidate.batonPublishClaimId,
+              batonPublishClaimedAt: candidate.batonPublishClaimedAt || IsNull(),
+            },
+            { batonPublishClaimId: null, batonPublishClaimedAt: null }
+          );
+          if (cleared.affected !== 1) return { cleared: false, reanchored: false };
+          const strandedBoundary = await manager
+            .getRepository(BatonPublishAttempt)
+            .createQueryBuilder('attempt')
+            .innerJoin(TicketCandidate, 'ticket', 'ticket.id = attempt.candidateId')
+            .where('ticket.intakeId = :id', { id })
+            .andWhere('ticket.userId = :userId', { userId })
+            .andWhere('(ticket.publishStatus != :succeeded OR ticket.batonTaskId IS NULL)', {
+              succeeded: 'succeeded',
+            })
+            .andWhere('attempt.errorCode IN (:...errorCodes)', {
+              errorCodes: ['baton_create_started', 'baton_ambiguous'],
+            })
+            .orderBy('attempt.createdAt', 'DESC')
+            .getOne();
+          if (!strandedBoundary) return { cleared: true, reanchored: false };
+          const reanchored = await manager
+            .getRepository(BatonPublishAttempt)
+            .update(
+              { id: strandedBoundary.id, errorCode: strandedBoundary.errorCode },
+              { status: 'failed', errorCode: 'baton_ambiguous', completedAt: new Date() }
+            );
+          return { cleared: true, reanchored: reanchored.affected === 1 };
+        });
+        if (reclaimed.reanchored) {
+          throw new Error(
+            'A Baton publication is still within its reconciliation safety window; retry deletion later'
+          );
+        }
+        if (reclaimed.cleared) continue;
+        continue;
+      }
+      const unresolvedBoundaries = await this.dataSource
+        .getRepository(BatonPublishAttempt)
+        .createQueryBuilder('attempt')
+        .innerJoin(TicketCandidate, 'ticket', 'ticket.id = attempt.candidateId')
+        .where('ticket.intakeId = :id', { id })
+        .andWhere('ticket.userId = :userId', { userId })
+        .andWhere('(ticket.publishStatus != :succeeded OR ticket.batonTaskId IS NULL)', {
+          succeeded: 'succeeded',
+        })
+        .andWhere('attempt.errorCode IN (:...errorCodes)', {
+          errorCodes: ['baton_create_started', 'baton_ambiguous'],
+        })
+        .orderBy('attempt.createdAt', 'DESC')
+        .getMany();
+      const createStartedBoundary = unresolvedBoundaries.find(
+        (boundary) => boundary.errorCode === 'baton_create_started'
+      );
+      if (createStartedBoundary) {
+        const reanchored = await this.dataSource
+          .getRepository(BatonPublishAttempt)
+          .update(
+            { id: createStartedBoundary.id, errorCode: 'baton_create_started' },
+            { status: 'failed', errorCode: 'baton_ambiguous', completedAt: new Date() }
+          );
+        if (reanchored.affected !== 1) continue;
+        throw new Error(
+          'A Baton publication is still within its reconciliation safety window; retry deletion later'
+        );
+      }
+      const holdStartedAt = Date.now() - BATON_AMBIGUOUS_HOLD_MS;
+      const ambiguousBoundary = unresolvedBoundaries.find(
+        (boundary) =>
+          boundary.errorCode === 'baton_ambiguous' &&
+          (boundary.completedAt || boundary.createdAt).getTime() > holdStartedAt
+      );
+      if (ambiguousBoundary) {
+        throw new Error(
+          'A Baton publication is still within its reconciliation safety window; retry deletion later'
+        );
+      }
       const marked = await repository.update(
         {
           id,
@@ -1036,6 +1129,7 @@ export class ConversationIntakeService {
           rawArtifactStatus: candidate.rawArtifactStatus,
           rawArtifactClaimId: candidate.rawArtifactClaimId || IsNull(),
           rawArtifactKey: candidate.rawArtifactKey || IsNull(),
+          batonPublishClaimId: IsNull(),
         },
         { rawArtifactStatus: 'deleting' }
       );
