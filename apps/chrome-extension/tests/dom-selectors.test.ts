@@ -9,7 +9,9 @@ import {
   findReplyTargetId,
   findSelfDisplayName,
   findMessageText,
+  hasCurrentMessageEvidence,
   MESSAGE_TEXT_SELECTOR,
+  resolveCapturedReplyTargets,
 } from "../src/dom-selectors.ts";
 
 test("registers the popup receiver before waiting for WhatsApp DOM readiness", () => {
@@ -140,6 +142,50 @@ test("discovers textless media and reply records alongside configured bubbles", 
   );
 });
 
+test("climbs past quoted media previews to the enclosing message record", () => {
+  const messageRecord = {};
+  const quotedPreview = {
+    parentElement: {
+      closest: () => messageRecord,
+    },
+  };
+  const quotedMedia = {
+    closest: (selector: string) =>
+      selector.includes("quoted-message") ? quotedPreview : quotedPreview,
+  };
+  const root = {
+    querySelectorAll: (selector: string) =>
+      selector === ".configured, .fallback" ? [] : [quotedMedia],
+    contains: () => true,
+  };
+
+  assert.deepEqual(
+    findMessageContainers(
+      root as unknown as Element,
+      ".configured",
+      ".fallback",
+    ),
+    [messageRecord],
+  );
+});
+
+test("does not classify quoted preview media as current-message evidence", () => {
+  const quotedPreview = {};
+  const quotedMedia = {
+    closest: (selector: string) =>
+      selector.includes("quoted-message") ? quotedPreview : null,
+  };
+  const record = {
+    matches: () => false,
+    querySelectorAll: () => [quotedMedia],
+  };
+
+  assert.equal(
+    hasCurrentMessageEvidence(record as unknown as Element, "video"),
+    false,
+  );
+});
+
 test("ignores quoted text while retaining emoji-only content and reply identity", () => {
   const quotedWrapper = {};
   const quotedText = { closest: () => quotedWrapper };
@@ -174,6 +220,29 @@ test("ignores quoted text while retaining emoji-only content and reply identity"
   );
   assert.equal(findMessageEmojiText(record as unknown as Element), "👍");
   assert.equal(findReplyTargetId(record as unknown as Element), "fixture-001");
+});
+
+test("maps captured reply targets to exported IDs without leaking unmatched raw IDs", () => {
+  const messages = [
+    { id: "generated-1", captureSourceId: "fixture-001" },
+    {
+      id: "generated-2",
+      captureSourceId: "fixture-002",
+      captureReplyToSourceId: "fixture-001",
+      replyTo: "stale-value",
+    },
+    {
+      id: "generated-3",
+      captureSourceId: "fixture-003",
+      captureReplyToSourceId: "not-captured",
+      replyTo: "stale-value",
+    },
+  ];
+
+  resolveCapturedReplyTargets(messages);
+
+  assert.equal(messages[1].replyTo, "generated-1");
+  assert.equal(messages[2].replyTo, undefined);
 });
 
 test("reads only a specifically scoped self profile display name", () => {

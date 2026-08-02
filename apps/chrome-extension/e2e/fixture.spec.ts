@@ -76,7 +76,8 @@ test("loads the production extension and sends only after explicit review", asyn
   expect(messages[5]).toMatchObject({
     sender: "Participant Reply",
     text: "✅",
-    replyTo: "fixture-001",
+    isMedia: false,
+    replyTo: (messages[0] as { id: string }).id,
   });
   const participants = harness.apiRequests[0].body.participants as Array<{
     rawDisplayName?: string;

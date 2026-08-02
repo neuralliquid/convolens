@@ -55,7 +55,9 @@ import {
   findMessageText,
   findReplyTargetId,
   findSelfDisplayName,
+  hasCurrentMessageEvidence,
   QUOTED_MESSAGE_SELECTOR,
+  resolveCapturedReplyTargets,
 } from "./dom-selectors";
 import {
   DEFAULT_LAUNCHER_POSITION,
@@ -88,6 +90,7 @@ interface ExtractedMessage {
   replyTo?: string;
   senderRef?: string;
   captureSourceId?: string;
+  captureReplyToSourceId?: string;
   captureAlignmentToken?: string;
   captureMetadataPath?: MetadataPath;
   captureSenderMethod?: ExtractedParticipant["extractionMethod"];
@@ -1841,6 +1844,10 @@ function cloneGuidedMessage(
       value: message.captureSourceId,
       enumerable: false,
     },
+    captureReplyToSourceId: {
+      value: message.captureReplyToSourceId,
+      enumerable: false,
+    },
     captureAlignmentToken: {
       value: message.captureAlignmentToken,
       enumerable: false,
@@ -2074,6 +2081,7 @@ function mergeGuidedPayload(
     incoming.diagnostics.unreadableMessageCount * addedRatio,
   );
   session.payload.messages = session.items.map((item) => item.value);
+  resolveCapturedReplyTargets(session.payload.messages);
   const retainedParticipantRefs = new Set(
     session.payload.messages
       .map((message) => message.senderRef)
@@ -2268,6 +2276,7 @@ function retainAutomaticItems(
   session.items = items;
   reconcileGuidedAlignmentWarnings(session);
   session.payload.messages = items.map((item) => item.value);
+  resolveCapturedReplyTargets(session.payload.messages);
   session.payload.messageCount = session.payload.messages.length;
   session.skippedCount = 0;
   session.unreadableCount = 0;
@@ -2689,6 +2698,7 @@ async function finalizeGuidedCaptureOperation(
     throw new Error("The guided capture buffer is no longer available.");
   }
   prepareSummary?.(session);
+  resolveCapturedReplyTargets(session.payload.messages);
   const summary = summarizeCapturePayload(
     session.payload,
     session.chatIdentity,
@@ -2937,6 +2947,9 @@ async function extractCurrentChat(
     }
   }
 
+  await assignOpaqueSourceMessageIds(messages, sourceConversationId);
+  resolveCapturedReplyTargets(messages);
+
   return {
     chatName,
     chatId: generateChatId(chatName),
@@ -3034,10 +3047,10 @@ function extractMessageData(
     isOutgoing,
     isMedia,
     mediaType,
-    replyTo: findReplyTargetId(messageRecord),
     senderRef,
   };
   const captureSourceId = messageRecord.getAttribute("data-id")?.trim();
+  const captureReplyToSourceId = findReplyTargetId(messageRecord);
   const captureAlignmentToken = JSON.stringify({
     metadata: metadata.value,
     direction: isOutgoing ? "out" : "in",
@@ -3050,6 +3063,10 @@ function extractMessageData(
   Object.defineProperties(message, {
     captureSourceId: {
       value: captureSourceId || undefined,
+      enumerable: false,
+    },
+    captureReplyToSourceId: {
+      value: captureReplyToSourceId,
       enumerable: false,
     },
     captureAlignmentToken: {
@@ -3264,33 +3281,33 @@ function detectMediaMessage(container: HTMLElement): boolean {
   if (getMediaType(container)) return true;
   const mediaIndicators = ['[data-testid="media-state-icon"]'];
 
-  return mediaIndicators.some(
-    (selector) => container.querySelector(selector) !== null,
+  return mediaIndicators.some((selector) =>
+    hasCurrentMessageEvidence(container, selector),
   );
 }
 
 function getMediaType(container: HTMLElement): MediaType | undefined {
   return classifyMediaEvidence({
-    video:
-      container.querySelector(
-        'video, [data-testid="video-thumb"], [data-testid="video-content"], .message-video',
-      ) !== null,
-    audio:
-      container.querySelector(
-        'audio, [data-testid="audio-player"], [data-testid="audio-content"], [data-icon="audio-play"], .message-audio',
-      ) !== null,
-    document:
-      container.querySelector(
-        '[data-testid="document-thumb"], [data-testid="document-content"], [data-icon="document"], .message-document',
-      ) !== null,
-    sticker:
-      container.querySelector(
-        '[data-testid="sticker"], [data-testid="sticker-content"], img[alt="Sticker"]',
-      ) !== null,
-    image:
-      container.querySelector(
-        '[data-testid="image-thumb"], [data-testid="image-content"], .message-image',
-      ) !== null,
+    video: hasCurrentMessageEvidence(
+      container,
+      'video, [data-testid="video-thumb"], [data-testid="video-content"], .message-video',
+    ),
+    audio: hasCurrentMessageEvidence(
+      container,
+      'audio, [data-testid="audio-player"], [data-testid="audio-content"], [data-icon="audio-play"], .message-audio',
+    ),
+    document: hasCurrentMessageEvidence(
+      container,
+      '[data-testid="document-thumb"], [data-testid="document-content"], [data-icon="document"], .message-document',
+    ),
+    sticker: hasCurrentMessageEvidence(
+      container,
+      '[data-testid="sticker"], [data-testid="sticker-content"], img[alt="Sticker"]',
+    ),
+    image: hasCurrentMessageEvidence(
+      container,
+      '[data-testid="image-thumb"], [data-testid="image-content"], .message-image',
+    ),
   });
 }
 
@@ -3366,6 +3383,26 @@ function generateMessageId(): string {
     b.toString(16).padStart(2, "0"),
   ).join("");
   return "msg_" + Date.now().toString(36) + randomHex;
+}
+
+async function assignOpaqueSourceMessageIds(
+  messages: ExtractedMessage[],
+  sourceConversationId: string,
+): Promise<void> {
+  await Promise.all(
+    messages.map(async (message) => {
+      if (!message.captureSourceId) return;
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(
+          `${sourceConversationId}\u0000${message.captureSourceId}`,
+        ),
+      );
+      message.id = `msg_${Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("")}`;
+    }),
+  );
 }
 
 function generateChatId(name: string): string {

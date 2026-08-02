@@ -23,14 +23,28 @@ const MESSAGE_RECORD_SELECTOR =
   '[data-id], [role="row"], [data-testid="msg-container"], .message-in, .message-out';
 
 function closestMessageRecord(element: Element): HTMLElement | null {
+  const quotedPreview = element.closest?.(QUOTED_MESSAGE_SELECTOR);
+  const recordSearchRoot = quotedPreview?.parentElement || element;
   return (
-    (element.closest?.(MESSAGE_RECORD_SELECTOR) as HTMLElement | null) ||
-    (element as HTMLElement)
+    (recordSearchRoot.closest?.(
+      MESSAGE_RECORD_SELECTOR,
+    ) as HTMLElement | null) || (element as HTMLElement)
   );
 }
 
 function isQuotedEvidence(element: Element): boolean {
   return Boolean(element.closest?.(QUOTED_MESSAGE_SELECTOR));
+}
+
+export function hasCurrentMessageEvidence(
+  container: Element,
+  selector: string,
+): boolean {
+  const candidates = [
+    ...(container.matches?.(selector) ? [container] : []),
+    ...container.querySelectorAll(selector),
+  ];
+  return candidates.some((candidate) => !isQuotedEvidence(candidate));
 }
 
 /**
@@ -161,6 +175,37 @@ export function findReplyTargetId(container: Element): string | undefined {
     if (candidate && candidate !== currentId) return candidate;
   }
   return undefined;
+}
+
+export function resolveCapturedReplyTargets<
+  T extends {
+    id: string;
+    replyTo?: string;
+    captureSourceId?: string;
+    captureReplyToSourceId?: string;
+  },
+>(messages: T[]): void {
+  const exportedIdBySourceId = new Map(
+    messages.flatMap((message) =>
+      message.captureSourceId
+        ? ([[message.captureSourceId, message.id]] as const)
+        : [],
+    ),
+  );
+
+  for (const message of messages) {
+    const rawReplyTarget = message.captureReplyToSourceId;
+    if (!rawReplyTarget) {
+      delete message.replyTo;
+      continue;
+    }
+    const exportedTargetId = exportedIdBySourceId.get(rawReplyTarget);
+    if (exportedTargetId) {
+      message.replyTo = exportedTargetId;
+    } else {
+      delete message.replyTo;
+    }
+  }
 }
 
 export function findSelfDisplayName(root: ParentNode): string | undefined {
