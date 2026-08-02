@@ -19,16 +19,19 @@ export const MESSAGE_RECORD_EVIDENCE_SELECTOR = [
   '[data-testid="audio-player"], [data-testid="audio-content"], [data-testid="document-thumb"], [data-testid="document-content"], [data-testid="sticker"], [data-testid="sticker-content"]',
 ].join(", ");
 
-const MESSAGE_RECORD_SELECTOR =
-  '[data-id], [role="row"], [data-testid="msg-container"], .message-in, .message-out';
+const OUTER_MESSAGE_RECORD_SELECTOR = '[data-id], [role="row"]';
 
 function closestMessageRecord(element: Element): HTMLElement | null {
   const quotedPreview = element.closest?.(QUOTED_MESSAGE_SELECTOR);
   const recordSearchRoot = quotedPreview?.parentElement || element;
   return (
     (recordSearchRoot.closest?.(
-      MESSAGE_RECORD_SELECTOR,
-    ) as HTMLElement | null) || (element as HTMLElement)
+      OUTER_MESSAGE_RECORD_SELECTOR,
+    ) as HTMLElement | null) ||
+    (recordSearchRoot.closest?.(
+      MESSAGE_CONTAINER_SELECTOR,
+    ) as HTMLElement | null) ||
+    (element as HTMLElement)
   );
 }
 
@@ -84,22 +87,12 @@ export function findMessageContainers(
   primarySelector: string,
   fallbackSelector: string,
 ): HTMLElement[] {
-  const directMatches = Array.from(
-    root.querySelectorAll(`${primarySelector}, ${fallbackSelector}`),
-  ) as HTMLElement[];
-
   const containers = new Set<HTMLElement>();
-  for (const directMatch of directMatches) {
-    const record = closestMessageRecord(directMatch);
-    if (record && (!root.contains || root.contains(record))) {
-      containers.add(record);
-    }
-  }
-
-  for (const evidence of root.querySelectorAll(
-    MESSAGE_RECORD_EVIDENCE_SELECTOR,
-  )) {
-    const record = closestMessageRecord(evidence);
+  const candidates = root.querySelectorAll(
+    `${primarySelector}, ${fallbackSelector}, ${MESSAGE_RECORD_EVIDENCE_SELECTOR}`,
+  );
+  for (const candidate of candidates) {
+    const record = closestMessageRecord(candidate);
     if (record && (!root.contains || root.contains(record))) {
       containers.add(record);
     }

@@ -93,9 +93,25 @@ test("reads text through the generic selector used for container discovery", () 
 
 test("normalizes a visual bubble to its enclosing WhatsApp message record", () => {
   const record = {};
-  const bubble = { closest: () => record };
+  const bubble = {
+    closest: (selector: string) =>
+      selector.includes("[data-id]") ? record : bubble,
+  };
 
   assert.equal(findMessageRecord(bubble as unknown as HTMLElement), record);
+});
+
+test("prefers an outer message record over a matching visual bubble", () => {
+  const outerRecord = {};
+  const bubble = {
+    closest: (selector: string) =>
+      selector.includes("[data-id]") ? outerRecord : bubble,
+  };
+
+  assert.equal(
+    findMessageRecord(bubble as unknown as HTMLElement),
+    outerRecord,
+  );
 });
 
 test("keeps the original visual bubble when detecting outgoing messages", () => {
@@ -125,10 +141,7 @@ test("discovers textless media and reply records alongside configured bubbles", 
   const mediaEvidence = { closest: () => mediaRecord };
   const replyEvidence = { closest: () => replyRecord };
   const root = {
-    querySelectorAll: (selector: string) => {
-      if (selector === ".configured, .fallback") return [directRecord];
-      return [mediaEvidence, replyEvidence];
-    },
+    querySelectorAll: () => [directRecord, mediaEvidence, replyEvidence],
     contains: () => true,
   };
 
@@ -139,6 +152,30 @@ test("discovers textless media and reply records alongside configured bubbles", 
       ".fallback",
     ),
     [directRecord, mediaRecord, replyRecord],
+  );
+});
+
+test("preserves DOM order across configured and evidence-only records", () => {
+  const firstRecord = { name: "first" };
+  const middleRecord = { name: "middle" };
+  const lastRecord = { name: "last" };
+  const candidates = [
+    { closest: () => firstRecord },
+    { closest: () => middleRecord },
+    { closest: () => lastRecord },
+  ];
+  const root = {
+    querySelectorAll: () => candidates,
+    contains: () => true,
+  };
+
+  assert.deepEqual(
+    findMessageContainers(
+      root as unknown as Element,
+      ".configured",
+      ".fallback",
+    ),
+    [firstRecord, middleRecord, lastRecord],
   );
 });
 
@@ -154,8 +191,7 @@ test("climbs past quoted media previews to the enclosing message record", () => 
       selector.includes("quoted-message") ? quotedPreview : quotedPreview,
   };
   const root = {
-    querySelectorAll: (selector: string) =>
-      selector === ".configured, .fallback" ? [] : [quotedMedia],
+    querySelectorAll: () => [quotedMedia],
     contains: () => true,
   };
 
