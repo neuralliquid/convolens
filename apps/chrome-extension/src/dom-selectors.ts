@@ -30,8 +30,7 @@ function closestMessageRecord(element: Element): HTMLElement | null {
     ) as HTMLElement | null) ||
     (recordSearchRoot.closest?.(
       MESSAGE_CONTAINER_SELECTOR,
-    ) as HTMLElement | null) ||
-    (element as HTMLElement)
+    ) as HTMLElement | null)
   );
 }
 

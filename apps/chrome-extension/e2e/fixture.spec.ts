@@ -106,6 +106,11 @@ test("loads the production extension and sends only after explicit review", asyn
       }),
     ]),
   );
+  expect(
+    participants.find(
+      (participant) => participant.rawDisplayName === "Participant Reply",
+    ),
+  ).not.toHaveProperty("normalizedPhone");
 });
 
 test("renders deterministic duplicate evidence on a repeated reviewed capture", async ({

@@ -3103,10 +3103,7 @@ function extractSenderIdentity(
   ).sender;
   const explicitSender =
     senderEl?.textContent?.trim() || senderEl?.getAttribute("title")?.trim();
-  const scopedPhoneEvidence = collectScopedIdentityEvidence(
-    container,
-    senderEl,
-  );
+  const scopedPhoneEvidence = collectScopedIdentityEvidence(senderEl);
   if (isOutgoing) {
     const specificMetadataSender = isGenericSelfLabel(metadataSender)
       ? undefined
@@ -3152,8 +3149,6 @@ function extractSenderIdentity(
   const platformUserId =
     senderEl?.getAttribute("data-contact-id") ||
     senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
-    container.getAttribute("data-contact-id") ||
-    container.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
     undefined;
   const extractionMethod = metadataSender
     ? "metadata"
@@ -3183,10 +3178,7 @@ function isGenericSelfLabel(value?: string): boolean {
   return !value || /^(you|me|myself)$/i.test(value.trim());
 }
 
-function collectScopedIdentityEvidence(
-  container: HTMLElement,
-  senderEl: Element | null,
-): string[] {
+function collectScopedIdentityEvidence(senderEl: Element | null): string[] {
   const evidence = new Set<string>();
   const add = (value: string | null | undefined) => {
     const normalized = value?.trim();
@@ -3199,8 +3191,7 @@ function collectScopedIdentityEvidence(
     "title",
   ]) {
     add(senderEl?.getAttribute(attribute));
-    for (const element of container.querySelectorAll(`[${attribute}]`)) {
-      if (element.closest(QUOTED_MESSAGE_SELECTOR)) continue;
+    for (const element of senderEl?.querySelectorAll(`[${attribute}]`) || []) {
       add(element.getAttribute(attribute));
     }
   }

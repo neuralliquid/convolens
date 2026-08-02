@@ -73,6 +73,23 @@ test("derives unique message records from selectable text when bubble selectors 
   );
 });
 
+test("rejects broad text evidence without a message-record ancestor", () => {
+  const composerDraft = { closest: () => null };
+  const root = {
+    querySelectorAll: () => [composerDraft],
+    contains: () => true,
+  };
+
+  assert.deepEqual(
+    findMessageContainers(
+      root as unknown as Element,
+      '[data-testid="msg-container"]',
+      ".message-in, .message-out",
+    ),
+    [],
+  );
+});
+
 test("reads text through the generic selector used for container discovery", () => {
   const genericText = { textContent: "Current WhatsApp message" };
   const container = {
