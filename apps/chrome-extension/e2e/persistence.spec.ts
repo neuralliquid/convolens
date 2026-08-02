@@ -156,7 +156,7 @@ async function reviewLoadedMessages(page: Page): Promise<void> {
     await toggle.click();
   await page.locator("#ws-extract-btn").click();
   await expect(page.locator("#ws-status-text")).toHaveText(
-    "3 loaded messages ready for review.",
+    "6 loaded messages ready for review.",
     { timeout: 15_000 },
   );
 }
@@ -249,7 +249,7 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
     };
     expect(list.data.conversations).toHaveLength(1);
     expect(list.data.conversations[0]).toMatchObject({
-      messageCount: 3,
+      messageCount: 6,
       rawArtifactStatus: "stored",
     });
     const intakeId = list.data.conversations[0].id;
@@ -268,7 +268,7 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
         };
       };
     };
-    expect(detail.data.conversation.messages).toHaveLength(3);
+    expect(detail.data.conversation.messages).toHaveLength(6);
     expect(detail.data.conversation.rawArtifact).toMatchObject({
       status: "stored",
     });
@@ -388,7 +388,7 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
       body: Buffer.from(
         JSON.stringify({
           intakeId,
-          messageCount: 3,
+          messageCount: 6,
           rawArtifactStatus: "stored",
           duplicateCount: 1,
           restartStatus: afterRestart.status(),

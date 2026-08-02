@@ -49,8 +49,15 @@ import { classifyMediaEvidence, type MediaType } from "./media-evidence";
 import {
   findConversationRoot,
   findMessageContainers,
+  findMessageEmojiText,
   findMessageRecord,
+  findMessageSender,
   findMessageText,
+  findReplyTargetId,
+  findSelfDisplayName,
+  hasCurrentMessageEvidence,
+  QUOTED_MESSAGE_SELECTOR,
+  resolveCapturedReplyTargets,
 } from "./dom-selectors";
 import {
   DEFAULT_LAUNCHER_POSITION,
@@ -83,6 +90,7 @@ interface ExtractedMessage {
   replyTo?: string;
   senderRef?: string;
   captureSourceId?: string;
+  captureReplyToSourceId?: string;
   captureAlignmentToken?: string;
   captureMetadataPath?: MetadataPath;
   captureSenderMethod?: ExtractedParticipant["extractionMethod"];
@@ -1836,6 +1844,10 @@ function cloneGuidedMessage(
       value: message.captureSourceId,
       enumerable: false,
     },
+    captureReplyToSourceId: {
+      value: message.captureReplyToSourceId,
+      enumerable: false,
+    },
     captureAlignmentToken: {
       value: message.captureAlignmentToken,
       enumerable: false,
@@ -2069,6 +2081,7 @@ function mergeGuidedPayload(
     incoming.diagnostics.unreadableMessageCount * addedRatio,
   );
   session.payload.messages = session.items.map((item) => item.value);
+  resolveCapturedReplyTargets(session.payload.messages);
   const retainedParticipantRefs = new Set(
     session.payload.messages
       .map((message) => message.senderRef)
@@ -2263,6 +2276,7 @@ function retainAutomaticItems(
   session.items = items;
   reconcileGuidedAlignmentWarnings(session);
   session.payload.messages = items.map((item) => item.value);
+  resolveCapturedReplyTargets(session.payload.messages);
   session.payload.messageCount = session.payload.messages.length;
   session.skippedCount = 0;
   session.unreadableCount = 0;
@@ -2684,6 +2698,7 @@ async function finalizeGuidedCaptureOperation(
     throw new Error("The guided capture buffer is no longer available.");
   }
   prepareSummary?.(session);
+  resolveCapturedReplyTargets(session.payload.messages);
   const summary = summarizeCapturePayload(
     session.payload,
     session.chatIdentity,
@@ -2932,6 +2947,9 @@ async function extractCurrentChat(
     }
   }
 
+  await assignOpaqueSourceMessageIds(messages, sourceConversationId);
+  resolveCapturedReplyTargets(messages);
+
   return {
     chatName,
     chatId: generateChatId(chatName),
@@ -2968,7 +2986,8 @@ function extractMessageData(
     SELECTORS.fallback.messageText,
   );
 
-  const text = textEl?.textContent?.trim() || "";
+  const text =
+    textEl?.textContent?.trim() || findMessageEmojiText(messageRecord) || "";
 
   // Check for media messages
   const isMedia = detectMediaMessage(messageRecord);
@@ -2984,9 +3003,11 @@ function extractMessageData(
   const timeText = timeEl?.textContent?.trim() || "";
 
   // Get sender (for group chats)
-  const senderEl =
-    messageRecord.querySelector(SELECTORS.primary.senderName) ||
-    messageRecord.querySelector(SELECTORS.fallback.senderName);
+  const senderEl = findMessageSender(
+    messageRecord,
+    SELECTORS.primary.senderName,
+    SELECTORS.fallback.senderName,
+  );
 
   // Determine direction
   const isOutgoing =
@@ -2994,7 +3015,8 @@ function extractMessageData(
     container.closest('[data-testid="msg-out"]') !== null ||
     messageRecord.classList.contains("message-out") ||
     messageRecord.closest('[data-testid="msg-out"]') !== null ||
-    messageRecord.querySelector('[data-testid="msg-out"]') !== null;
+    messageRecord.querySelector('[data-testid="msg-out"], .message-out') !==
+      null;
   const metadata = getMessageMetadata(messageRecord);
   const identity = extractSenderIdentity(
     messageRecord,
@@ -3029,6 +3051,7 @@ function extractMessageData(
     senderRef,
   };
   const captureSourceId = messageRecord.getAttribute("data-id")?.trim();
+  const captureReplyToSourceId = findReplyTargetId(messageRecord);
   const captureAlignmentToken = JSON.stringify({
     metadata: metadata.value,
     direction: isOutgoing ? "out" : "in",
@@ -3041,6 +3064,10 @@ function extractMessageData(
   Object.defineProperties(message, {
     captureSourceId: {
       value: captureSourceId || undefined,
+      enumerable: false,
+    },
+    captureReplyToSourceId: {
+      value: captureReplyToSourceId,
       enumerable: false,
     },
     captureAlignmentToken: {
@@ -3071,20 +3098,38 @@ function extractSenderIdentity(
   chatName: string,
   metadata: string,
 ): Omit<ExtractedParticipant, "ref"> & { displayLabel?: string } {
+  const metadataSender = parseWhatsAppMessageMetadata(
+    metadata,
+    document.documentElement.lang || navigator.language,
+  ).sender;
+  const explicitSender =
+    senderEl?.textContent?.trim() || senderEl?.getAttribute("title")?.trim();
+  const scopedPhoneEvidence = collectScopedIdentityEvidence(senderEl);
   if (isOutgoing) {
+    const selfProfileName = findSelfDisplayName(document);
+    const specificMetadataSender = isGenericSelfLabel(metadataSender)
+      ? undefined
+      : metadataSender;
+    const specificVisibleSender = isGenericSelfLabel(explicitSender)
+      ? undefined
+      : explicitSender;
+    const combined = combineSenderEvidence({
+      metadataSender: selfProfileName || specificMetadataSender,
+      visibleSender: selfProfileName
+        ? specificMetadataSender
+        : specificVisibleSender,
+      headerSender: selfProfileName ? specificVisibleSender : undefined,
+      scopedPhoneEvidence,
+    });
     return {
-      rawDisplayName: "You",
-      displayLabel: "You",
+      rawDisplayName: combined.rawDisplayName || "You",
+      displayLabel: combined.displayLabel || "You",
+      normalizedPhone: combined.normalizedPhone,
       isSelf: true,
       extractionMethod: "outgoing",
       confidence: "high",
     };
   }
-  const metadataSender = parseWhatsAppMessageMetadata(
-    metadata,
-    document.documentElement.lang || navigator.language,
-  ).sender;
-  const explicitSender = senderEl?.textContent?.trim();
   // A failure to recognise a group is not proof this is a direct chat.
   const headerSender = isDirectChat
     ? querySelector(
@@ -3093,11 +3138,6 @@ function extractSenderIdentity(
       )?.textContent?.trim() ||
       (chatName === "Unknown Chat" ? undefined : chatName)
     : undefined;
-  const scopedPhoneEvidence = [
-    senderEl?.getAttribute("data-phone"),
-    senderEl?.getAttribute("title"),
-    senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id"),
-  ].filter((value): value is string => Boolean(value));
   const combined = combineSenderEvidence({
     metadataSender,
     visibleSender: explicitSender,
@@ -3111,8 +3151,8 @@ function extractSenderIdentity(
   const normalizedPhone = combined.normalizedPhone;
   // data-id identifies an individual message in WhatsApp Web, not its sender.
   const platformUserId =
-    container.getAttribute("data-contact-id") ||
-    container.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
+    senderEl?.getAttribute("data-contact-id") ||
+    senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
     undefined;
   const extractionMethod = metadataSender
     ? "metadata"
@@ -3136,6 +3176,31 @@ function extractSenderIdentity(
           ? "low"
           : "medium",
   };
+}
+
+function isGenericSelfLabel(value?: string): boolean {
+  return !value || /^(you|me|myself)$/i.test(value.trim());
+}
+
+function collectScopedIdentityEvidence(senderEl: Element | null): string[] {
+  const evidence = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const normalized = value?.trim();
+    if (normalized) evidence.add(normalized);
+  };
+  for (const attribute of [
+    "data-phone",
+    "data-contact-id",
+    "data-jid",
+    "title",
+  ]) {
+    add(senderEl?.getAttribute(attribute));
+    for (const element of senderEl?.querySelectorAll(`[${attribute}]`) || []) {
+      add(element.getAttribute(attribute));
+    }
+  }
+  add(senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id"));
+  return [...evidence];
 }
 
 function getMessageMetadata(container: HTMLElement): {
@@ -3211,29 +3276,33 @@ function detectMediaMessage(container: HTMLElement): boolean {
   if (getMediaType(container)) return true;
   const mediaIndicators = ['[data-testid="media-state-icon"]'];
 
-  return mediaIndicators.some(
-    (selector) => container.querySelector(selector) !== null,
+  return mediaIndicators.some((selector) =>
+    hasCurrentMessageEvidence(container, selector),
   );
 }
 
 function getMediaType(container: HTMLElement): MediaType | undefined {
   return classifyMediaEvidence({
-    video:
-      container.querySelector(
-        'video, [data-testid="video-thumb"], .message-video',
-      ) !== null,
-    audio:
-      container.querySelector(
-        'audio, [data-testid="audio-player"], .message-audio',
-      ) !== null,
-    document:
-      container.querySelector(
-        '[data-testid="document-thumb"], .message-document',
-      ) !== null,
-    sticker: container.querySelector('[data-testid="sticker"]') !== null,
-    image:
-      container.querySelector('[data-testid="image-thumb"], .message-image') !==
-      null,
+    video: hasCurrentMessageEvidence(
+      container,
+      'video, [data-testid="video-thumb"], [data-testid="video-content"], .message-video',
+    ),
+    audio: hasCurrentMessageEvidence(
+      container,
+      'audio, [data-testid="audio-player"], [data-testid="audio-content"], [data-icon="audio-play"], .message-audio',
+    ),
+    document: hasCurrentMessageEvidence(
+      container,
+      '[data-testid="document-thumb"], [data-testid="document-content"], [data-icon="document"], .message-document',
+    ),
+    sticker: hasCurrentMessageEvidence(
+      container,
+      '[data-testid="sticker"], [data-testid="sticker-content"], img[alt="Sticker"]',
+    ),
+    image: hasCurrentMessageEvidence(
+      container,
+      '[data-testid="image-thumb"], [data-testid="image-content"], .message-image',
+    ),
   });
 }
 
@@ -3309,6 +3378,26 @@ function generateMessageId(): string {
     b.toString(16).padStart(2, "0"),
   ).join("");
   return "msg_" + Date.now().toString(36) + randomHex;
+}
+
+async function assignOpaqueSourceMessageIds(
+  messages: ExtractedMessage[],
+  sourceConversationId: string,
+): Promise<void> {
+  await Promise.all(
+    messages.map(async (message) => {
+      if (!message.captureSourceId) return;
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(
+          `${sourceConversationId}\u0000${message.captureSourceId}`,
+        ),
+      );
+      message.id = `msg_${Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("")}`;
+    }),
+  );
 }
 
 function generateChatId(name: string): string {

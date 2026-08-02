@@ -5,6 +5,9 @@
     <title>Synthetic WhatsApp fixture</title>
   </head>
   <body>
+    <nav aria-label="Profile">
+      <img alt="Fixture Owner" data-testid="menu-bar-avatar" />
+    </nav>
     <aside id="pane-side" data-testid="chat-list" aria-label="Chat list">
       <button type="button">Fixture Group</button>
     </aside>
@@ -27,6 +30,7 @@
             data-pre-plain-text="[09:55, 30/07/2026] Participant A: "
           >
             <span data-testid="msg-sender">Participant A</span>
+            <div class="selectable-text" dir="auto">Link preview text</div>
             <div data-testid="msg-text">Repeatable fixture message</div>
             <span data-testid="msg-meta">09:55</span>
           </article>
@@ -44,12 +48,56 @@
             class="message-out"
             data-testid="msg-container"
             data-id="fixture-003"
-            data-pre-plain-text="[10:00, 30/07/2026] You: "
+            data-pre-plain-text="[10:00, 30/07/2026] Vous: "
           >
             <div data-testid="msg-out">
               <div data-testid="msg-text">TODO: Synthetic reply</div>
               <span data-testid="msg-meta">10:00</span>
             </div>
+          </article>
+          <article
+            class="message-in"
+            data-testid="msg-container"
+            data-id="fixture-004"
+            data-pre-plain-text="[10:01, 30/07/2026] +27 82 123 4567: "
+          >
+            <span data-testid="message-author" title="Participant Emoji"></span>
+            <img class="emoji" alt="👍" />
+            <span data-testid="msg-reaction"
+              ><img class="emoji" alt="❤️"
+            /></span>
+            <span data-testid="msg-meta">10:01</span>
+          </article>
+          <article
+            class="message-in"
+            data-testid="msg-container"
+            data-id="fixture-005"
+            data-pre-plain-text="[10:02, 30/07/2026] +27 83 765 4321: "
+          >
+            <span data-testid="message-author" title="Participant Media"></span>
+            <img data-testid="image-content" alt="" />
+            <span data-testid="msg-meta">10:02</span>
+          </article>
+          <article
+            class="message-in"
+            data-testid="msg-container"
+            data-id="fixture-006"
+            data-pre-plain-text="[10:03, 30/07/2026] Participant Reply: "
+          >
+            <span data-testid="message-author">Participant Reply</span>
+            <div
+              data-testid="quoted-message"
+              data-quoted-message-id="fixture-001"
+            >
+              <span data-phone="+27 84 000 0000">Quoted sender</span>
+              <span class="selectable-text" dir="auto"
+                >Quoted fixture text</span
+              >
+              <img data-testid="image-content" alt="Quoted attachment" />
+            </div>
+            <span data-phone="+27 85 111 2233">Shared contact card</span>
+            <img class="emoji" alt="✅" />
+            <span data-testid="msg-meta">10:03</span>
           </article>
         </section>
       </section>
