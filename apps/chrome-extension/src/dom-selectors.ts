@@ -18,8 +18,9 @@ export const MESSAGE_RECORD_EVIDENCE_SELECTOR = [
   "[data-pre-plain-text]",
   QUOTED_MESSAGE_SELECTOR,
   "img.emoji[alt], img[data-emoji][alt], [data-emoji][aria-label]",
-  'video, audio, [data-testid="image-thumb"], [data-testid="image-content"], [data-testid="video-thumb"], [data-testid="video-content"]',
-  '[data-testid="audio-player"], [data-testid="audio-content"], [data-testid="document-thumb"], [data-testid="document-content"], [data-testid="sticker"], [data-testid="sticker-content"]',
+  'video, audio, [data-testid="image-thumb"], [data-testid="image-content"], [data-testid="video-thumb"], [data-testid="video-content"], .message-video, .message-image',
+  '[data-testid="audio-player"], [data-testid="audio-content"], [data-testid="document-thumb"], [data-testid="document-content"], [data-testid="sticker"], [data-testid="sticker-content"], [data-testid="media-state-icon"]',
+  '[data-icon="audio-play"], [data-icon="document"], img[alt="Sticker"], .message-audio, .message-document',
 ].join(", ");
 
 const OUTER_MESSAGE_RECORD_SELECTOR = '[data-id], [role="row"]';

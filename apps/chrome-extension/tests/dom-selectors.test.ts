@@ -11,6 +11,7 @@ import {
   findSelfDisplayName,
   findMessageText,
   hasCurrentMessageEvidence,
+  MESSAGE_RECORD_EVIDENCE_SELECTOR,
   MESSAGE_TEXT_SELECTOR,
   resolveCapturedReplyTargets,
 } from "../src/dom-selectors.ts";
@@ -68,6 +69,21 @@ test("falls back to #main for a media-only loaded window", () => {
     ),
     main,
   );
+});
+
+test("discovers every media fallback supported by classification", () => {
+  for (const selector of [
+    '[data-icon="audio-play"]',
+    '[data-icon="document"]',
+    'img[alt="Sticker"]',
+    ".message-video",
+    ".message-audio",
+    ".message-document",
+    ".message-image",
+    '[data-testid="media-state-icon"]',
+  ]) {
+    assert.ok(MESSAGE_RECORD_EVIDENCE_SELECTOR.includes(selector), selector);
+  }
 });
 
 test("derives unique message records from selectable text when bubble selectors change", () => {
