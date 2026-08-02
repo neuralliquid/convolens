@@ -229,7 +229,7 @@ test("keeps the original visual bubble when detecting outgoing messages", () => 
   );
   assert.match(
     contentSource,
-    /messageRecord\.querySelector\('\[data-testid="msg-out"\]'\)/,
+    /messageRecord\.querySelector\('\[data-testid="msg-out"\], \.message-out'\)/,
   );
 });
 
