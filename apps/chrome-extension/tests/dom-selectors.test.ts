@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   findConversationRoot,
   findMessageContainers,
+  findMessageEmojiText,
   findMessageRecord,
+  findReplyTargetId,
+  findSelfDisplayName,
   findMessageText,
   MESSAGE_TEXT_SELECTOR,
 } from "../src/dom-selectors.ts";
@@ -72,8 +75,8 @@ test("reads text through the generic selector used for container discovery", () 
   const genericText = { textContent: "Current WhatsApp message" };
   const container = {
     matches: () => false,
-    querySelector: (selector: string) =>
-      selector === MESSAGE_TEXT_SELECTOR ? genericText : null,
+    querySelectorAll: (selector: string) =>
+      selector.includes(MESSAGE_TEXT_SELECTOR) ? [genericText] : [],
   };
 
   assert.equal(
@@ -110,5 +113,80 @@ test("keeps the original visual bubble when detecting outgoing messages", () => 
   assert.match(
     contentSource,
     /messageRecord\.querySelector\('\[data-testid="msg-out"\]'\)/,
+  );
+});
+
+test("discovers textless media and reply records alongside configured bubbles", () => {
+  const directRecord = { closest: () => directRecord };
+  const mediaRecord = {};
+  const replyRecord = {};
+  const mediaEvidence = { closest: () => mediaRecord };
+  const replyEvidence = { closest: () => replyRecord };
+  const root = {
+    querySelectorAll: (selector: string) => {
+      if (selector === ".configured, .fallback") return [directRecord];
+      return [mediaEvidence, replyEvidence];
+    },
+    contains: () => true,
+  };
+
+  assert.deepEqual(
+    findMessageContainers(
+      root as unknown as Element,
+      ".configured",
+      ".fallback",
+    ),
+    [directRecord, mediaRecord, replyRecord],
+  );
+});
+
+test("ignores quoted text while retaining emoji-only content and reply identity", () => {
+  const quotedWrapper = {};
+  const quotedText = { closest: () => quotedWrapper };
+  const emoji = {
+    closest: () => null,
+    getAttribute: (name: string) => (name === "alt" ? "👍" : null),
+  };
+  const quoted = {
+    getAttribute: (name: string) =>
+      name === "data-quoted-message-id" ? "fixture-001" : null,
+  };
+  const record = {
+    matches: () => false,
+    querySelectorAll: (selector: string) =>
+      selector.includes("msg-text")
+        ? [quotedText]
+        : selector.includes("emoji")
+          ? [emoji]
+          : [],
+    querySelector: () => quoted,
+    getAttribute: (name: string) =>
+      name === "data-id" ? "fixture-current" : null,
+  };
+
+  assert.equal(
+    findMessageText(
+      record as unknown as Element,
+      "[data-testid=msg-text]",
+      ".text",
+    ),
+    null,
+  );
+  assert.equal(findMessageEmojiText(record as unknown as Element), "👍");
+  assert.equal(findReplyTargetId(record as unknown as Element), "fixture-001");
+});
+
+test("reads only a specifically scoped self profile display name", () => {
+  const profileImage = {
+    getAttribute: (name: string) => (name === "alt" ? "Fixture Owner" : null),
+  };
+  const root = {
+    querySelector: (selector: string) =>
+      selector === '[aria-label="Profile"] img[alt]' ? profileImage : null,
+  };
+
+  assert.equal(
+    findSelfDisplayName(root as unknown as ParentNode),
+    "Fixture Owner",
   );
 });

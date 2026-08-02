@@ -49,8 +49,13 @@ import { classifyMediaEvidence, type MediaType } from "./media-evidence";
 import {
   findConversationRoot,
   findMessageContainers,
+  findMessageEmojiText,
   findMessageRecord,
+  findMessageSender,
   findMessageText,
+  findReplyTargetId,
+  findSelfDisplayName,
+  QUOTED_MESSAGE_SELECTOR,
 } from "./dom-selectors";
 import {
   DEFAULT_LAUNCHER_POSITION,
@@ -2968,7 +2973,8 @@ function extractMessageData(
     SELECTORS.fallback.messageText,
   );
 
-  const text = textEl?.textContent?.trim() || "";
+  const text =
+    textEl?.textContent?.trim() || findMessageEmojiText(messageRecord) || "";
 
   // Check for media messages
   const isMedia = detectMediaMessage(messageRecord);
@@ -2984,9 +2990,11 @@ function extractMessageData(
   const timeText = timeEl?.textContent?.trim() || "";
 
   // Get sender (for group chats)
-  const senderEl =
-    messageRecord.querySelector(SELECTORS.primary.senderName) ||
-    messageRecord.querySelector(SELECTORS.fallback.senderName);
+  const senderEl = findMessageSender(
+    messageRecord,
+    SELECTORS.primary.senderName,
+    SELECTORS.fallback.senderName,
+  );
 
   // Determine direction
   const isOutgoing =
@@ -3026,6 +3034,7 @@ function extractMessageData(
     isOutgoing,
     isMedia,
     mediaType,
+    replyTo: findReplyTargetId(messageRecord),
     senderRef,
   };
   const captureSourceId = messageRecord.getAttribute("data-id")?.trim();
@@ -3071,20 +3080,38 @@ function extractSenderIdentity(
   chatName: string,
   metadata: string,
 ): Omit<ExtractedParticipant, "ref"> & { displayLabel?: string } {
+  const metadataSender = parseWhatsAppMessageMetadata(
+    metadata,
+    document.documentElement.lang || navigator.language,
+  ).sender;
+  const explicitSender =
+    senderEl?.textContent?.trim() || senderEl?.getAttribute("title")?.trim();
+  const scopedPhoneEvidence = collectScopedIdentityEvidence(
+    container,
+    senderEl,
+  );
   if (isOutgoing) {
+    const specificMetadataSender = isGenericSelfLabel(metadataSender)
+      ? undefined
+      : metadataSender;
+    const specificVisibleSender = isGenericSelfLabel(explicitSender)
+      ? undefined
+      : explicitSender;
+    const combined = combineSenderEvidence({
+      metadataSender: specificMetadataSender,
+      visibleSender: specificVisibleSender,
+      headerSender: findSelfDisplayName(document),
+      scopedPhoneEvidence,
+    });
     return {
-      rawDisplayName: "You",
-      displayLabel: "You",
+      rawDisplayName: combined.rawDisplayName || "You",
+      displayLabel: combined.displayLabel || "You",
+      normalizedPhone: combined.normalizedPhone,
       isSelf: true,
       extractionMethod: "outgoing",
       confidence: "high",
     };
   }
-  const metadataSender = parseWhatsAppMessageMetadata(
-    metadata,
-    document.documentElement.lang || navigator.language,
-  ).sender;
-  const explicitSender = senderEl?.textContent?.trim();
   // A failure to recognise a group is not proof this is a direct chat.
   const headerSender = isDirectChat
     ? querySelector(
@@ -3093,11 +3120,6 @@ function extractSenderIdentity(
       )?.textContent?.trim() ||
       (chatName === "Unknown Chat" ? undefined : chatName)
     : undefined;
-  const scopedPhoneEvidence = [
-    senderEl?.getAttribute("data-phone"),
-    senderEl?.getAttribute("title"),
-    senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id"),
-  ].filter((value): value is string => Boolean(value));
   const combined = combineSenderEvidence({
     metadataSender,
     visibleSender: explicitSender,
@@ -3111,6 +3133,8 @@ function extractSenderIdentity(
   const normalizedPhone = combined.normalizedPhone;
   // data-id identifies an individual message in WhatsApp Web, not its sender.
   const platformUserId =
+    senderEl?.getAttribute("data-contact-id") ||
+    senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
     container.getAttribute("data-contact-id") ||
     container.closest("[data-contact-id]")?.getAttribute("data-contact-id") ||
     undefined;
@@ -3136,6 +3160,35 @@ function extractSenderIdentity(
           ? "low"
           : "medium",
   };
+}
+
+function isGenericSelfLabel(value?: string): boolean {
+  return !value || /^(you|me|myself)$/i.test(value.trim());
+}
+
+function collectScopedIdentityEvidence(
+  container: HTMLElement,
+  senderEl: Element | null,
+): string[] {
+  const evidence = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const normalized = value?.trim();
+    if (normalized) evidence.add(normalized);
+  };
+  for (const attribute of [
+    "data-phone",
+    "data-contact-id",
+    "data-jid",
+    "title",
+  ]) {
+    add(senderEl?.getAttribute(attribute));
+    for (const element of container.querySelectorAll(`[${attribute}]`)) {
+      if (element.closest(QUOTED_MESSAGE_SELECTOR)) continue;
+      add(element.getAttribute(attribute));
+    }
+  }
+  add(senderEl?.closest("[data-contact-id]")?.getAttribute("data-contact-id"));
+  return [...evidence];
 }
 
 function getMessageMetadata(container: HTMLElement): {
@@ -3220,20 +3273,24 @@ function getMediaType(container: HTMLElement): MediaType | undefined {
   return classifyMediaEvidence({
     video:
       container.querySelector(
-        'video, [data-testid="video-thumb"], .message-video',
+        'video, [data-testid="video-thumb"], [data-testid="video-content"], .message-video',
       ) !== null,
     audio:
       container.querySelector(
-        'audio, [data-testid="audio-player"], .message-audio',
+        'audio, [data-testid="audio-player"], [data-testid="audio-content"], [data-icon="audio-play"], .message-audio',
       ) !== null,
     document:
       container.querySelector(
-        '[data-testid="document-thumb"], .message-document',
+        '[data-testid="document-thumb"], [data-testid="document-content"], [data-icon="document"], .message-document',
       ) !== null,
-    sticker: container.querySelector('[data-testid="sticker"]') !== null,
+    sticker:
+      container.querySelector(
+        '[data-testid="sticker"], [data-testid="sticker-content"], img[alt="Sticker"]',
+      ) !== null,
     image:
-      container.querySelector('[data-testid="image-thumb"], .message-image') !==
-      null,
+      container.querySelector(
+        '[data-testid="image-thumb"], [data-testid="image-content"], .message-image',
+      ) !== null,
   });
 }
 

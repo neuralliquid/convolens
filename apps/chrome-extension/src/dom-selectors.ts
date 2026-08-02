@@ -4,6 +4,35 @@ export const MESSAGE_CONTAINER_SELECTOR =
 export const MESSAGE_TEXT_SELECTOR =
   '[data-testid="msg-text"], .selectable-text.copyable-text[dir], .selectable-text[dir]';
 
+export const QUOTED_MESSAGE_SELECTOR =
+  '[data-testid="quoted-message"], [data-testid="quoted-message-wrapper"], [data-testid="quoted-msg"], [data-quoted-message-id]';
+
+export const MESSAGE_SENDER_SELECTOR =
+  '[data-testid="msg-sender"], [data-testid="author"], [data-testid="message-author"], [data-testid="group-message-author"]';
+
+export const MESSAGE_RECORD_EVIDENCE_SELECTOR = [
+  MESSAGE_TEXT_SELECTOR,
+  "[data-pre-plain-text]",
+  QUOTED_MESSAGE_SELECTOR,
+  "img.emoji[alt], img[data-emoji][alt], [data-emoji][aria-label]",
+  'video, audio, [data-testid="image-thumb"], [data-testid="image-content"], [data-testid="video-thumb"], [data-testid="video-content"]',
+  '[data-testid="audio-player"], [data-testid="audio-content"], [data-testid="document-thumb"], [data-testid="document-content"], [data-testid="sticker"], [data-testid="sticker-content"]',
+].join(", ");
+
+const MESSAGE_RECORD_SELECTOR =
+  '[data-id], [role="row"], [data-testid="msg-container"], .message-in, .message-out';
+
+function closestMessageRecord(element: Element): HTMLElement | null {
+  return (
+    (element.closest?.(MESSAGE_RECORD_SELECTOR) as HTMLElement | null) ||
+    (element as HTMLElement)
+  );
+}
+
+function isQuotedEvidence(element: Element): boolean {
+  return Boolean(element.closest?.(QUOTED_MESSAGE_SELECTOR));
+}
+
 /**
  * Return the active conversation body without depending on WhatsApp's
  * frequently renamed scrolling wrapper.
@@ -31,8 +60,10 @@ export function findConversationRoot(
 }
 
 /**
- * Prefer message bubbles, but recover from class churn by walking from stable
- * selectable message text to its nearest message record.
+ * Merge configured message bubbles with text, metadata, reply, emoji, and media
+ * evidence. WhatsApp can omit text nodes entirely and can change only some
+ * container selectors, so returning early after one direct match loses valid
+ * records.
  */
 export function findMessageContainers(
   root: Element,
@@ -43,18 +74,20 @@ export function findMessageContainers(
     root.querySelectorAll(`${primarySelector}, ${fallbackSelector}`),
   ) as HTMLElement[];
 
-  if (directMatches.length > 0) return directMatches;
-
   const containers = new Set<HTMLElement>();
-  const textNodes = root.querySelectorAll(MESSAGE_TEXT_SELECTOR);
+  for (const directMatch of directMatches) {
+    const record = closestMessageRecord(directMatch);
+    if (record && (!root.contains || root.contains(record))) {
+      containers.add(record);
+    }
+  }
 
-  for (const textNode of textNodes) {
-    const container = textNode.closest(
-      '[data-id], [role="row"], .message-in, .message-out',
-    ) as HTMLElement | null;
-
-    if (container && (!root.contains || root.contains(container))) {
-      containers.add(container);
+  for (const evidence of root.querySelectorAll(
+    MESSAGE_RECORD_EVIDENCE_SELECTOR,
+  )) {
+    const record = closestMessageRecord(evidence);
+    if (record && (!root.contains || root.contains(record))) {
+      containers.add(record);
     }
   }
 
@@ -67,10 +100,7 @@ export function findMessageContainers(
  * because those fields may be siblings of the bubble rather than descendants.
  */
 export function findMessageRecord(element: HTMLElement): HTMLElement {
-  return (
-    (element.closest('[data-id], [role="row"]') as HTMLElement | null) ||
-    element
-  );
+  return closestMessageRecord(element) || element;
 }
 
 export function findMessageText(
@@ -80,11 +110,76 @@ export function findMessageText(
 ): Element | null {
   const selectors = `${primarySelector}, ${fallbackSelector}, ${MESSAGE_TEXT_SELECTOR}`;
 
-  if (container.matches?.(selectors)) return container;
+  const candidates = [
+    ...(container.matches?.(selectors) ? [container] : []),
+    ...container.querySelectorAll(selectors),
+  ];
+  return candidates.find((candidate) => !isQuotedEvidence(candidate)) || null;
+}
 
+export function findMessageEmojiText(container: Element): string | undefined {
+  const emoji = Array.from(
+    container.querySelectorAll(
+      "img.emoji[alt], img[data-emoji][alt], [data-emoji][aria-label]",
+    ),
+  )
+    .filter((candidate) => !isQuotedEvidence(candidate))
+    .map(
+      (candidate) =>
+        candidate.getAttribute("alt") ||
+        candidate.getAttribute("aria-label") ||
+        "",
+    )
+    .join("")
+    .trim();
+  return emoji || undefined;
+}
+
+export function findMessageSender(
+  container: Element,
+  primarySelector: string,
+  fallbackSelector: string,
+): Element | null {
+  const selectors = `${primarySelector}, ${fallbackSelector}, ${MESSAGE_SENDER_SELECTOR}`;
   return (
-    container.querySelector(primarySelector) ||
-    container.querySelector(fallbackSelector) ||
-    container.querySelector(MESSAGE_TEXT_SELECTOR)
+    Array.from(container.querySelectorAll(selectors)).find(
+      (candidate) => !isQuotedEvidence(candidate),
+    ) || null
   );
+}
+
+export function findReplyTargetId(container: Element): string | undefined {
+  const quoted = container.querySelector(QUOTED_MESSAGE_SELECTOR);
+  if (!quoted) return undefined;
+  const currentId = container.getAttribute("data-id")?.trim();
+  for (const attribute of [
+    "data-quoted-message-id",
+    "data-message-id",
+    "data-id",
+  ]) {
+    const candidate = quoted.getAttribute(attribute)?.trim();
+    if (candidate && candidate !== currentId) return candidate;
+  }
+  return undefined;
+}
+
+export function findSelfDisplayName(root: ParentNode): string | undefined {
+  const candidates = [
+    root
+      .querySelector('[data-testid="menu-bar-avatar"][title]')
+      ?.getAttribute("title"),
+    root
+      .querySelector('[data-testid="menu-bar-avatar"] img[alt]')
+      ?.getAttribute("alt"),
+    root
+      .querySelector('[data-testid="default-user"][title]')
+      ?.getAttribute("title"),
+    root.querySelector('[aria-label="Profile"] [title]')?.getAttribute("title"),
+    root.querySelector('[aria-label="Profile"] img[alt]')?.getAttribute("alt"),
+  ];
+  return candidates
+    .map((candidate) => candidate?.trim())
+    .find((candidate): candidate is string =>
+      Boolean(candidate && !/^(profile|you|avatar)$/i.test(candidate)),
+    );
 }

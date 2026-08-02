@@ -14,9 +14,9 @@ async function reviewLoadedMessages(page: import("@playwright/test").Page) {
   await expect(review).toHaveText("Review loaded messages");
   await review.click();
   await expect(page.locator("#ws-status-text")).toHaveText(
-    "3 loaded messages ready for review.",
+    "6 loaded messages ready for review.",
   );
-  await expect(page.locator("#ws-preview-loaded")).toHaveText("3");
+  await expect(page.locator("#ws-preview-loaded")).toHaveText("6");
 }
 
 test("loads the production extension and sends only after explicit review", async ({
@@ -27,7 +27,7 @@ test("loads the production extension and sends only after explicit review", asyn
 
   await harness.page.locator("#ws-confirm-capture").click();
   await expect(harness.page.locator("#ws-status-text")).toHaveText(
-    "3 loaded messages received by ConvoLens.",
+    "6 loaded messages received by ConvoLens.",
   );
   expect(harness.apiRequests).toHaveLength(1);
   expect(harness.apiRequests[0]).toMatchObject({
@@ -36,7 +36,7 @@ test("loads the production extension and sends only after explicit review", asyn
     body: {
       chatName: "Fixture Group",
       isGroup: true,
-      messageCount: 3,
+      messageCount: 6,
       source: "chrome-extension",
       sourceConversationId: "whatsapp:120363000000000000@g.us",
     },
@@ -44,14 +44,67 @@ test("loads the production extension and sends only after explicit review", asyn
   expect(harness.apiRequests[0].correlationId).toMatch(/^ext_/);
   const messages = harness.apiRequests[0].body.messages as Array<{
     text: string;
+    sender: string;
     isOutgoing: boolean;
+    isMedia: boolean;
+    mediaType?: string;
+    replyTo?: string;
   }>;
   expect(messages.map((message) => message.text)).toEqual([
     "Repeatable fixture message",
     "Repeatable fixture message",
     "TODO: Synthetic reply",
+    "👍",
+    "",
+    "✅",
   ]);
   expect(messages.filter((message) => message.isOutgoing)).toHaveLength(1);
+  expect(messages[2]).toMatchObject({
+    sender: "Fixture Owner",
+    isOutgoing: true,
+  });
+  expect(messages[3]).toMatchObject({
+    sender: "Participant Emoji · +27821234567",
+    text: "👍",
+  });
+  expect(messages[4]).toMatchObject({
+    sender: "Participant Media · +27837654321",
+    text: "",
+    isMedia: true,
+    mediaType: "image",
+  });
+  expect(messages[5]).toMatchObject({
+    sender: "Participant Reply",
+    text: "✅",
+    replyTo: "fixture-001",
+  });
+  const participants = harness.apiRequests[0].body.participants as Array<{
+    rawDisplayName?: string;
+    normalizedPhone?: string;
+    isSelf: boolean;
+  }>;
+  expect(participants).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        rawDisplayName: "Fixture Owner",
+        isSelf: true,
+      }),
+      expect.objectContaining({
+        rawDisplayName: "Participant Emoji",
+        normalizedPhone: "+27821234567",
+        isSelf: false,
+      }),
+      expect.objectContaining({
+        rawDisplayName: "Participant Media",
+        normalizedPhone: "+27837654321",
+        isSelf: false,
+      }),
+      expect.objectContaining({
+        rawDisplayName: "Participant Reply",
+        isSelf: false,
+      }),
+    ]),
+  );
 });
 
 test("renders deterministic duplicate evidence on a repeated reviewed capture", async ({
@@ -67,7 +120,7 @@ test("renders deterministic duplicate evidence on a repeated reviewed capture", 
   expect(harness.apiRequests).toHaveLength(1);
   await harness.page.locator("#ws-confirm-capture").click();
   await expect(harness.page.locator("#ws-status-text")).toHaveText(
-    "3 loaded messages already exist in ConvoLens.",
+    "6 loaded messages already exist in ConvoLens.",
   );
   expect(harness.apiRequests).toHaveLength(2);
   const canonicalMessages = (value: unknown) =>
