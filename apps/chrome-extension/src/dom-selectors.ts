@@ -10,6 +10,9 @@ export const QUOTED_MESSAGE_SELECTOR =
 export const MESSAGE_SENDER_SELECTOR =
   '[data-testid="msg-sender"], [data-testid="author"], [data-testid="message-author"], [data-testid="group-message-author"]';
 
+const MESSAGE_REACTION_SELECTOR =
+  '[data-testid*="reaction"], [data-icon*="reaction"], [data-reaction]';
+
 export const MESSAGE_RECORD_EVIDENCE_SELECTOR = [
   MESSAGE_TEXT_SELECTOR,
   "[data-pre-plain-text]",
@@ -135,7 +138,11 @@ export function findMessageEmojiText(container: Element): string | undefined {
       "img.emoji[alt], img[data-emoji][alt], [data-emoji][aria-label]",
     ),
   )
-    .filter((candidate) => !isQuotedEvidence(candidate))
+    .filter(
+      (candidate) =>
+        !isQuotedEvidence(candidate) &&
+        !candidate.closest?.(MESSAGE_REACTION_SELECTOR),
+    )
     .map(
       (candidate) =>
         candidate.getAttribute("alt") ||

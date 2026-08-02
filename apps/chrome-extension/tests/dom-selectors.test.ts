@@ -341,6 +341,24 @@ test("ignores quoted text while retaining emoji-only content and reply identity"
   assert.equal(findReplyTargetId(record as unknown as Element), "fixture-001");
 });
 
+test("excludes reaction chips from emoji-only message content", () => {
+  const messageEmoji = {
+    closest: () => null,
+    getAttribute: (name: string) => (name === "alt" ? "👍" : null),
+  };
+  const reactionContainer = {};
+  const reactionEmoji = {
+    closest: (selector: string) =>
+      selector.includes("reaction") ? reactionContainer : null,
+    getAttribute: (name: string) => (name === "alt" ? "❤️" : null),
+  };
+  const record = {
+    querySelectorAll: () => [messageEmoji, reactionEmoji],
+  };
+
+  assert.equal(findMessageEmojiText(record as unknown as Element), "👍");
+});
+
 test("maps captured reply targets to exported IDs without leaking unmatched raw IDs", () => {
   const messages = [
     { id: "generated-1", captureSourceId: "fixture-001" },
