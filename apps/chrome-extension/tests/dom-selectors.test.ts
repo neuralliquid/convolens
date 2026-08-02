@@ -6,6 +6,7 @@ import {
   findMessageContainers,
   findMessageEmojiText,
   findMessageRecord,
+  findMessageSender,
   findReplyTargetId,
   findSelfDisplayName,
   findMessageText,
@@ -34,6 +35,26 @@ test("falls back to the active #main conversation when WhatsApp removes its mess
   const main = {
     querySelector: (selector: string) =>
       selector.includes("selectable-text") ? message : null,
+  };
+  const documentRoot = {
+    querySelector: (selector: string) => (selector === "#main" ? main : null),
+  };
+
+  assert.equal(
+    findConversationRoot(
+      documentRoot as unknown as ParentNode,
+      '[data-testid="conversation-panel-messages"]',
+      ".message-list",
+    ),
+    main,
+  );
+});
+
+test("falls back to #main for a media-only loaded window", () => {
+  const media = {};
+  const main = {
+    querySelector: (selector: string) =>
+      selector.includes("image-content") ? media : null,
   };
   const documentRoot = {
     querySelector: (selector: string) => (selector === "#main" ? main : null),
@@ -128,6 +149,28 @@ test("prefers configured message text over earlier generic preview text", () => 
       ".configured-fallback",
     ),
     messageText,
+  );
+});
+
+test("prefers the configured sender over an earlier generic preview author", () => {
+  const previewAuthor = { textContent: "Preview author" };
+  const messageSender = { textContent: "Message sender" };
+  const container = {
+    querySelectorAll: (selector: string) =>
+      selector === '[data-testid="msg-sender"]'
+        ? [messageSender]
+        : selector.includes("message-author")
+          ? [previewAuthor]
+          : [],
+  };
+
+  assert.equal(
+    findMessageSender(
+      container as unknown as Element,
+      '[data-testid="msg-sender"]',
+      ".configured-sender-fallback",
+    ),
+    messageSender,
   );
 });
 

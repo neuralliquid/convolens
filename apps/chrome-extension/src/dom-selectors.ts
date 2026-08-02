@@ -67,7 +67,7 @@ export function findConversationRoot(
   const activeConversation = documentRoot.querySelector("#main");
   if (
     activeConversation?.querySelector(MESSAGE_CONTAINER_SELECTOR) ||
-    activeConversation?.querySelector(MESSAGE_TEXT_SELECTOR)
+    activeConversation?.querySelector(MESSAGE_RECORD_EVIDENCE_SELECTOR)
   ) {
     return activeConversation;
   }
@@ -152,12 +152,17 @@ export function findMessageSender(
   primarySelector: string,
   fallbackSelector: string,
 ): Element | null {
-  const selectors = `${primarySelector}, ${fallbackSelector}, ${MESSAGE_SENDER_SELECTOR}`;
-  return (
-    Array.from(container.querySelectorAll(selectors)).find(
+  for (const selector of [
+    primarySelector,
+    fallbackSelector,
+    MESSAGE_SENDER_SELECTOR,
+  ]) {
+    const match = Array.from(container.querySelectorAll(selector)).find(
       (candidate) => !isQuotedEvidence(candidate),
-    ) || null
-  );
+    );
+    if (match) return match;
+  }
+  return null;
 }
 
 export function findReplyTargetId(container: Element): string | undefined {
