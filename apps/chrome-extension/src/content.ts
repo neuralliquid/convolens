@@ -3105,6 +3105,7 @@ function extractSenderIdentity(
     senderEl?.textContent?.trim() || senderEl?.getAttribute("title")?.trim();
   const scopedPhoneEvidence = collectScopedIdentityEvidence(senderEl);
   if (isOutgoing) {
+    const selfProfileName = findSelfDisplayName(document);
     const specificMetadataSender = isGenericSelfLabel(metadataSender)
       ? undefined
       : metadataSender;
@@ -3112,9 +3113,11 @@ function extractSenderIdentity(
       ? undefined
       : explicitSender;
     const combined = combineSenderEvidence({
-      metadataSender: specificMetadataSender,
-      visibleSender: specificVisibleSender,
-      headerSender: findSelfDisplayName(document),
+      metadataSender: selfProfileName || specificMetadataSender,
+      visibleSender: selfProfileName
+        ? specificMetadataSender
+        : specificVisibleSender,
+      headerSender: selfProfileName ? specificVisibleSender : undefined,
       scopedPhoneEvidence,
     });
     return {

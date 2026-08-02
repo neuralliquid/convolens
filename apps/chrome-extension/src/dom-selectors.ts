@@ -114,13 +114,19 @@ export function findMessageText(
   primarySelector: string,
   fallbackSelector: string,
 ): Element | null {
-  const selectors = `${primarySelector}, ${fallbackSelector}, ${MESSAGE_TEXT_SELECTOR}`;
-
-  const candidates = [
-    ...(container.matches?.(selectors) ? [container] : []),
-    ...container.querySelectorAll(selectors),
-  ];
-  return candidates.find((candidate) => !isQuotedEvidence(candidate)) || null;
+  for (const selector of [
+    primarySelector,
+    fallbackSelector,
+    MESSAGE_TEXT_SELECTOR,
+  ]) {
+    const candidates = [
+      ...(container.matches?.(selector) ? [container] : []),
+      ...container.querySelectorAll(selector),
+    ];
+    const match = candidates.find((candidate) => !isQuotedEvidence(candidate));
+    if (match) return match;
+  }
+  return null;
 }
 
 export function findMessageEmojiText(container: Element): string | undefined {

@@ -108,6 +108,29 @@ test("reads text through the generic selector used for container discovery", () 
   );
 });
 
+test("prefers configured message text over earlier generic preview text", () => {
+  const previewText = { textContent: "Preview" };
+  const messageText = { textContent: "Current message" };
+  const container = {
+    matches: () => false,
+    querySelectorAll: (selector: string) =>
+      selector === '[data-testid="msg-text"]'
+        ? [messageText]
+        : selector.includes("selectable-text")
+          ? [previewText]
+          : [],
+  };
+
+  assert.equal(
+    findMessageText(
+      container as unknown as Element,
+      '[data-testid="msg-text"]',
+      ".configured-fallback",
+    ),
+    messageText,
+  );
+});
+
 test("normalizes a visual bubble to its enclosing WhatsApp message record", () => {
   const record = {};
   const bubble = {
