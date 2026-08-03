@@ -11,7 +11,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StyledCard } from "@/components/ui/styled-card";
 import { DeleteConversationButton } from "@/components/conversations/delete-conversation-button";
 import { TicketCandidateReview } from "@/components/conversations/ticket-candidate-review";
-import { CatchUpSummaryPanel } from "@/components/conversations/catch-up-summary";
+import {
+  CatchUpSummaryPanel,
+  type CatchUpSummary,
+} from "@/components/conversations/catch-up-summary";
+import { AnnotatedSourceConversation } from "@/components/conversations/annotated-source-conversation";
 
 interface ConversationMessage {
   id: string;
@@ -92,6 +96,7 @@ export default function ConversationPage() {
   const [conversation, setConversation] = useState<Conversation>();
   const [error, setError] = useState<string>();
   const [loadingConversation, setLoadingConversation] = useState(true);
+  const [catchUpSummary, setCatchUpSummary] = useState<CatchUpSummary>();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -192,6 +197,7 @@ export default function ConversationPage() {
             periodEnd={
               conversation.messages[conversation.messages.length - 1]?.sentAt
             }
+            onSummaryChange={setCatchUpSummary}
           />
           <section className="mt-8 grid gap-6 md:grid-cols-2">
             <StyledCard
@@ -227,57 +233,27 @@ export default function ConversationPage() {
             </StyledCard>
           </section>
 
-          <section
-            id="source-messages"
-            className="mt-10 scroll-mt-20 space-y-3"
-          >
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                Source conversation
-              </p>
-              <h2 className="mt-1 text-xl font-bold">Imported messages</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Use these messages to verify any important detail in the
-                catch-up.
-              </p>
-            </div>
-            {conversation.messages.map((message) => (
-              <article
-                key={message.id}
-                id={`message-${message.id}`}
-                className="scroll-mt-24 rounded-xl border bg-card p-4 text-card-foreground transition target:border-emerald-400 target:bg-emerald-50 target:ring-4 target:ring-emerald-100 dark:target:border-emerald-700 dark:target:bg-emerald-950/40 dark:target:ring-emerald-950"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                      #{message.position + 1}
-                    </span>
-                    <p className="font-semibold">
-                      {senderLabel(conversation, message)}
-                    </p>
-                  </div>
-                  <time className="text-xs text-muted-foreground">
-                    {new Date(message.sentAt).toLocaleString()}
-                  </time>
-                </div>
-                {message.isMedia ? (
-                  <span className="mt-3 inline-flex rounded-full border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                    {mediaLabel(message)}
-                  </span>
-                ) : null}
-                {message.content &&
-                (!message.isMedia ||
-                  !isLegacyMediaPlaceholder(
-                    message.content,
-                    mediaLabel(message),
-                  )) ? (
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                    {message.content}
-                  </p>
-                ) : null}
-              </article>
-            ))}
-          </section>
+          <AnnotatedSourceConversation
+            summary={catchUpSummary}
+            messages={conversation.messages.map((message) => ({
+              id: message.id,
+              position: message.position,
+              senderName: senderLabel(conversation, message),
+              content:
+                message.isMedia &&
+                isLegacyMediaPlaceholder(message.content, mediaLabel(message))
+                  ? ""
+                  : message.content,
+              sentAt: message.sentAt,
+              isMedia: message.isMedia,
+              mediaLabel: mediaLabel(message),
+              sourcePlatform: conversation.sourcePlatform,
+              sourceLabel:
+                conversation.sourceKind === "extension"
+                  ? "Browser capture"
+                  : "Chat export",
+            }))}
+          />
           <TicketCandidateReview intakeId={conversation.id} />
         </>
       ) : null}

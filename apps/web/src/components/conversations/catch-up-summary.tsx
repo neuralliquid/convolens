@@ -16,24 +16,24 @@ import {
 } from "lucide-react";
 import { Button, LoadingButton } from "@/components/ui/button";
 
-interface EvidenceReference {
+export interface EvidenceReference {
   messageId: string;
   position: number;
   senderName: string;
   sentAt: string;
 }
 
-interface EvidenceItem {
+export interface EvidenceItem {
   text: string;
   evidence: EvidenceReference[];
 }
 
-interface ActionItem extends EvidenceItem {
+export interface ActionItem extends EvidenceItem {
   owner?: string;
   due?: string;
 }
 
-interface CatchUpSummary {
+export interface CatchUpSummary {
   id: string;
   overview: string;
   overviewEvidence: EvidenceReference[];
@@ -56,6 +56,9 @@ interface CatchUpSummaryProps {
   participantCount: number;
   periodStart?: string;
   periodEnd?: string;
+  initialSummary?: CatchUpSummary;
+  readOnly?: boolean;
+  onSummaryChange?: (summary: CatchUpSummary | undefined) => void;
 }
 
 function formatDate(value?: string) {
@@ -94,12 +97,14 @@ function EvidenceLinks({ evidence }: { evidence: EvidenceReference[] }) {
 }
 
 function SummarySection({
+  id,
   title,
   description,
   icon,
   items,
   emptyMessage,
 }: {
+  id: string;
   title: string;
   description: string;
   icon: ReactNode;
@@ -107,7 +112,10 @@ function SummarySection({
   emptyMessage: string;
 }) {
   return (
-    <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
+    <section
+      id={id}
+      className="scroll-mt-24 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6"
+    >
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
           {icon}
@@ -144,13 +152,19 @@ export function CatchUpSummaryPanel({
   participantCount,
   periodStart,
   periodEnd,
+  initialSummary,
+  readOnly = false,
+  onSummaryChange,
 }: CatchUpSummaryProps) {
-  const [summary, setSummary] = useState<CatchUpSummary>();
-  const [isLoading, setIsLoading] = useState(true);
+  const [summary, setSummary] = useState<CatchUpSummary | undefined>(
+    initialSummary,
+  );
+  const [isLoading, setIsLoading] = useState(!initialSummary);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
+    if (initialSummary) return;
     let cancelled = false;
     fetch(`/api/chat-export/${encodeURIComponent(conversationId)}/summary`, {
       cache: "no-store",
@@ -178,7 +192,11 @@ export function CatchUpSummaryPanel({
     return () => {
       cancelled = true;
     };
-  }, [conversationId]);
+  }, [conversationId, initialSummary]);
+
+  useEffect(() => {
+    onSummaryChange?.(summary);
+  }, [onSummaryChange, summary]);
 
   const displayedRange = useMemo(
     () =>
@@ -307,18 +325,20 @@ export function CatchUpSummaryPanel({
             </p>
             <EvidenceLinks evidence={summary.overviewEvidence} />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isGenerating}
-            onClick={() => generate(true)}
-            className="shrink-0 bg-background/70"
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${isGenerating ? "animate-spin" : ""}`}
-            />
-            {isGenerating ? "Refreshing…" : "Refresh catch-up"}
-          </Button>
+          {readOnly ? null : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isGenerating}
+              onClick={() => generate(true)}
+              className="shrink-0 bg-background/70"
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${isGenerating ? "animate-spin" : ""}`}
+              />
+              {isGenerating ? "Refreshing…" : "Refresh catch-up"}
+            </Button>
+          )}
         </div>
         <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-emerald-200/70 pt-5 text-xs text-muted-foreground dark:border-emerald-900">
           <span>{summary.scope.messageCount} messages reviewed</span>
@@ -345,6 +365,7 @@ export function CatchUpSummaryPanel({
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <SummarySection
+          id="summary-topics"
           title="What everyone talked about"
           description="The themes worth knowing"
           icon={<MessageSquareText className="h-5 w-5" />}
@@ -352,13 +373,17 @@ export function CatchUpSummaryPanel({
           emptyMessage="No clear themes were identified in this imported range."
         />
         <SummarySection
+          id="summary-decisions"
           title="Decisions made"
           description="Outcomes the group explicitly agreed on"
           icon={<CheckCircle2 className="h-5 w-5" />}
           items={summary.decisions}
           emptyMessage="No explicit decisions were found—which is useful to know too."
         />
-        <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
+        <section
+          id="summary-actions"
+          className="scroll-mt-24 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6"
+        >
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               <ListChecks className="h-5 w-5" />
@@ -405,6 +430,7 @@ export function CatchUpSummaryPanel({
           )}
         </section>
         <SummarySection
+          id="summary-questions"
           title="Still open"
           description="Questions the conversation did not resolve"
           icon={<CircleHelp className="h-5 w-5" />}
@@ -414,7 +440,10 @@ export function CatchUpSummaryPanel({
       </div>
 
       {summary.importantLinks.length > 0 ? (
-        <section className="mt-5 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
+        <section
+          id="summary-links"
+          className="mt-5 scroll-mt-24 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6"
+        >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               <Link2 className="h-5 w-5" />
