@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { logger } from '../../utils/logger';
 import type {
   ConversationSummaryContent,
@@ -15,7 +16,7 @@ export interface CatchUpSourceMessage {
 
 export interface CatchUpGenerationResult {
   content: ConversationSummaryContent;
-  provider: 'azure' | 'openai' | 'anthropic';
+  provider: 'sluice';
   model: string;
 }
 
@@ -44,18 +45,27 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_CHUNK_CHARACTERS = 28_000;
 const MAX_TOTAL_CHARACTERS = 168_000;
 const MAX_ITEMS_PER_SECTION = 8;
+const DEFAULT_SLUICE_MODEL = 'convolens-catch-up-v1';
 
-function activeProvider(): CatchUpGenerationResult['provider'] | null {
-  if (process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY) return 'azure';
-  if (process.env.OPENAI_API_KEY) return 'openai';
-  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
-  return null;
+interface SluiceConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
 }
 
-function activeModel(provider: CatchUpGenerationResult['provider']): string {
-  if (provider === 'azure') return process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4';
-  if (provider === 'openai') return process.env.OPENAI_MODEL || 'gpt-4-turbo-preview';
-  return process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229';
+function activeSluiceConfig(): SluiceConfig | null {
+  const baseUrl = process.env.SLUICE_BASE_URL?.trim().replace(/\/$/, '');
+  const apiKey = process.env.SLUICE_API_KEY?.trim();
+  if (!baseUrl || !apiKey) return null;
+  return {
+    apiKey,
+    baseUrl,
+    model: process.env.SLUICE_MODEL?.trim() || DEFAULT_SLUICE_MODEL,
+  };
+}
+
+function chatCompletionsUrl(baseUrl: string): string {
+  return `${baseUrl}${baseUrl.endsWith('/v1') ? '' : '/v1'}/chat/completions`;
 }
 
 function formatSourceMessage(message: CatchUpSourceMessage): string {
@@ -257,93 +267,77 @@ async function fetchWithTimeout(url: string, options: RequestInit): Promise<Resp
 }
 
 async function requestCompletion(
-  provider: CatchUpGenerationResult['provider'],
-  prompt: string
+  config: SluiceConfig,
+  prompt: string,
+  stage: 'summary-chunk' | 'summary-consolidation'
 ): Promise<string> {
-  const model = activeModel(provider);
-  if (provider === 'anthropic') {
-    const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2_000,
-        temperature: 0.2,
-        system: systemPrompt(),
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    if (!response.ok) throw new Error(`Anthropic request failed (${response.status})`);
-    const data = await response.json();
-    return data.content?.[0]?.text || '';
-  }
-
-  const isAzure = provider === 'azure';
-  const endpoint = isAzure
-    ? `${process.env.AZURE_OPENAI_ENDPOINT!.replace(/\/$/, '')}/openai/deployments/${encodeURIComponent(model)}/chat/completions${process.env.AZURE_OPENAI_API_VERSION ? `?api-version=${encodeURIComponent(process.env.AZURE_OPENAI_API_VERSION)}` : ''}`
-    : 'https://api.openai.com/v1/chat/completions';
-  const response = await fetchWithTimeout(endpoint, {
+  const response = await fetchWithTimeout(chatCompletionsUrl(config.baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(isAzure
-        ? { 'api-key': process.env.AZURE_OPENAI_API_KEY! }
-        : { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }),
+      Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify({
-      ...(!isAzure ? { model } : {}),
+      model: config.model,
       messages: [
         { role: 'system', content: systemPrompt() },
         { role: 'user', content: prompt },
       ],
       max_tokens: 2_000,
       temperature: 0.2,
+      metadata: {
+        app: 'convolens',
+        agent: 'catch-up-generator',
+        workflow: 'conversation-catch-up',
+        stage,
+        request_id: randomUUID(),
+      },
     }),
   });
-  if (!response.ok)
-    throw new Error(`${isAzure ? 'Azure OpenAI' : 'OpenAI'} request failed (${response.status})`);
+  if (!response.ok) throw new Error(`Sluice request failed (${response.status})`);
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }
 
 export class AiCatchUpGenerator implements CatchUpGenerator {
   getProviderInfo() {
-    const provider = activeProvider();
+    const config = activeSluiceConfig();
     return {
-      provider: provider || 'unconfigured',
-      configured: Boolean(provider),
-      model: provider ? activeModel(provider) : undefined,
+      provider: config ? 'sluice' : 'unconfigured',
+      configured: Boolean(config),
+      model: config?.model,
     };
   }
 
   async generate(messages: CatchUpSourceMessage[]): Promise<CatchUpGenerationResult> {
-    const provider = activeProvider();
-    if (!provider) throw new Error('AI_PROVIDER_NOT_CONFIGURED');
+    const config = activeSluiceConfig();
+    if (!config) throw new Error('AI_PROVIDER_NOT_CONFIGURED');
     if (messages.length === 0) throw new Error('NO_MESSAGES_TO_SUMMARIZE');
 
     const chunks = splitIntoChunks(messages);
     logger.info('[CatchUpGenerator] Generating grounded summary', {
-      provider,
+      provider: 'sluice',
+      model: config.model,
       messageCount: messages.length,
       chunkCount: chunks.length,
     });
     const partials: ConversationSummaryContent[] = [];
     for (const chunk of chunks) {
-      const response = await requestCompletion(provider, buildCatchUpPrompt(chunk));
+      const response = await requestCompletion(config, buildCatchUpPrompt(chunk), 'summary-chunk');
       partials.push(normalizeCatchUpDraft(extractJson(response), chunk));
     }
 
     let content = partials[0];
     if (partials.length > 1) {
-      const response = await requestCompletion(provider, consolidationPrompt(partials));
+      const response = await requestCompletion(
+        config,
+        consolidationPrompt(partials),
+        'summary-consolidation'
+      );
       content = normalizeCatchUpDraft(extractJson(response), messages);
     }
     content.importantLinks = extractImportantLinks(messages);
-    return { content, provider, model: activeModel(provider) };
+    return { content, provider: 'sluice', model: config.model };
   }
 }
 

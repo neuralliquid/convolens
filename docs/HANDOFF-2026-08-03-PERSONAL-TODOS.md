@@ -42,11 +42,63 @@ The demo labels Email and Discord evidence as synthetic context. It does not cla
 
 All five checklist items on implementation task `0f46847f-575d-4e95-9219-322bdc3cf484` are complete and that task is done.
 
+## Foundry-through-Sluice continuation
+
+The approved architecture is now:
+
+```text
+ConvoLens API -> Sluice capability alias -> Azure AI Foundry
+```
+
+The implementation is prepared but not yet merged or deployed in two clean
+worktrees:
+
+- Sluice: `C:\tmp\sluice-convolens-catch-up`, branch
+  `agent/convolens-catch-up`;
+- ConvoLens: `C:\tmp\convolens-personal-todos-acceptance`, branch
+  `agent/personal-todos-production-acceptance`.
+
+The Sluice change is published for review as
+[phoenixvc/sluice#153](https://github.com/phoenixvc/sluice/pull/153). It must
+land and deploy before the ConvoLens change can be deployed.
+
+The Sluice slice declares `convolens-catch-up-v1`, a `convolens` virtual key
+limited to that capability, bounded spend/rate limits, and global suppression
+of prompt/response content in callbacks and OpenTelemetry. The alias initially
+uses Sluice's existing Azure OpenAI deployment; ConvoLens does not receive a
+Foundry/provider credential or select an upstream model.
+
+The ConvoLens slice removes direct Azure OpenAI, OpenAI, and Anthropic fallback
+from grounded catch-up generation. It requires `SLUICE_BASE_URL` plus the
+restricted `SLUICE_API_KEY`, sends only bounded attribution metadata with an
+opaque request ID, and fails closed with `AI_PROVIDER_NOT_CONFIGURED` otherwise.
+Production Terraform stores the key in `nl-prod-convolens-kv` as
+`sluice-api-key` and exposes it through a Container App secret reference.
+
+Local evidence for this unmerged slice:
+
+- Sluice Terraform validation: passed;
+- Sluice virtual-key manifest parse and unique restricted alias check: passed;
+- ConvoLens production Terraform validation: passed;
+- catch-up generator suite: 6 tests passed;
+- neighboring conversation-summary persistence suite: 2 tests passed;
+- ConvoLens API production bundle: passed;
+- focused source lint excluding the repository's unresolved missing
+  `import/order` rule registration: passed;
+- full API `tsc --noEmit` remains red for pre-existing controller/entity typing
+  errors outside this slice; no reported error referenced a modified file.
+
 ## Current boundary
 
 No deployment was performed for PR #173. CI, a production build, and the synthetic browser demo do not prove the authenticated production workflow.
 
-Production summarization configuration is a confirmed blocker. `activeProvider()` in `apps/api/src/services/ai/catch-up-generator.service.ts` requires either both `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`. The tracked production Container App in `infra/terraform/env/prod/main.tf` currently provisions none of them. Deploying the current Terraform unchanged would leave catch-up generation unavailable with `AI_PROVIDER_NOT_CONFIGURED` even if health probes pass.
+Production summarization remains blocked until the two prepared changes land in
+dependency order. Sluice must first deploy the capability alias and payload
+privacy settings. A separately authorized operator must then reconcile
+`scripts/keys.yaml`, capture the newly issued `vkey-convolens` without logging
+it, and store it as the ConvoLens Production environment secret
+`SLUICE_API_KEY`. Only then can the ConvoLens change be deployed. Deploying
+ConvoLens first fails closed with `AI_PROVIDER_NOT_CONFIGURED`.
 
 The following remain unverified for this merged build:
 
@@ -66,13 +118,21 @@ Do not use fabricated accounts, export or reuse session material, record convers
 
 1. Recheck live `origin/main`, PR #173, Baton task `263ca89a-6c9d-4a74-a137-48dfc888b2e3`, deployment state, and the primary checkout before acting.
 2. Work in a clean isolated worktree from current `origin/main`; preserve unrelated primary-checkout state.
-3. Resolve the summarization-provider blocker before deployment acceptance: select an approved provider, provision its secret through the governed Key Vault/Terraform path, bind only the required Container App environment variables, and validate that no secret enters Git, logs, plans, or handoff evidence. This provider choice and secret write require explicit authorization.
-4. Obtain fresh explicit deployment authorization. Deploy only the exact intended `main` commit and verify build identity, API/web health, provider readiness, and relevant configuration independently. A healthy API with `AI_PROVIDER_NOT_CONFIGURED` is not feature readiness.
-5. With a legitimate operator session and an authorized test conversation, generate grounded drafts and verify refresh persistence plus exact catch-up/message navigation.
-6. Verify user isolation and edit, dismiss, return-to-review, and deletion before any publication history exists.
-7. Obtain separate exact authorization for one production Baton write. Confirm the reviewed draft, publish once, then verify retry/reload produces exactly one task and preserves the backlink.
-8. Record opaque IDs, timestamps, build identity, and outcomes only. Do not record tokens, cookies, participant names, conversation text, or stable WhatsApp identifiers.
-9. Update the successor task checklist and add a repository-backed closeout. Do not close it from deployment health alone.
+3. Merge and deploy the reviewed Sluice change first. Verify the rendered
+   capability alias, payload-logging suppression, health, and unauthenticated
+   `401` boundary without making a billable provider call.
+4. Obtain separate exact authorization to reconcile the Sluice manifest and
+   create `vkey-convolens`. Store it immediately as the ConvoLens Production
+   environment secret `SLUICE_API_KEY`; never record the value.
+5. Merge the ConvoLens change, obtain fresh explicit deployment authorization,
+   and deploy only the exact intended `main` commit. Verify build identity,
+   API/web health, Sluice configuration, and provider readiness independently.
+   A healthy API with `AI_PROVIDER_NOT_CONFIGURED` is not feature readiness.
+6. With a legitimate operator session and an authorized test conversation, generate grounded drafts and verify refresh persistence plus exact catch-up/message navigation.
+7. Verify user isolation and edit, dismiss, return-to-review, and deletion before any publication history exists.
+8. Obtain separate exact authorization for one production Baton write. Confirm the reviewed draft, publish once, then verify retry/reload produces exactly one task and preserves the backlink.
+9. Record opaque IDs, timestamps, build identity, and outcomes only. Do not record tokens, cookies, participant names, conversation text, or stable WhatsApp identifiers.
+10. Update the successor task checklist and add a repository-backed closeout. Do not close it from deployment health alone.
 
 ## Copy-paste restart
 
@@ -93,4 +153,7 @@ Then read this file and Baton task `263ca89a-6c9d-4a74-a137-48dfc888b2e3` before
 
 ## Workspace note
 
-The stale primary checkout at `C:\Users\smitj\repos\convolens` and its unrelated untracked handoff file were preserved. Implementation and this handoff were prepared in the isolated worktree `C:\tmp\convolens-catch-up`.
+The primary checkout at `C:\Users\smitj\repos\convolens` and its unrelated
+work were preserved. This continuation was implemented in the isolated
+ConvoLens worktree `C:\tmp\convolens-personal-todos-acceptance`; the paired
+Sluice change was prepared in `C:\tmp\sluice-convolens-catch-up`.

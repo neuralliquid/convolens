@@ -97,6 +97,39 @@ variable "api_jwt_secret" {
   }
 }
 
+variable "sluice_base_url" {
+  type        = string
+  description = "Canonical Sluice LiteLLM gateway URL used for governed AI requests."
+  default     = "https://litellm.sluice.phoenixvc.tech"
+
+  validation {
+    condition     = startswith(var.sluice_base_url, "https://")
+    error_message = "sluice_base_url must use HTTPS."
+  }
+}
+
+variable "sluice_api_key" {
+  type        = string
+  description = "Restricted ConvoLens Sluice virtual key."
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.sluice_api_key)) > 0
+    error_message = "sluice_api_key must be configured for grounded catch-ups."
+  }
+}
+
+variable "sluice_model" {
+  type        = string
+  description = "Sluice-owned capability alias for grounded conversation catch-ups."
+  default     = "convolens-catch-up-v1"
+
+  validation {
+    condition     = var.sluice_model == "convolens-catch-up-v1"
+    error_message = "Production catch-ups must use the governed convolens-catch-up-v1 alias."
+  }
+}
+
 variable "frontend_runtime_stack" {
   type        = string
   description = "Linux App Service runtime stack for the Next.js frontend."

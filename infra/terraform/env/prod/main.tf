@@ -190,6 +190,12 @@ resource "azurerm_key_vault_secret" "appinsights_connection_string" {
   key_vault_id = azurerm_key_vault.kv.id
 }
 
+resource "azurerm_key_vault_secret" "sluice_api_key" {
+  name         = "sluice-api-key"
+  value        = var.sluice_api_key
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
 resource "azurerm_container_registry" "acr" {
   count                         = var.enable_container_registry ? 1 : 0
   name                          = local.acr_name
@@ -234,6 +240,12 @@ resource "azurerm_container_app" "api" {
   secret {
     name  = "jwt-secret"
     value = var.api_jwt_secret
+  }
+
+  secret {
+    name                = "sluice-api-key"
+    key_vault_secret_id = azurerm_key_vault_secret.sluice_api_key.versionless_id
+    identity            = "System"
   }
 
   dynamic "secret" {
@@ -372,6 +384,18 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "AZURE_PROVIDER_ENABLED"
         value = "true"
+      }
+      env {
+        name  = "SLUICE_BASE_URL"
+        value = var.sluice_base_url
+      }
+      env {
+        name        = "SLUICE_API_KEY"
+        secret_name = "sluice-api-key"
+      }
+      env {
+        name  = "SLUICE_MODEL"
+        value = var.sluice_model
       }
       env {
         name  = "BATON_BASE_URL"
