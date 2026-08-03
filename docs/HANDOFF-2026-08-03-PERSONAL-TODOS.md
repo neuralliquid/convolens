@@ -75,7 +75,8 @@ from grounded catch-up generation. It requires `SLUICE_BASE_URL` plus the
 restricted `SLUICE_API_KEY`, sends only bounded attribution metadata with an
 opaque request ID, and fails closed with `AI_PROVIDER_NOT_CONFIGURED` otherwise.
 Production Terraform stores the key in `nl-prod-convolens-kv` as
-`sluice-api-key` and exposes it through a Container App secret reference.
+`sluice-api-key` and exposes it through a Container App secret reference
+using the pre-authorized `nl-prod-convolens-api-secrets` user-assigned identity.
 
 Local evidence for this unmerged slice:
 

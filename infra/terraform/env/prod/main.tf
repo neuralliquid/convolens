@@ -12,6 +12,7 @@ locals {
   postgres_name        = "${local.prefix}-pg"
   cae_name             = "${local.prefix}-cae"
   api_name             = "${local.prefix}-api"
+  api_secrets_name     = "${local.prefix}-api-secrets"
   service_plan_name    = "${local.prefix}-asp"
   frontend_name        = "${local.prefix}-web"
   acr_name             = substr("${local.alphanumeric}acr", 0, 50)
@@ -216,6 +217,19 @@ resource "azurerm_container_app_environment" "cae" {
   tags                       = local.tags
 }
 
+resource "azurerm_user_assigned_identity" "api_secrets" {
+  name                = local.api_secrets_name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  tags                = local.tags
+}
+
+resource "azurerm_role_assignment" "api_secrets_key_vault_secrets_user" {
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.api_secrets.principal_id
+}
+
 resource "azurerm_container_app" "api" {
   name                         = local.api_name
   container_app_environment_id = azurerm_container_app_environment.cae.id
@@ -224,7 +238,8 @@ resource "azurerm_container_app" "api" {
   tags                         = local.tags
 
   identity {
-    type = "SystemAssigned"
+    type         = "SystemAssigned, UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.api_secrets.id]
   }
 
   secret {
@@ -245,8 +260,10 @@ resource "azurerm_container_app" "api" {
   secret {
     name                = "sluice-api-key"
     key_vault_secret_id = azurerm_key_vault_secret.sluice_api_key.versionless_id
-    identity            = "System"
+    identity            = azurerm_user_assigned_identity.api_secrets.id
   }
+
+  depends_on = [azurerm_role_assignment.api_secrets_key_vault_secrets_user]
 
   dynamic "secret" {
     for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
