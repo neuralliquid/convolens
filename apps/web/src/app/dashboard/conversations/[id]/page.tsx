@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StyledCard } from "@/components/ui/styled-card";
 import { DeleteConversationButton } from "@/components/conversations/delete-conversation-button";
 import { TicketCandidateReview } from "@/components/conversations/ticket-candidate-review";
+import { CatchUpSummaryPanel } from "@/components/conversations/catch-up-summary";
 
 interface ConversationMessage {
   id: string;
@@ -183,6 +184,15 @@ export default function ConversationPage() {
               required; ConvoLens did not merge or discard either conversation.
             </div>
           ) : null}
+          <CatchUpSummaryPanel
+            conversationId={conversation.id}
+            messageCount={conversation.messages.length}
+            participantCount={conversation.participants?.length || 0}
+            periodStart={conversation.messages[0]?.sentAt}
+            periodEnd={
+              conversation.messages[conversation.messages.length - 1]?.sentAt
+            }
+          />
           <section className="mt-8 grid gap-6 md:grid-cols-2">
             <StyledCard
               title="Intake status"
@@ -217,17 +227,35 @@ export default function ConversationPage() {
             </StyledCard>
           </section>
 
-          <section className="mt-8 space-y-3">
-            <h2 className="text-xl font-bold">Stored messages</h2>
+          <section
+            id="source-messages"
+            className="mt-10 scroll-mt-20 space-y-3"
+          >
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                Source conversation
+              </p>
+              <h2 className="mt-1 text-xl font-bold">Imported messages</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Use these messages to verify any important detail in the
+                catch-up.
+              </p>
+            </div>
             {conversation.messages.map((message) => (
               <article
                 key={message.id}
-                className="rounded-xl border bg-card p-4 text-card-foreground"
+                id={`message-${message.id}`}
+                className="scroll-mt-24 rounded-xl border bg-card p-4 text-card-foreground transition target:border-emerald-400 target:bg-emerald-50 target:ring-4 target:ring-emerald-100 dark:target:border-emerald-700 dark:target:bg-emerald-950/40 dark:target:ring-emerald-950"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold">
-                    {senderLabel(conversation, message)}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                      #{message.position + 1}
+                    </span>
+                    <p className="font-semibold">
+                      {senderLabel(conversation, message)}
+                    </p>
+                  </div>
                   <time className="text-xs text-muted-foreground">
                     {new Date(message.sentAt).toLocaleString()}
                   </time>

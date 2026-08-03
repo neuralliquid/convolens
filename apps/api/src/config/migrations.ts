@@ -3,6 +3,7 @@ import { AddConversationFidelity1753660000000 } from '../db/migrations/175366000
 import { AddIntakeArtifactsAndSelectorReports1754000000000 } from '../db/migrations/1754000000000-AddIntakeArtifactsAndSelectorReports';
 import { AddRawArtifactCleanupKeys1754100000000 } from '../db/migrations/1754100000000-AddRawArtifactCleanupKeys';
 import { AddTicketCandidatesAndBatonAttempts1754200000000 } from '../db/migrations/1754200000000-AddTicketCandidatesAndBatonAttempts';
+import { AddConversationSummaries1754300000000 } from '../db/migrations/1754300000000-AddConversationSummaries';
 
 export const CONVERSATION_MIGRATIONS = [
   CreateConversationIntake1753400000000,
@@ -10,4 +11,5 @@ export const CONVERSATION_MIGRATIONS = [
   AddIntakeArtifactsAndSelectorReports1754000000000,
   AddRawArtifactCleanupKeys1754100000000,
   AddTicketCandidatesAndBatonAttempts1754200000000,
+  AddConversationSummaries1754300000000,
 ];
