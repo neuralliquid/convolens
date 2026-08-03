@@ -60,7 +60,9 @@ worktrees:
 
 The Sluice change is published for review as
 [phoenixvc/sluice#153](https://github.com/phoenixvc/sluice/pull/153). It must
-land and deploy before the ConvoLens change can be deployed.
+land and deploy before the dependent ConvoLens change in
+[neuralliquid/convolens#175](https://github.com/neuralliquid/convolens/pull/175)
+can be deployed.
 
 The Sluice slice declares `convolens-catch-up-v1`, a `convolens` virtual key
 limited to that capability, bounded spend/rate limits, and global suppression
