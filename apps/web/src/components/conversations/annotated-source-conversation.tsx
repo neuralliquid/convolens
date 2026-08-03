@@ -333,7 +333,14 @@ export function AnnotatedSourceConversation({
                     ) : null}
                   </div>
                   <time className="shrink-0 text-xs text-muted-foreground">
-                    {new Date(message.sentAt).toLocaleString()}
+                    {new Intl.DateTimeFormat("en-GB", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    }).format(new Date(message.sentAt))}
                   </time>
                 </div>
                 {messageAnnotations.length > 0 ? (

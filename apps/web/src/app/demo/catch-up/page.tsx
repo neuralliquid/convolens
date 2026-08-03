@@ -3,6 +3,9 @@ import {
   ArrowRight,
   Clock3,
   Layers3,
+  ListChecks,
+  LockKeyhole,
+  MessageSquareText,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -203,6 +206,11 @@ const summary: CatchUpSummary = {
   generatedAt: "2026-08-01T17:40:00.000Z",
 };
 
+const todoPreview = summary.actionItems.map((item, index) => ({
+  ...item,
+  id: `demo-todo-${index + 1}`,
+}));
+
 export default function CatchUpDemoPage() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_28%)]">
@@ -252,6 +260,67 @@ export default function CatchUpDemoPage() {
           initialSummary={summary}
           readOnly
         />
+        <section
+          id="personal-todos"
+          className="mt-8 rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-emerald-50 p-6 shadow-sm dark:border-indigo-900 dark:from-indigo-950/50 dark:via-card dark:to-emerald-950/40 sm:p-8"
+          aria-labelledby="personal-todos-heading"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                <ListChecks className="h-4 w-4" /> Private todo drafts
+              </div>
+              <h2
+                id="personal-todos-heading"
+                className="mt-2 text-2xl font-bold tracking-tight"
+              >
+                Turn grounded actions into your review queue
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Each draft keeps its exact source context. In the signed-in
+                workspace you can edit, dismiss, or confirm it; publishing to
+                Baton is always a separate action.
+              </p>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200">
+              <LockKeyhole className="h-3.5 w-3.5" /> User-scoped
+            </span>
+          </div>
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {todoPreview.map((todo) => (
+              <article key={todo.id} className="rounded-2xl border bg-card p-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+                  Review required
+                </p>
+                <h3 className="mt-2 text-sm font-semibold leading-6">
+                  {todo.text}
+                </h3>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a
+                    href="#catch-up"
+                    className="rounded-full border px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted"
+                  >
+                    Catch-up
+                  </a>
+                  {todo.evidence.map((reference) => (
+                    <a
+                      key={reference.messageId}
+                      href={`#message-${reference.messageId}`}
+                      className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted"
+                    >
+                      <MessageSquareText className="h-3.5 w-3.5" /> Message{" "}
+                      {reference.position + 1}
+                    </a>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="mt-5 text-xs leading-5 text-muted-foreground">
+            Synthetic preview only. These cards do not call Baton and make no
+            claim that Email or Discord connectors are live.
+          </p>
+        </section>
         <AnnotatedSourceConversation
           messages={messages}
           summary={summary}

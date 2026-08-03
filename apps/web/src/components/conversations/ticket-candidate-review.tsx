@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  ExternalLink,
+  Link2,
+  MessageSquareText,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -16,7 +24,18 @@ interface Candidate {
   batonTaskUrl?: string;
   lastPublishErrorCode?: string;
   dirty?: boolean;
-  evidence: Array<{ position: number; senderName: string; sentAt: string }>;
+  evidence: Array<{
+    messageId: string;
+    position: number;
+    senderName: string;
+    sentAt: string;
+  }>;
+  sourceContext?: {
+    conversationId: string;
+    conversationName: string;
+    catchUpHref: string;
+    evidenceLinks: Array<{ messageId: string; href: string }>;
+  };
   publishAttempts?: Array<{
     attemptNumber: number;
     status: string;
@@ -24,32 +43,36 @@ interface Candidate {
   }>;
 }
 
-export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
+export function TicketCandidateReview({ intakeId }: { intakeId?: string }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const response = await fetch(
-      `/api/ticket-candidates/conversations/${encodeURIComponent(intakeId)}`,
+      intakeId
+        ? `/api/ticket-candidates/conversations/${encodeURIComponent(intakeId)}`
+        : "/api/ticket-candidates",
       { cache: "no-store" },
     );
-    const payload = await response.json();
+    const payload = response.status === 204 ? {} : await response.json();
     if (!response.ok)
       throw new Error(payload.error || "Unable to load ticket candidates");
     setCandidates(payload.data?.candidates || []);
-  };
+  }, [intakeId]);
 
   useEffect(() => {
+    // The state update occurs after the external request resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load().catch((reason) => setError(reason.message));
-  }, [intakeId]);
+  }, [load]);
 
   const request = async (key: string, url: string, init: RequestInit) => {
     setBusy(key);
     setError(undefined);
     try {
       const response = await fetch(url, init);
-      const payload = await response.json();
+      const payload = response.status === 204 ? {} : await response.json();
       if (!response.ok)
         throw new Error(payload.error || "Candidate action failed");
       await load();
@@ -79,26 +102,28 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="ticket-candidates-title" className="text-xl font-bold">
-            Ticket candidates
+            {intakeId ? "Todo drafts" : "My conversation todos"}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Deterministic suggestions only. Nothing reaches Baton until you
-            accept and publish it.
+            Grounded in explicit conversation actions. Review and confirm each
+            draft before a separate Baton publish.
           </p>
         </div>
-        <Button
-          variant="outline"
-          disabled={Boolean(busy)}
-          onClick={() =>
-            request(
-              "generate",
-              `/api/ticket-candidates/conversations/${encodeURIComponent(intakeId)}`,
-              { method: "POST" },
-            )
-          }
-        >
-          {busy === "generate" ? "Checking…" : "Find action items"}
-        </Button>
+        {intakeId ? (
+          <Button
+            variant="outline"
+            disabled={Boolean(busy)}
+            onClick={() =>
+              request(
+                "generate",
+                `/api/ticket-candidates/conversations/${encodeURIComponent(intakeId)}`,
+                { method: "POST" },
+              )
+            }
+          >
+            {busy === "generate" ? "Checking…" : "Find explicit actions"}
+          </Button>
+        ) : null}
       </div>
       {error ? (
         <p
@@ -110,7 +135,9 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
       ) : null}
       {candidates.length === 0 ? (
         <p className="rounded-xl border p-4 text-sm text-muted-foreground">
-          No candidates generated yet.
+          {intakeId
+            ? "No todo drafts yet. Find explicit actions to create reviewable drafts."
+            : "No personal todo drafts yet. Open a conversation and find explicit actions first."}
         </p>
       ) : null}
       {candidates.map((candidate) => (
@@ -126,6 +153,30 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
               Evidence: message {candidate.evidence[0]?.position + 1}
             </span>
           </div>
+          {candidate.sourceContext ? (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Link
+                href={candidate.sourceContext.catchUpHref}
+                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium text-primary hover:bg-muted"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Catch-up: {candidate.sourceContext.conversationName}
+              </Link>
+              {candidate.evidence.map((evidence, index) => (
+                <Link
+                  key={evidence.messageId}
+                  href={
+                    candidate.sourceContext!.evidenceLinks[index]?.href ||
+                    candidate.sourceContext!.catchUpHref
+                  }
+                  className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium text-primary hover:bg-muted"
+                >
+                  <MessageSquareText className="h-3.5 w-3.5" />
+                  Message {evidence.position + 1}
+                </Link>
+              ))}
+            </div>
+          ) : null}
           <Input
             aria-label="Candidate title"
             value={candidate.title}
@@ -197,7 +248,7 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
                     )
                   }
                 >
-                  Accept
+                  Confirm for Baton
                 </Button>
                 <Button
                   variant="destructive"
@@ -217,7 +268,7 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
                     )
                   }
                 >
-                  Reject
+                  Dismiss
                 </Button>
               </>
             ) : null}
@@ -228,19 +279,60 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
             ) : null}
             {candidate.status === "accepted" ||
             candidate.publishStatus === "failed" ? (
+              <>
+                <Button
+                  disabled={Boolean(busy)}
+                  onClick={() =>
+                    request(
+                      candidate.id,
+                      `/api/ticket-candidates/${candidate.id}/publish`,
+                      { method: "POST" },
+                    )
+                  }
+                >
+                  {candidate.publishStatus === "failed"
+                    ? "Retry Baton publish"
+                    : "Publish confirmed draft to Baton"}
+                </Button>
+                {candidate.publishStatus === "not_requested" ? (
+                  <Button
+                    variant="outline"
+                    disabled={Boolean(busy)}
+                    onClick={() =>
+                      request(
+                        candidate.id,
+                        `/api/ticket-candidates/${candidate.id}/revoke`,
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            expectedRevision: candidate.revision,
+                          }),
+                        },
+                      )
+                    }
+                  >
+                    <Undo2 className="mr-2 h-4 w-4" /> Return to review
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+            {candidate.status !== "published" &&
+            candidate.publishStatus === "not_requested" ? (
               <Button
+                variant="ghost"
                 disabled={Boolean(busy)}
                 onClick={() =>
                   request(
                     candidate.id,
-                    `/api/ticket-candidates/${candidate.id}/publish`,
-                    { method: "POST" },
+                    `/api/ticket-candidates/${candidate.id}`,
+                    {
+                      method: "DELETE",
+                    },
                   )
                 }
               >
-                {candidate.publishStatus === "failed"
-                  ? "Retry Baton publish"
-                  : "Publish to Baton"}
+                <Trash2 className="mr-2 h-4 w-4" /> Delete draft
               </Button>
             ) : null}
             {candidate.batonTaskUrl ? (
@@ -250,7 +342,7 @@ export function TicketCandidateReview({ intakeId }: { intakeId: string }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                Open Baton task
+                Open Baton task <ExternalLink className="ml-1 h-3.5 w-3.5" />
               </a>
             ) : null}
           </div>

@@ -63,10 +63,21 @@ interface CatchUpSummaryProps {
 
 function formatDate(value?: string) {
   if (!value) return "Unknown date";
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   }).format(new Date(value));
 }
 
@@ -86,7 +97,7 @@ function EvidenceLinks({ evidence }: { evidence: EvidenceReference[] }) {
           key={reference.messageId}
           href={`#message-${reference.messageId}`}
           className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
-          title={`${reference.senderName} · ${new Date(reference.sentAt).toLocaleString()}`}
+          title={`${reference.senderName} · ${formatDateTime(reference.sentAt)}`}
         >
           <MessageSquareText className="h-3.5 w-3.5" />
           Message {reference.position + 1}
@@ -306,7 +317,11 @@ export function CatchUpSummaryPanel({
   }
 
   return (
-    <section className="mt-8" aria-labelledby="catch-up-heading">
+    <section
+      id="catch-up"
+      className="mt-8 scroll-mt-24"
+      aria-labelledby="catch-up-heading"
+    >
       <div className="relative overflow-hidden rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-6 shadow-[0_24px_70px_-38px_rgba(5,150,105,0.55)] dark:border-emerald-900 dark:from-emerald-950/80 dark:via-card dark:to-teal-950/60 sm:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
@@ -343,9 +358,7 @@ export function CatchUpSummaryPanel({
         <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-emerald-200/70 pt-5 text-xs text-muted-foreground dark:border-emerald-900">
           <span>{summary.scope.messageCount} messages reviewed</span>
           <span>{displayedRange}</span>
-          <span>
-            Generated {new Date(summary.generatedAt).toLocaleString()}
-          </span>
+          <span>Generated {formatDateTime(summary.generatedAt)}</span>
           <a
             href="#source-messages"
             className="inline-flex items-center gap-1 font-medium text-emerald-700 hover:underline dark:text-emerald-300"
