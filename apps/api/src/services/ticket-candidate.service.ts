@@ -37,6 +37,15 @@ interface PublishResult {
   duplicate: boolean;
 }
 
+export type PersonalTodoCandidate = Omit<TicketCandidate, 'intake'> & {
+  sourceContext: {
+    conversationId: string;
+    conversationName: string;
+    catchUpHref: string;
+    evidenceLinks: Array<{ messageId: string; href: string }>;
+  };
+};
+
 export class TicketCandidateService {
   constructor(
     private readonly dataSource: DataSource = AppDataSource,
@@ -101,6 +110,30 @@ export class TicketCandidateService {
     });
   }
 
+  async listPersonalTodos(userId: string): Promise<PersonalTodoCandidate[]> {
+    const candidates = await this.dataSource.getRepository(TicketCandidate).find({
+      where: { userId },
+      relations: { intake: true, publishAttempts: true },
+      order: { updatedAt: 'DESC' },
+    });
+    return candidates.map((candidate) => {
+      const { intake, ...safeCandidate } = candidate;
+      const conversationHref = `/dashboard/conversations/${candidate.intakeId}`;
+      return {
+        ...safeCandidate,
+        sourceContext: {
+          conversationId: candidate.intakeId,
+          conversationName: intake.displayName,
+          catchUpHref: `${conversationHref}#catch-up`,
+          evidenceLinks: candidate.evidence.map((item) => ({
+            messageId: item.messageId,
+            href: `${conversationHref}#message-${item.messageId}`,
+          })),
+        },
+      };
+    });
+  }
+
   async update(
     userId: string,
     id: string,
@@ -151,6 +184,37 @@ export class TicketCandidateService {
     if (result.affected !== 1)
       throw new TicketCandidateConflict('Candidate changed; reload before deciding');
     return this.get(userId, id);
+  }
+
+  async revoke(userId: string, id: string, expectedRevision: number): Promise<TicketCandidate> {
+    const result = await this.dataSource.getRepository(TicketCandidate).update(
+      {
+        id,
+        userId,
+        status: 'accepted',
+        publishStatus: 'not_requested',
+        revision: expectedRevision,
+      },
+      { status: 'pending', decidedAt: null, revision: expectedRevision + 1 }
+    );
+    if (result.affected !== 1) {
+      throw new TicketCandidateConflict(
+        'Only an unpublished accepted draft can be returned to review; reload and try again'
+      );
+    }
+    return this.get(userId, id);
+  }
+
+  async remove(userId: string, id: string): Promise<void> {
+    const candidate = await this.get(userId, id);
+    if (candidate.status === 'published' || candidate.publishStatus !== 'not_requested') {
+      throw new TicketCandidateConflict(
+        'A draft with Baton publication history cannot be deleted from ConvoLens'
+      );
+    }
+    const result = await this.dataSource.getRepository(TicketCandidate).delete({ id, userId });
+    if (result.affected !== 1)
+      throw new TicketCandidateConflict('Draft changed; reload and try again');
   }
 
   async publish(userId: string, id: string, batonToken: string): Promise<PublishResult> {
@@ -204,9 +268,7 @@ export class TicketCandidateService {
       try {
         const lastAmbiguousCreate = (claimedCurrent.publishAttempts || [])
           .filter((candidateAttempt) =>
-            ['baton_create_started', 'baton_ambiguous'].includes(
-              candidateAttempt.errorCode || ''
-            )
+            ['baton_create_started', 'baton_ambiguous'].includes(candidateAttempt.errorCode || '')
           )
           .sort((a, b) => b.attemptNumber - a.attemptNumber)[0];
         let ambiguousCreateStartedAt =
@@ -251,8 +313,7 @@ export class TicketCandidateService {
             attempt.id
           );
         }
-        const task =
-          duplicate || (await this.createBatonTask(claimedCurrent, marker, batonToken));
+        const task = duplicate || (await this.createBatonTask(claimedCurrent, marker, batonToken));
         const completedAt = new Date();
         await this.finalizePublish(
           userId,
@@ -407,7 +468,9 @@ export class TicketCandidateService {
         }
       );
       if (attempt.affected !== 1 || candidate.affected !== 1) {
-        throw new TicketCandidateConflict('Baton task created but local finalization must reconcile');
+        throw new TicketCandidateConflict(
+          'Baton task created but local finalization must reconcile'
+        );
       }
     });
   }
@@ -431,10 +494,12 @@ export class TicketCandidateService {
         }
       );
       if (candidate.affected !== 1) return;
-      await manager.getRepository(BatonPublishAttempt).update(
-        { id: attemptId, candidateId, userId, status: 'pending' },
-        { status: 'failed', errorCode: attemptErrorCode, completedAt: new Date() }
-      );
+      await manager
+        .getRepository(BatonPublishAttempt)
+        .update(
+          { id: attemptId, candidateId, userId, status: 'pending' },
+          { status: 'failed', errorCode: attemptErrorCode, completedAt: new Date() }
+        );
     });
   }
 

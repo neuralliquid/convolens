@@ -9,6 +9,7 @@ import {
   Chrome,
   FileText,
   MessageSquare,
+  ListChecks,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -124,13 +125,20 @@ export default function DashboardPage() {
         title={firstName ? `Welcome, ${firstName}` : "Welcome to ConvoLens"}
         description="Import a WhatsApp conversation to review it in your workspace."
         actions={
-          <Button
-            variant="primary"
-            onClick={() => router.push("/dashboard/import")}
-          >
-            Import a conversation
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/dashboard/todos">
+                <ListChecks className="mr-2 h-4 w-4" /> My todos
+              </Link>
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => router.push("/dashboard/import")}
+            >
+              Import a conversation
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         }
       />
 

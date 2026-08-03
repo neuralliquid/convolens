@@ -5,6 +5,10 @@ import { parseWhatsAppExport, isValidWhatsAppExport } from '../services/chat-exp
 import { logger } from '../utils/logger.js';
 import { metrics } from '../services/metrics.service.js';
 import { conversationIntakeService } from '../services/conversation-intake.service.js';
+import {
+  ConversationSummaryError,
+  conversationSummaryService,
+} from '../services/conversation-summary.service.js';
 
 const router = Router();
 const upload = multer({
@@ -483,6 +487,77 @@ router.get('/', authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error('Error listing conversation intakes:', error);
     return res.status(500).json({ error: 'Failed to load conversations' });
+  }
+});
+
+/**
+ * @route GET /api/chat-export/:id/summary
+ * @description Get the persisted catch-up summary for an owned conversation
+ * @access Private
+ */
+router.get('/:id/summary', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const conversation = await conversationIntakeService.getForUser(userId, req.params.id);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const summary = await conversationSummaryService.getForUser(userId, req.params.id);
+    return res.json({ data: { summary } });
+  } catch (error) {
+    logger.error('Error loading conversation summary:', error);
+    return res.status(500).json({ error: 'Failed to load conversation summary' });
+  }
+});
+
+/**
+ * @route POST /api/chat-export/:id/summary
+ * @description Generate and persist a grounded catch-up summary
+ * @access Private
+ */
+router.post('/:id/summary', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (req.body?.regenerate !== undefined && typeof req.body.regenerate !== 'boolean') {
+      return res.status(400).json({ error: 'regenerate must be a boolean' });
+    }
+
+    const result = await conversationSummaryService.generateForUser(
+      userId,
+      req.params.id,
+      req.body?.regenerate === true
+    );
+    return res.status(result.cached ? 200 : 201).json({
+      message: result.cached ? 'Existing catch-up loaded' : 'Catch-up generated',
+      cached: result.cached,
+      data: { summary: result.summary },
+    });
+  } catch (error) {
+    if (error instanceof ConversationSummaryError) {
+      if (error.code === 'CONVERSATION_NOT_FOUND') {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+      if (error.code === 'AI_PROVIDER_NOT_CONFIGURED') {
+        return res.status(503).json({
+          error: 'AI summarization is not configured yet. Ask your ConvoLens administrator.',
+          code: error.code,
+        });
+      }
+      if (error.code === 'CONVERSATION_TOO_LARGE') {
+        return res.status(413).json({
+          error: 'This conversation is too large to summarize in one catch-up.',
+          code: error.code,
+        });
+      }
+      if (error.code === 'NO_MESSAGES_TO_SUMMARIZE') {
+        return res.status(400).json({ error: 'This conversation has no messages to summarize.' });
+      }
+    }
+    logger.error('Error generating conversation summary:', error);
+    return res
+      .status(502)
+      .json({ error: 'The catch-up could not be generated. Please try again.' });
   }
 });
 

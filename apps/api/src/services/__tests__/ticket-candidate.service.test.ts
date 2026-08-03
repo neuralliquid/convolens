@@ -88,6 +88,70 @@ describe('TicketCandidateService', () => {
     expect(first.every((candidate) => candidate.projectId === PROJECT_ID)).toBe(true);
   });
 
+  it('lists only the current user drafts with navigable source context', async () => {
+    const service = new TicketCandidateService(dataSource, '', fetch, PROJECT_ID);
+    const [candidate] = await service.generate('user-1', intakeId);
+    const otherIntake = await new ConversationIntakeService(dataSource).save({
+      userId: 'user-2',
+      sourcePlatform: 'whatsapp',
+      sourceKind: 'upload',
+      displayName: 'Private other chat',
+      isGroup: false,
+      participants: [],
+      messages: [
+        {
+          senderName: 'Other',
+          content: 'TODO: Never expose this',
+          sentAt: new Date('2026-08-03T11:00:00Z'),
+          isOutgoing: false,
+          isMedia: false,
+        },
+      ],
+    });
+    await service.generate('user-2', otherIntake.conversation.id);
+
+    const todos = await service.listPersonalTodos('user-1');
+
+    expect(todos).toHaveLength(2);
+    expect(todos.map((todo) => todo.userId)).toEqual(['user-1', 'user-1']);
+    const todo = todos.find((item) => item.id === candidate.id)!;
+    expect(todo.sourceContext).toEqual({
+      conversationId: intakeId,
+      conversationName: 'Delivery chat',
+      catchUpHref: `/dashboard/conversations/${intakeId}#catch-up`,
+      evidenceLinks: [
+        {
+          messageId: candidate.evidence[0].messageId,
+          href: `/dashboard/conversations/${intakeId}#message-${candidate.evidence[0].messageId}`,
+        },
+      ],
+    });
+    expect((todo as unknown as { intake?: unknown }).intake).toBeUndefined();
+  });
+
+  it('revokes or deletes only drafts that have never entered publication', async () => {
+    const service = new TicketCandidateService(dataSource, '', fetch, PROJECT_ID);
+    const [candidate, deletable] = await service.generate('user-1', intakeId);
+    const accepted = await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
+    const revoked = await service.revoke('user-1', candidate.id, accepted.revision);
+    expect(revoked.status).toBe('pending');
+    expect(revoked.revision).toBe(accepted.revision + 1);
+
+    await service.remove('user-1', deletable.id);
+    expect(await service.list('user-1', intakeId)).toHaveLength(1);
+
+    await dataSource.getRepository(TicketCandidate).update(candidate.id, {
+      status: 'accepted',
+      publishStatus: 'failed',
+    });
+    await expect(service.remove('user-1', candidate.id)).rejects.toBeInstanceOf(
+      TicketCandidateConflict
+    );
+    await expect(service.revoke('user-1', candidate.id, revoked.revision)).rejects.toBeInstanceOf(
+      TicketCandidateConflict
+    );
+  });
+
   it('uses revision CAS and never publishes before acceptance', async () => {
     const fetcher = jest.fn<typeof fetch>();
     const service = new TicketCandidateService(
@@ -240,21 +304,25 @@ describe('TicketCandidateService', () => {
       batonPublishClaimId: 'renewed-intake-claim',
       batonPublishClaimedAt: staleAt,
     });
-    const originalUpdate = Object.getPrototypeOf(repository).update.bind(repository) as typeof repository.update;
+    const originalUpdate = Object.getPrototypeOf(repository).update.bind(
+      repository
+    ) as typeof repository.update;
     let renewed = false;
-    const updateSpy = jest.spyOn(repository, 'update').mockImplementation(async (criteria, partial) => {
-      if (
-        !renewed &&
-        typeof criteria === 'object' &&
-        'batonPublishClaimId' in criteria &&
-        criteria.batonPublishClaimId === 'renewed-intake-claim' &&
-        partial.batonPublishClaimId !== null
-      ) {
-        renewed = true;
-        await originalUpdate(intakeId, { batonPublishClaimedAt: new Date() });
-      }
-      return originalUpdate(criteria, partial);
-    });
+    const updateSpy = jest
+      .spyOn(repository, 'update')
+      .mockImplementation(async (criteria, partial) => {
+        if (
+          !renewed &&
+          typeof criteria === 'object' &&
+          'batonPublishClaimId' in criteria &&
+          criteria.batonPublishClaimId === 'renewed-intake-claim' &&
+          partial.batonPublishClaimId !== null
+        ) {
+          renewed = true;
+          await originalUpdate(intakeId, { batonPublishClaimedAt: new Date() });
+        }
+        return originalUpdate(criteria, partial);
+      });
 
     try {
       await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(

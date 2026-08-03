@@ -33,6 +33,14 @@ router.post('/conversations/:intakeId/generate', authenticateToken, async (req, 
   }
 });
 
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    return res.json({ data: { candidates: await service.listPersonalTodos(req.user!.id) } });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
 router.get('/conversations/:intakeId', authenticateToken, async (req, res) => {
   try {
     return res.json({
@@ -84,6 +92,27 @@ router.post('/:id/publish', authenticateToken, async (req, res) => {
   try {
     const result = await service.publish(req.user!.id, req.params.id, batonToken(req));
     return res.json({ data: result });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.post('/:id/revoke', authenticateToken, async (req, res) => {
+  try {
+    const expectedRevision = Number(req.body?.expectedRevision);
+    if (!Number.isInteger(expectedRevision))
+      throw new TicketCandidateValidation('expectedRevision is required');
+    const candidate = await service.revoke(req.user!.id, req.params.id, expectedRevision);
+    return res.json({ data: { candidate } });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    await service.remove(req.user!.id, req.params.id);
+    return res.status(204).send();
   } catch (error) {
     return sendError(res, error);
   }

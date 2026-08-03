@@ -287,6 +287,63 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/chat-export/{id}/summary:
+    get:
+      summary: Get a conversation catch-up
+      description: Load the persisted, evidence-linked catch-up for an owned conversation
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Catch-up result, or null when none has been generated
+        '401':
+          description: Not authenticated
+        '404':
+          description: Conversation not found for this user
+    post:
+      summary: Generate a conversation catch-up
+      description: Generate and persist a structured catch-up grounded in imported message references
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                regenerate:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Existing catch-up returned
+        '201':
+          description: Catch-up generated and persisted
+        '404':
+          description: Conversation not found for this user
+        '413':
+          description: Conversation exceeds the bounded summarization limit
+        '503':
+          description: No real AI provider is configured
+
   /api/chat-export/extension:
     post:
       summary: Receive extension chat data

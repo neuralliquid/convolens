@@ -11,6 +11,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StyledCard } from "@/components/ui/styled-card";
 import { DeleteConversationButton } from "@/components/conversations/delete-conversation-button";
 import { TicketCandidateReview } from "@/components/conversations/ticket-candidate-review";
+import {
+  CatchUpSummaryPanel,
+  type CatchUpSummary,
+} from "@/components/conversations/catch-up-summary";
+import { AnnotatedSourceConversation } from "@/components/conversations/annotated-source-conversation";
 
 interface ConversationMessage {
   id: string;
@@ -91,6 +96,7 @@ export default function ConversationPage() {
   const [conversation, setConversation] = useState<Conversation>();
   const [error, setError] = useState<string>();
   const [loadingConversation, setLoadingConversation] = useState(true);
+  const [catchUpSummary, setCatchUpSummary] = useState<CatchUpSummary>();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -183,6 +189,16 @@ export default function ConversationPage() {
               required; ConvoLens did not merge or discard either conversation.
             </div>
           ) : null}
+          <CatchUpSummaryPanel
+            conversationId={conversation.id}
+            messageCount={conversation.messages.length}
+            participantCount={conversation.participants?.length || 0}
+            periodStart={conversation.messages[0]?.sentAt}
+            periodEnd={
+              conversation.messages[conversation.messages.length - 1]?.sentAt
+            }
+            onSummaryChange={setCatchUpSummary}
+          />
           <section className="mt-8 grid gap-6 md:grid-cols-2">
             <StyledCard
               title="Intake status"
@@ -217,39 +233,27 @@ export default function ConversationPage() {
             </StyledCard>
           </section>
 
-          <section className="mt-8 space-y-3">
-            <h2 className="text-xl font-bold">Stored messages</h2>
-            {conversation.messages.map((message) => (
-              <article
-                key={message.id}
-                className="rounded-xl border bg-card p-4 text-card-foreground"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-semibold">
-                    {senderLabel(conversation, message)}
-                  </p>
-                  <time className="text-xs text-muted-foreground">
-                    {new Date(message.sentAt).toLocaleString()}
-                  </time>
-                </div>
-                {message.isMedia ? (
-                  <span className="mt-3 inline-flex rounded-full border bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                    {mediaLabel(message)}
-                  </span>
-                ) : null}
-                {message.content &&
-                (!message.isMedia ||
-                  !isLegacyMediaPlaceholder(
-                    message.content,
-                    mediaLabel(message),
-                  )) ? (
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                    {message.content}
-                  </p>
-                ) : null}
-              </article>
-            ))}
-          </section>
+          <AnnotatedSourceConversation
+            summary={catchUpSummary}
+            messages={conversation.messages.map((message) => ({
+              id: message.id,
+              position: message.position,
+              senderName: senderLabel(conversation, message),
+              content:
+                message.isMedia &&
+                isLegacyMediaPlaceholder(message.content, mediaLabel(message))
+                  ? ""
+                  : message.content,
+              sentAt: message.sentAt,
+              isMedia: message.isMedia,
+              mediaLabel: mediaLabel(message),
+              sourcePlatform: conversation.sourcePlatform,
+              sourceLabel:
+                conversation.sourceKind === "extension"
+                  ? "Browser capture"
+                  : "Chat export",
+            }))}
+          />
           <TicketCandidateReview intakeId={conversation.id} />
         </>
       ) : null}
