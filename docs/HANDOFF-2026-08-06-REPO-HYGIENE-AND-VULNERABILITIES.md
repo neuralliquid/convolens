@@ -85,7 +85,7 @@ The original failure was observed once, in a loaded full-suite run. It could not
 
 1. Recheck live `origin/main`, PRs #175 and #177, and the primary checkout before acting.
 2. Resolve the #177 duplication against `claude/elated-euler-c07c50`: compare the two implementations, keep one, close the other, and remove the leftover worktree.
-3. Review and land #177, then #175 on its own merits. #175 is unrelated to this session's work and still carries the production boundary from `docs/HANDOFF-2026-08-03-PERSONAL-TODOS.md`.
+3. Land whichever tombstone fix survives step 2. Then review #175 on its own merits — it is unrelated to this session's work and still carries the production boundary from `docs/HANDOFF-2026-08-03-PERSONAL-TODOS.md`.
 4. Schedule a recurring review of the `pnpm.overrides` block. Drop entries whose parents now ship patched ranges; the block should shrink over time, not accumulate.
 5. If the API is redeployed, confirm `sqlite3` loads under `tar@7` on the production image before accepting the deployment.
 
@@ -105,4 +105,9 @@ gh api repos/neuralliquid/convolens/dependabot/alerts --paginate -q '[.[] | sele
 
 ## Workspace note
 
-Work was performed in the primary checkout at `C:\Users\smitj\repos\convolens`, which is on `main`, clean, and current. The only remaining worktree is `C:\tmp\convolens-personal-todos-acceptance`, retained because it backs open PR #175.
+Work was performed in the primary checkout at `C:\Users\smitj\repos\convolens`, which is on `main`, clean, and current.
+
+Two linked worktrees remain:
+
+- `C:\tmp\convolens-personal-todos-acceptance` — retained deliberately, because it backs open PR #175.
+- `.claude\worktrees\elated-euler-c07c50` — created by the independently started background task for the #177 test fix. It is disposable once that duplication is resolved.
