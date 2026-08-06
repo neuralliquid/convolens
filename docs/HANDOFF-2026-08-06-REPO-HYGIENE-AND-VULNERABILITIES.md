@@ -28,13 +28,17 @@ The lockfile is roughly 400 lines smaller net, because the overrides collapsed d
 
 ### Repository hygiene — completed
 
-| | Before | After |
-|---|---|---|
-| Worktrees | 22 | 1 |
-| Local branches | 60 | 4 |
-| Remote branches | 39 | 4 |
+What was removed, as unambiguous counts:
 
-Twenty worktree registrations pointed at `C:\tmp` directories that no longer existed and were pruned. `C:\tmp\convolens-catch-up` was removed after confirming PR #174 had merged. Fifty-eight local branches were deleted after verifying each had a merged PR; thirty-five remote branches were deleted under the same check. `main` was fast-forwarded 109 commits and its working tree returned to clean — the staged `.turbo/` cache deletions were reverted rather than committed.
+- **21 of 22 linked worktrees.** Twenty were registrations pointing at `C:\tmp` directories that no longer existed and were pruned; `C:\tmp\convolens-catch-up` was a live directory removed after confirming PR #174 had merged.
+- **58 local branches.** The session opened with 60; creating the branch for the recovered 2026-07-24 handoff brought that to 61, leaving 3 after the sweep.
+- **35 remote branches**, from 39, leaving 4 — the extra being the then-open Dependabot branch for #161, which was closed later in the session.
+
+Of the 58 local deletions, 57 were gated on a GitHub API check that the branch had a MERGED PR. The 58th, `agent/busy-group-catch-up`, had no PR at all and was deleted on different grounds — see below. All 35 remote deletions were gated on the merged-PR check.
+
+`main` was fast-forwarded 109 commits and its working tree returned to clean; the staged `.turbo/` cache deletions were reverted rather than committed.
+
+Do not treat the counts above as a live inventory. Later in the same session PRs #177 and #178 each added a branch, and the background task for #177 created a further linked worktree under `.claude/worktrees/`. Note also that `git worktree list` prints the primary checkout as its own row, so it always shows one more row than the linked-worktree count.
 
 PR [#161](https://github.com/neuralliquid/convolens/pull/161) (Dependabot, 8 of the same updates) was closed as superseded by #176.
 
@@ -73,14 +77,14 @@ Two environment facts worth carrying forward:
 
 PR #177 hardens `ConversationIntakeService › tombstones deletion so a concurrent late upload cleans itself up`. That test opened its race window with a fixed `setTimeout(..., 10)`; the assertion needs the `'deleting'` tombstone committed before the late upload runs its compare-and-swap, and under load the timer expired first. The fix replaces the timer with a happens-after signal — `deleteForUser` only reaches `storage.deleteFile` after the tombstone CAS affects a row, so the mock resolves a promise on first invocation and the test awaits that. The wait is raced against the deletion promise so it fails fast rather than hanging.
 
-A background task for this same test was also started independently from a session chip. **Check for a competing branch or PR before merging #177.** The two changes touch the same block of the same file and will conflict.
+**#177 is duplicated work, confirmed.** A background task for this same test was started independently from a session chip and is running in the linked worktree `.claude/worktrees/elated-euler-c07c50` on branch `claude/elated-euler-c07c50`. Both efforts modify the same block of the same file and will conflict. Keep one implementation and close the other; do not merge #177 without reconciling it against that branch.
 
 The original failure was observed once, in a loaded full-suite run. It could not be forced to reproduce under synthetic 16-core load — the original passed 2/2 before the run was cut short. The reproduction therefore rests on that single observation plus the mechanism, which is legible in `deleteForUser`. The fix is sound regardless of reproduction rate because it removes the timing dependency rather than widening it.
 
 ## Next bounded slice
 
 1. Recheck live `origin/main`, PRs #175 and #177, and the primary checkout before acting.
-2. Resolve the #177 duplication: find the competing branch, keep one implementation, close the other.
+2. Resolve the #177 duplication against `claude/elated-euler-c07c50`: compare the two implementations, keep one, close the other, and remove the leftover worktree.
 3. Review and land #177, then #175 on its own merits. #175 is unrelated to this session's work and still carries the production boundary from `docs/HANDOFF-2026-08-03-PERSONAL-TODOS.md`.
 4. Schedule a recurring review of the `pnpm.overrides` block. Drop entries whose parents now ship patched ranges; the block should shrink over time, not accumulate.
 5. If the API is redeployed, confirm `sqlite3` loads under `tar@7` on the production image before accepting the deployment.

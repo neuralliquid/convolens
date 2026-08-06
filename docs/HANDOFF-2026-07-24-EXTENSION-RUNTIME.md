@@ -1,5 +1,18 @@
 # ConvoLens extension runtime/auth handoff — 2026-07-24
 
+> **Archival record. Do not action.**
+>
+> This document was drafted on 2026-07-24 and never committed; it was recovered
+> from the primary checkout on 2026-08-06. The work it describes shipped as
+> PR [#116](https://github.com/neuralliquid/convolens/pull/116) and the
+> `fix/extension-runtime-auth` branch has since been deleted.
+>
+> Everything below is preserved in its original present tense. The "in-progress"
+> status, the unverified-changes warning, and the "Recommended continuation"
+> steps all describe the state on 2026-07-24 and were resolved by #116. It is
+> kept for the operator smoke findings — in particular the ESM bundling failure
+> and the WhatsApp DOM selector observed at that date — not as live instructions.
+
 ## Starting point
 
 - Branch: `fix/extension-runtime-auth`
