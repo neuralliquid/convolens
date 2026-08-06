@@ -408,6 +408,7 @@ describe('ConversationIntakeService', () => {
     } as unknown as StorageService;
     const artifactService = new ConversationIntakeService(dataSource, storage);
     const saved = await artifactService.save(baseInput);
+    const repository = dataSource.getRepository(ConversationIntake);
 
     const persistence = artifactService.ensureRawArtifact(saved.conversation, baseInput.userId, {
       body: '{"late":true}',
@@ -417,17 +418,44 @@ describe('ConversationIntakeService', () => {
       /deletion started|Could not find any entity/
     );
     await uploadStarted;
-    await dataSource.getRepository(ConversationIntake).update(saved.conversation.id, {
+    await repository.update(saved.conversation.id, {
       rawArtifactClaimedAt: new Date(
         Date.now() - AZURE_UPLOAD_TOTAL_TIMEOUT_MS - RAW_ARTIFACT_DELETE_GRACE_MS
       ),
     });
-    const deletion = artifactService.deleteForUser(baseInput.userId, saved.conversation.id);
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
-    releaseUpload();
 
-    expect(await deletion).toBe(true);
-    await persistenceAssertion;
+    // The late upload may only be released once the tombstone is committed and
+    // readable: release it earlier and the upload's finalize CAS still matches
+    // the pending claim, so the race under test never happens. Gating on the
+    // committed write keeps that ordering independent of machine load.
+    const update = repository.update.bind(repository);
+    let reportTombstoned!: () => void;
+    const tombstoned = new Promise<void>((resolvePromise) => {
+      reportTombstoned = resolvePromise;
+    });
+    const updateSpy = jest
+      .spyOn(repository, 'update')
+      .mockImplementation(async (criteria, partialEntity) => {
+        const result = await update(criteria, partialEntity);
+        const nextStatus = (partialEntity as { rawArtifactStatus?: unknown }).rawArtifactStatus;
+        if (nextStatus === 'deleting' && result.affected === 1) {
+          reportTombstoned();
+        }
+        return result;
+      });
+
+    try {
+      const deletion = artifactService.deleteForUser(baseInput.userId, saved.conversation.id);
+      // Racing against the deletion surfaces its own failure instead of hanging
+      // on a tombstone that never lands.
+      await Promise.race([tombstoned, deletion]);
+      releaseUpload();
+
+      expect(await deletion).toBe(true);
+      await persistenceAssertion;
+    } finally {
+      updateSpy.mockRestore();
+    }
     expect(deleteFile).toHaveBeenCalledTimes(2);
     expect(deleteFile.mock.calls[1][0]).toBe(deleteFile.mock.calls[0][0]);
     expect(await artifactService.getForUser(baseInput.userId, saved.conversation.id)).toBeNull();
