@@ -398,7 +398,16 @@ describe('ConversationIntakeService', () => {
     const uploadStarted = new Promise<void>((resolvePromise) => {
       reportUploadStarted = resolvePromise;
     });
-    const deleteFile = jest.fn().mockResolvedValue(undefined);
+    // deleteForUser only reaches storage.deleteFile after it has committed the
+    // 'deleting' tombstone, so the first call is a durable signal that the late
+    // upload is now guaranteed to lose its compare-and-swap.
+    let reportCleanupStarted!: () => void;
+    const cleanupStarted = new Promise<void>((resolvePromise) => {
+      reportCleanupStarted = resolvePromise;
+    });
+    const deleteFile = jest.fn().mockImplementation(async () => {
+      reportCleanupStarted();
+    });
     const storage = {
       uploadFile: jest.fn(async () => {
         reportUploadStarted();
@@ -423,7 +432,9 @@ describe('ConversationIntakeService', () => {
       ),
     });
     const deletion = artifactService.deleteForUser(baseInput.userId, saved.conversation.id);
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    // Racing the deletion itself keeps this from hanging if cleanup ever stops
+    // touching storage; either way the tombstone is committed before we release.
+    await Promise.race([cleanupStarted, deletion.catch(() => undefined)]);
     releaseUpload();
 
     expect(await deletion).toBe(true);
