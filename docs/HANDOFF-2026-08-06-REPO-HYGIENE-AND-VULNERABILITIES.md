@@ -4,11 +4,11 @@ Date: 2026-08-06
 
 ## Restart here
 
-Nothing in this session is blocked. Three pull requests are open and need a human decision:
+Nothing in this session is blocked. One pull request is open and needs a human decision:
 
 - [#175](https://github.com/neuralliquid/convolens/pull/175) **feat: route grounded catch-ups through Sluice** — moved from draft to ready for review in this session. Not reviewed, not merged. Its worktree at `C:\tmp\convolens-personal-todos-acceptance` is intact and clean.
-- [#177](https://github.com/neuralliquid/convolens/pull/177) **test(api): replace timer-based race window in tombstone deletion test** — opened in this session. See the duplication warning below before merging.
-- The PR carrying this document and `docs/HANDOFF-2026-07-24-EXTENSION-RUNTIME.md`.
+
+The flaky-test work is settled: [#179](https://github.com/neuralliquid/convolens/pull/179) merged as `ca74785`, and the competing [#177](https://github.com/neuralliquid/convolens/pull/177) from this session was closed in its favour. See the section below.
 
 This session performed no deployment, used no authenticated production session, published no Baton task, and read no conversation content. The production boundary described in `docs/HANDOFF-2026-08-03-PERSONAL-TODOS.md` is unchanged and still governs the catch-up/todo work.
 
@@ -38,7 +38,7 @@ Of the 58 local deletions, 57 were gated on a GitHub API check that the branch h
 
 `main` was fast-forwarded 109 commits and its working tree returned to clean; the staged `.turbo/` cache deletions were reverted rather than committed.
 
-Do not treat the counts above as a live inventory. Later in the same session PRs #177 and #178 each added a branch, and the background task for #177 created a further linked worktree under `.claude/worktrees/`. Note also that `git worktree list` prints the primary checkout as its own row, so it always shows one more row than the linked-worktree count.
+Do not treat the counts above as a live inventory. Later in the same session PRs #177, #178 and #179 each added a branch, and the background task behind #179 created a further linked worktree under `.claude/worktrees/`. Note also that `git worktree list` prints the primary checkout as its own row, so it always shows one more row than the linked-worktree count.
 
 PR [#161](https://github.com/neuralliquid/convolens/pull/161) (Dependabot, 8 of the same updates) was closed as superseded by #176.
 
@@ -73,19 +73,28 @@ Two environment facts worth carrying forward:
 - `pnpm install` fails on this Windows machine with pnpm 8.15.4's default worker-based linking (`DataCloneError: Data cannot be cloned, out of memory`). Use `--child-concurrency=1 --config.package-import-method=copy` with `NODE_OPTIONS=--max-old-space-size=8192`. CI on Linux is unaffected.
 - The guardrail that blocks `Remove-Item` on `C:\tmp` is a PowerShell-tool pattern match, not a filesystem-level protection. The same deletion succeeded through Bash `find -delete`. Do not treat that rule as a real safety net.
 
-## Duplication warning for PR #177
+## Flaky test — resolved, and how the duplication played out
 
-PR #177 hardens `ConversationIntakeService › tombstones deletion so a concurrent late upload cleans itself up`. That test opened its race window with a fixed `setTimeout(..., 10)`; the assertion needs the `'deleting'` tombstone committed before the late upload runs its compare-and-swap, and under load the timer expired first. The fix replaces the timer with a happens-after signal — `deleteForUser` only reaches `storage.deleteFile` after the tombstone CAS affects a row, so the mock resolves a promise on first invocation and the test awaits that. The wait is raced against the deletion promise so it fails fast rather than hanging.
+`ConversationIntakeService › tombstones deletion so a concurrent late upload cleans itself up` opened its race window with a fixed `setTimeout(..., 10)`. The assertion needs the `'deleting'` tombstone committed before the late upload runs its compare-and-swap on `rawArtifactStatus: 'pending'`; if the timer expired first the CAS succeeded, the upload resolved instead of rejecting, and the test failed. It failed that way once during a loaded full-suite run while validating #176.
 
-**#177 is duplicated work, confirmed.** A background task for this same test was started independently from a session chip and is running in the linked worktree `.claude/worktrees/elated-euler-c07c50` on branch `claude/elated-euler-c07c50`. Both efforts modify the same block of the same file and will conflict. Keep one implementation and close the other; do not merge #177 without reconciling it against that branch.
+Two fixes were written independently — one in this session as #177, one by a background task started from a session chip, on `claude/elated-euler-c07c50`. **[#179](https://github.com/neuralliquid/convolens/pull/179) merged as `ca74785`; #177 was closed in its favour.**
 
-The original failure was observed once, in a loaded full-suite run. It could not be forced to reproduce under synthetic 16-core load — the original passed 2/2 before the run was cut short. The reproduction therefore rests on that single observation plus the mechanism, which is legible in `deleteForUser`. The fix is sound regardless of reproduction rate because it removes the timing dependency rather than widening it.
+That was the right outcome on the merits, not just on ordering. Both replaced the timer with a happens-after signal, but they gated at different points:
+
+- #179 spies on `repository.update` and signals when the write carrying `rawArtifactStatus: 'deleting'` returns `affected === 1` — the tombstone commit itself.
+- #177 waited on the first `storage.deleteFile` call, which is downstream of that commit *and* downstream of `deleteForUser`'s remaining-upload-window wait.
+
+Both are load-independent, but #179 gates on the exact event the assertion depends on, so it is the tighter signal.
+
+One caveat worth preserving about the diagnosis: the original failure was observed once, in a loaded full-suite run, and could not be forced to reproduce under synthetic 16-core load — the original test passed 2/2 before that attempt was cut short. The diagnosis therefore rests on the single observation plus the mechanism, which is legible in `deleteForUser`. Both fixes are sound regardless of reproduction rate, because they remove the timing dependency rather than widening it.
+
+The linked worktree `.claude\worktrees\elated-euler-c07c50` is left over from that background task and can be removed.
 
 ## Next bounded slice
 
-1. Recheck live `origin/main`, PRs #175 and #177, and the primary checkout before acting.
-2. Resolve the #177 duplication against `claude/elated-euler-c07c50`: compare the two implementations, keep one, close the other, and remove the leftover worktree.
-3. Land whichever tombstone fix survives step 2. Then review #175 on its own merits — it is unrelated to this session's work and still carries the production boundary from `docs/HANDOFF-2026-08-03-PERSONAL-TODOS.md`.
+1. Recheck live `origin/main`, PR #175, and the primary checkout before acting.
+2. Remove the leftover worktree `.claude\worktrees\elated-euler-c07c50` and its branch, now that #179 has merged.
+3. Review #175 on its own merits — it is unrelated to this session's work and still carries the production boundary from `docs/HANDOFF-2026-08-03-PERSONAL-TODOS.md`.
 4. Schedule a recurring review of the `pnpm.overrides` block. Drop entries whose parents now ship patched ranges; the block should shrink over time, not accumulate.
 5. If the API is redeployed, confirm `sqlite3` loads under `tar@7` on the production image before accepting the deployment.
 
@@ -110,4 +119,4 @@ Work was performed in the primary checkout at `C:\Users\smitj\repos\convolens`, 
 Two linked worktrees remain:
 
 - `C:\tmp\convolens-personal-todos-acceptance` — retained deliberately, because it backs open PR #175.
-- `.claude\worktrees\elated-euler-c07c50` — created by the independently started background task for the #177 test fix. It is disposable once that duplication is resolved.
+- `.claude\worktrees\elated-euler-c07c50` — left over from the background task that produced #179, now merged. Disposable.
