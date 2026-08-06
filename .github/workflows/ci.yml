@@ -66,6 +66,9 @@ jobs:
           src/services/__tests__/storage-managed-identity.test.ts
           src/services/__tests__/auth.service.test.ts
           src/services/__tests__/mystira-auth.service.test.ts
+          src/services/__tests__/metrics.service.test.ts
+          src/services/__tests__/circuit-breaker.service.test.ts
+          src/services/__tests__/deduplication.service.test.ts
           src/db/migrations/__tests__/conversation-intake.migration.test.ts
           src/routes/__tests__/chat-export.routes.test.ts
           src/routes/__tests__/extension.routes.test.ts

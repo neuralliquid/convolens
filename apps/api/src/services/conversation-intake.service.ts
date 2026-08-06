@@ -1036,7 +1036,10 @@ export class ConversationIntakeService {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const candidate = await repository.findOneBy({ id, userId });
       if (!candidate) return false;
-      if (candidate.batonPublishClaimId) {
+      // Bound to a const so the truthy check still narrows inside the transaction
+      // callback, where narrowing of a property read would otherwise be lost.
+      const batonPublishClaimId = candidate.batonPublishClaimId;
+      if (batonPublishClaimId) {
         const claimActive =
           candidate.batonPublishClaimedAt &&
           candidate.batonPublishClaimedAt.getTime() > Date.now() - BATON_PUBLISH_LEASE_MS;
@@ -1049,7 +1052,7 @@ export class ConversationIntakeService {
               id,
               userId,
               rawArtifactStatus: candidate.rawArtifactStatus,
-              batonPublishClaimId: candidate.batonPublishClaimId,
+              batonPublishClaimId,
               batonPublishClaimedAt: candidate.batonPublishClaimedAt || IsNull(),
             },
             { batonPublishClaimId: null, batonPublishClaimedAt: null }
@@ -1069,7 +1072,11 @@ export class ConversationIntakeService {
             })
             .orderBy('attempt.createdAt', 'DESC')
             .getOne();
-          if (!strandedBoundary) return { cleared: true, reanchored: false };
+          // The query filters errorCode to two literals, so a null one is
+          // unreachable. Folding it into the guard keeps the CAS typed without
+          // widening the where clause, and returns exactly what a no-match
+          // update would have returned anyway.
+          if (!strandedBoundary?.errorCode) return { cleared: true, reanchored: false };
           const reanchored = await manager
             .getRepository(BatonPublishAttempt)
             .update(
