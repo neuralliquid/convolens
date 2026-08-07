@@ -4,15 +4,23 @@
  * FEATURE-1: AI-Powered Summary Generation
  *
  * This service provides chat summarization using multiple AI providers:
+ * - Sluice (the org AI gateway — preferred)
  * - Azure AI Foundry (Azure OpenAI Service)
  * - OpenAI API (Direct)
  * - Anthropic Claude API
  *
  * Provider Selection Priority:
- * 1. Azure AI Foundry (if AZURE_OPENAI_ENDPOINT configured)
- * 2. OpenAI (if OPENAI_API_KEY configured)
- * 3. Anthropic (if ANTHROPIC_API_KEY configured)
- * 4. Mock (fallback for development)
+ * 1. Sluice (if SLUICE_BASE_URL configured)
+ * 2. Azure AI Foundry (if AZURE_OPENAI_ENDPOINT configured)
+ * 3. OpenAI (if OPENAI_API_KEY configured)
+ * 4. Anthropic (if ANTHROPIC_API_KEY configured)
+ * 5. Mock (fallback for development)
+ *
+ * Sluice is preferred because it is the only path on which this service's model
+ * spend is attributable. Direct-provider calls are billed to a shared provider
+ * account with no record of which service or feature incurred them, so they are
+ * invisible to org cost reporting. The direct providers are retained as a
+ * fallback for local development and as a migration shim.
  *
  * Integration Points:
  * - Connects to Azure OpenAI, OpenAI API, or Anthropic Claude API
@@ -62,6 +70,8 @@ export interface SummaryOptions {
   };
 }
 
+export type AIProvider = 'sluice' | 'azure' | 'openai' | 'anthropic' | 'mock';
+
 export interface SummaryResult {
   summary: string;
   keyTopics?: string[];
@@ -73,7 +83,7 @@ export interface SummaryResult {
   sentiment?: 'positive' | 'neutral' | 'negative';
   generatedAt: Date;
   tokensUsed?: number;
-  provider: 'azure' | 'openai' | 'anthropic' | 'mock';
+  provider: AIProvider;
 }
 
 export interface StreamCallback {
@@ -82,8 +92,27 @@ export interface StreamCallback {
   onError?: (error: Error) => void;
 }
 
+/**
+ * Identifies this application to the Sluice gateway.
+ *
+ * Per Sluice ADR 10 (Request Metadata Contract), every request carries
+ * `metadata.app` and `metadata.agent` so gateway spend can be attributed to the
+ * calling service and the specific feature within it. Values are lowercase
+ * kebab-case and stable across deploys — each distinct value becomes its own
+ * Prometheus time series, so they must not embed versions or free-form input.
+ *
+ * Untagged requests roll up at the gateway under `(none)` and cannot be
+ * attributed back here, which defeats the purpose of routing through it.
+ */
+const SLUICE_APP = 'convolens';
+
 // AI Provider Configuration
 const AI_CONFIG = {
+  sluice: {
+    baseUrl: process.env.SLUICE_BASE_URL,
+    apiKey: process.env.SLUICE_API_KEY,
+    model: process.env.SLUICE_MODEL || 'default',
+  },
   azure: {
     endpoint: process.env.AZURE_OPENAI_ENDPOINT, // e.g., https://your-resource.openai.azure.com
     apiKey: process.env.AZURE_OPENAI_API_KEY,
@@ -113,9 +142,10 @@ const RETRY_CONFIG = {
 
 /**
  * Determines which AI provider to use based on configuration
- * Priority: Azure > OpenAI > Anthropic > Mock
+ * Priority: Sluice > Azure > OpenAI > Anthropic > Mock
  */
-function getActiveProvider(): 'azure' | 'openai' | 'anthropic' | 'mock' {
+function getActiveProvider(): AIProvider {
+  if (AI_CONFIG.sluice.baseUrl && AI_CONFIG.sluice.apiKey) return 'sluice';
   if (AI_CONFIG.azure.endpoint && AI_CONFIG.azure.apiKey) return 'azure';
   if (AI_CONFIG.openai.apiKey) return 'openai';
   if (AI_CONFIG.anthropic.apiKey) return 'anthropic';
@@ -222,13 +252,25 @@ function formatMessagesForAI(messages: ChatMessage[]): string {
  * Main Summary Service Class
  */
 export class SummaryService {
-  private provider: 'azure' | 'openai' | 'anthropic' | 'mock';
+  private provider: AIProvider;
 
   constructor() {
     this.provider = getActiveProvider();
     logger.info(`[SummaryService] Using AI provider: ${this.provider}`);
 
     // Log provider configuration (without secrets)
+    if (this.provider === 'sluice') {
+      logger.info(`[SummaryService] Sluice endpoint: ${AI_CONFIG.sluice.baseUrl}`);
+      logger.info(`[SummaryService] Sluice model route: ${AI_CONFIG.sluice.model}`);
+    } else {
+      // Surfaced at warn because direct-provider spend is not attributable to
+      // ConvoLens in org cost reporting. Expected locally; not in deployed envs.
+      logger.warn(
+        `[SummaryService] Not routing through Sluice (provider=${this.provider}). ` +
+          'Model spend on this path is unattributed. Set SLUICE_BASE_URL and SLUICE_API_KEY.'
+      );
+    }
+
     if (this.provider === 'azure') {
       logger.info(`[SummaryService] Azure endpoint: ${AI_CONFIG.azure.endpoint}`);
       logger.info(`[SummaryService] Azure deployment: ${AI_CONFIG.azure.deploymentName}`);
@@ -242,7 +284,12 @@ export class SummaryService {
     return {
       provider: this.provider,
       configured: this.provider !== 'mock',
-      endpoint: this.provider === 'azure' ? AI_CONFIG.azure.endpoint : undefined,
+      endpoint:
+        this.provider === 'sluice'
+          ? AI_CONFIG.sluice.baseUrl
+          : this.provider === 'azure'
+            ? AI_CONFIG.azure.endpoint
+            : undefined,
     };
   }
 
@@ -282,6 +329,9 @@ export class SummaryService {
       let result: SummaryResult;
 
       switch (this.provider) {
+        case 'sluice':
+          result = await withRetry(() => this.generateWithSluice(filteredMessages, options));
+          break;
         case 'azure':
           result = await withRetry(() => this.generateWithAzure(filteredMessages, options));
           break;
@@ -404,7 +454,68 @@ export class SummaryService {
   }
 
   /**
-   * OpenAI API Integration (Direct)
+   * Sluice Gateway Integration (preferred)
+   *
+   * Sluice is OpenAI-compatible, so the request shape matches the direct OpenAI
+   * path apart from the `metadata` block that ADR 10 requires for cost
+   * attribution. Model routing, provider fallback, rate limiting and spend caps
+   * are the gateway's concern, not ours — hence the logical `default` model
+   * rather than a hardcoded provider model name.
+   */
+  private async generateWithSluice(
+    messages: ChatMessage[],
+    options: SummaryOptions
+  ): Promise<SummaryResult> {
+    const systemPrompt = buildSystemPrompt(options);
+    const chatContent = formatMessagesForAI(messages);
+
+    const response = await fetchWithTimeout(
+      `${AI_CONFIG.sluice.baseUrl!.replace(/\/$/, '')}/v1/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AI_CONFIG.sluice.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: AI_CONFIG.sluice.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Please summarize this conversation:\n\n${chatContent}` },
+          ],
+          max_tokens: options.maxLength || 1000,
+          temperature: 0.7,
+          // Required by Sluice ADR 10. Without it this call is recorded as
+          // `(none)` and its cost cannot be traced back to ConvoLens.
+          metadata: {
+            app: SLUICE_APP,
+            agent: 'summarizer',
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Sluice API error: ${error}`);
+    }
+
+    const data = await response.json();
+    const summary = data.choices[0]?.message?.content || 'Unable to generate summary';
+
+    return {
+      summary,
+      generatedAt: new Date(),
+      tokensUsed: data.usage?.total_tokens,
+      provider: 'sluice',
+    };
+  }
+
+  /**
+   * OpenAI API Integration (direct)
+   *
+   * Retained as a fallback. Spend on this path is not attributable to
+   * ConvoLens — prefer Sluice.
    */
   private async generateWithOpenAI(
     messages: ChatMessage[],
