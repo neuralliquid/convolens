@@ -30,10 +30,10 @@ export interface GroupMetadata {
 @Index(['isActive', 'isArchived'])
 export class Group {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'varchar', length: 255 })
-  name: string;
+  name!: string;
 
   @Column({ type: 'varchar', length: 100, unique: true, nullable: true })
   slug?: string;
@@ -48,14 +48,14 @@ export class Group {
   avatarUrl?: string;
 
   @Column({ type: 'boolean', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @Column({ type: 'boolean', default: false })
-  isArchived: boolean;
+  isArchived!: boolean;
 
   @ManyToOne(() => User, (user) => user.ownedGroups, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'ownerId' })
-  owner: Relation<User>;
+  owner!: Relation<User>;
 
   @Column({ type: 'uuid', nullable: true })
   ownerId?: string;
@@ -66,19 +66,19 @@ export class Group {
     joinColumn: { name: 'groupId', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'userId' },
   })
-  members: Relation<User[]>;
+  members!: Relation<User[]>;
 
   @OneToMany(() => Message, (message) => message.group, { cascade: true })
-  messages: Relation<Message[]>;
+  messages!: Relation<Message[]>;
 
   @Column({ type: 'simple-json', nullable: true })
   metadata?: GroupMetadata;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @Column({ type: dateColumnType, nullable: true })
   archivedAt?: Date;

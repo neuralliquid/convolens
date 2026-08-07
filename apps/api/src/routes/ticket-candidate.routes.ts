@@ -7,7 +7,7 @@ import {
   TicketCandidateValidation,
 } from '../services/ticket-candidate.service.js';
 
-const router = Router();
+const router: Router = Router();
 const service = new TicketCandidateService();
 
 function batonToken(req: Parameters<typeof authenticateToken>[0]): string {

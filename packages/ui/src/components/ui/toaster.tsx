@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import {
   Toast,
   ToastAction,
@@ -28,6 +27,9 @@ type ToasterToast = {
   variant?: 'default' | 'destructive' | 'success' | 'info';
   autoClose?: number | boolean;
   onClose?: () => void;
+  // Spread onto the Radix Toast root; the reducer and toast() both set these.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 type Toast = Omit<ToasterToast, 'id'>;
@@ -205,7 +207,6 @@ function useToast() {
 
 function Toaster() {
   const { toasts } = useToast();
-  const router = useRouter();
 
   return (
     <ToastProvider>
