@@ -46,6 +46,9 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
+      - name: Typecheck API
+        run: pnpm --filter @convolens/api run typecheck
+
       - name: Test extension capture matrix
         run: pnpm --filter @convolens/chrome-extension test
 

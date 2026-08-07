@@ -3,8 +3,16 @@ import { Group } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
 
 export class GroupService {
-  private groupRepository = AppDataSource.getRepository(Group);
-  private messageRepository = AppDataSource.getRepository(Message);
+  // Resolved per call rather than at construction: the route module that owns
+  // this service is imported while the app is being built, before
+  // initializeDatabase() has run.
+  private get groupRepository() {
+    return AppDataSource.getRepository(Group);
+  }
+
+  private get messageRepository() {
+    return AppDataSource.getRepository(Message);
+  }
 
   async createGroup(name: string, description?: string, metadata?: Record<string, any>): Promise<Group> {
     const group = new Group();
@@ -51,7 +59,10 @@ export class GroupService {
 
     const message = new Message();
     message.content = content;
-    message.sender = sender || 'System';
+    // `sender` is a display name, so it belongs on the senderName column. It was
+    // being assigned to the User relation, which persisted neither senderId nor
+    // a name and silently dropped the sender.
+    message.senderName = sender || 'System';
     message.isMedia = isMedia;
     if (mediaUrl) message.mediaUrl = mediaUrl;
     message.group = group;

@@ -41,7 +41,8 @@ export class WhatsAppSocket {
         try {
           const group = await this.groupService.getGroupById(groupId);
           if (!group) {
-            return socket.emit('error', 'Group not found');
+            socket.emit('error', 'Group not found');
+            return;
           }
           
           // Start monitoring the group in WhatsApp

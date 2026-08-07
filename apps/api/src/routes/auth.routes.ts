@@ -1,18 +1,19 @@
 import { Router } from 'express';
 import { authRateLimit } from '../middleware/rate-limit.js';
+import { authenticateToken } from '../middleware/auth.middleware.js';
 import { exchangeMystiraIdToken } from '../services/mystira-auth.service.js';
 import { logger } from '../utils/logger.js';
+import authController from '../api/auth.controller.js';
 
-const router = Router();
+const router: Router = Router();
 
-// Placeholder routes - implement authentication logic here
-router.post('/login', (req, res) => {
-  res.json({ message: 'Login endpoint' });
-});
+// Local email/password credentials. Rate limited on the same policy as the
+// Mystira exchange below, since both mint API tokens.
+router.post('/login', authRateLimit, authController.login);
 
-router.post('/register', (req, res) => {
-  res.json({ message: 'Register endpoint' });
-});
+router.post('/register', authRateLimit, authController.register);
+
+router.get('/profile', authenticateToken, authController.getProfile);
 
 router.post('/mystira/exchange', authRateLimit, async (req, res) => {
   const idToken = req.body?.idToken;

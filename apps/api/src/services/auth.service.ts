@@ -13,7 +13,12 @@ export function issueApiToken(user: Pick<User, 'id' | 'email' | 'role'>): string
 }
 
 export class AuthService {
-  private userRepository = AppDataSource.getRepository(User);
+  // Resolved per call rather than at construction: the route module that owns
+  // this service is imported while the app is being built, before
+  // initializeDatabase() has run.
+  private get userRepository() {
+    return AppDataSource.getRepository(User);
+  }
 
   async register(email: string, password: string, name?: string): Promise<User> {
     const existingUser = await this.userRepository.findOne({ where: { email } });

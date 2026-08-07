@@ -28,23 +28,23 @@ export interface MessageMetadata {
 @Index(['senderId']) // For faster message lookup by sender
 export class Message {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column('text')
-  content: string;
+  content!: string;
 
   @Column({ type: 'varchar', nullable: true })
-  senderName: string;
+  senderName!: string;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'senderId' })
-  sender: Relation<User>;
+  sender!: Relation<User>;
 
   @Column({ type: 'uuid', nullable: true })
   senderId?: string;
 
   @Column({ type: 'boolean', default: false })
-  isMedia: boolean;
+  isMedia!: boolean;
 
   @Column({ type: 'varchar', nullable: true })
   mediaUrl?: string;
@@ -57,16 +57,16 @@ export class Message {
     nullable: false,
   })
   @JoinColumn({ name: 'groupId' })
-  group: Relation<Group>;
+  group!: Relation<Group>;
 
   @Column({ type: 'uuid' })
-  groupId: string;
+  groupId!: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @Column({ type: dateColumnType, nullable: true })
   deletedAt?: Date;

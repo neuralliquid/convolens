@@ -10,7 +10,7 @@ import {
   conversationSummaryService,
 } from '../services/conversation-summary.service.js';
 
-const router = Router();
+const router: Router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
