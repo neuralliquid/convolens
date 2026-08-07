@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger';
+import { SLUICE_APP } from './summary.service';
 import type {
   ConversationSummaryContent,
   SummaryActionItem,
@@ -315,7 +316,7 @@ async function requestCompletion(
       temperature: 0.2,
       // Required by Sluice ADR 10 — without it this call records as `(none)`
       // and its cost cannot be traced back to ConvoLens.
-      ...(isSluice ? { metadata: { app: 'convolens', agent: 'catch-up-generator' } } : {}),
+      ...(isSluice ? { metadata: { app: SLUICE_APP, agent: 'catch-up-generator' } } : {}),
     }),
   });
   if (!response.ok)

@@ -104,7 +104,7 @@ export interface StreamCallback {
  * Untagged requests roll up at the gateway under `(none)` and cannot be
  * attributed back here, which defeats the purpose of routing through it.
  */
-const SLUICE_APP = 'convolens';
+export const SLUICE_APP = 'convolens';
 
 // AI Provider Configuration
 const AI_CONFIG = {
