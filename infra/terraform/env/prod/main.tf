@@ -190,6 +190,16 @@ resource "azurerm_key_vault_secret" "appinsights_connection_string" {
   key_vault_id = azurerm_key_vault.kv.id
 }
 
+# The container app resolves jwt-secret from the vault rather than holding the
+# literal, so this needs to exist there. The value still originates from CI
+# (TF_VAR_api_jwt_secret) — the vault becomes the distribution point, not a new
+# source of truth.
+resource "azurerm_key_vault_secret" "api_jwt_secret" {
+  name         = "api-jwt-secret"
+  value        = var.api_jwt_secret
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
 resource "azurerm_container_registry" "acr" {
   count                         = var.enable_container_registry ? 1 : 0
   name                          = local.acr_name
@@ -221,19 +231,30 @@ resource "azurerm_container_app" "api" {
     type = "SystemAssigned"
   }
 
+  # Secrets are Key Vault references, not literals. The vault is the single place
+  # a value is rotated; previously the same secret lived both here and in the
+  # vault, so rotation meant changing it twice and the vault was authoritative
+  # for nothing. Resolution uses the system-assigned identity, which already
+  # holds Key Vault Secrets User via azurerm_role_assignment.api_key_vault_secrets_user.
   secret {
-    name  = "appinsights-connection-string"
-    value = azurerm_application_insights.ai.connection_string
+    name                = "appinsights-connection-string"
+    key_vault_secret_id = azurerm_key_vault_secret.appinsights_connection_string.versionless_id
+    identity            = "System"
+  }
+
+  # The scoped role's password on the shared server. This secret was created out
+  # of band during the migration, so it is referenced by URI: managing it here
+  # would mean Terraform holding the value in state to no benefit.
+  secret {
+    name                = "db-password"
+    key_vault_secret_id = "${azurerm_key_vault.kv.vault_uri}secrets/${var.shared_postgres_password_secret_name}"
+    identity            = "System"
   }
 
   secret {
-    name  = "db-password"
-    value = random_password.postgres_admin.result
-  }
-
-  secret {
-    name  = "jwt-secret"
-    value = var.api_jwt_secret
+    name                = "jwt-secret"
+    key_vault_secret_id = azurerm_key_vault_secret.api_jwt_secret.versionless_id
+    identity            = "System"
   }
 
   dynamic "secret" {
@@ -323,11 +344,15 @@ resource "azurerm_container_app" "api" {
       }
       env {
         name  = "DB_TYPE"
-        value = var.enable_postgres ? "postgres" : "sqlite"
+        value = "postgres"
       }
+      # The shared server, not azurerm_postgresql_flexible_server.postgres. That
+      # resource is the pre-migration server and is retained only as the rollback
+      # path; pointing the app back at it would undo the 2026-08-06 migration and
+      # reconnect as a server administrator.
       env {
         name  = "DB_HOST"
-        value = var.enable_postgres ? azurerm_postgresql_flexible_server.postgres[0].fqdn : ""
+        value = var.shared_postgres_fqdn
       }
       env {
         name  = "DB_PORT"
@@ -335,7 +360,7 @@ resource "azurerm_container_app" "api" {
       }
       env {
         name  = "DB_USERNAME"
-        value = var.postgres_admin_login
+        value = var.shared_postgres_username
       }
       env {
         name        = "DB_PASSWORD"
@@ -343,15 +368,15 @@ resource "azurerm_container_app" "api" {
       }
       env {
         name  = "DB_NAME"
-        value = var.enable_postgres ? azurerm_postgresql_flexible_server_database.app[0].name : var.database_name
+        value = var.shared_postgres_database
       }
       env {
         name  = "DB_SSL"
-        value = var.enable_postgres ? "true" : "false"
+        value = "true"
       }
       env {
         name  = "DB_MIGRATIONS_RUN"
-        value = var.enable_postgres ? "true" : "false"
+        value = "true"
       }
       env {
         name  = "DATABASE_PATH"
