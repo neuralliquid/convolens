@@ -1,4 +1,5 @@
 import { logger } from '../../utils/logger';
+import { SLUICE_APP } from './summary.service';
 import type {
   ConversationSummaryContent,
   SummaryActionItem,
@@ -15,7 +16,7 @@ export interface CatchUpSourceMessage {
 
 export interface CatchUpGenerationResult {
   content: ConversationSummaryContent;
-  provider: 'azure' | 'openai' | 'anthropic';
+  provider: 'sluice' | 'azure' | 'openai' | 'anthropic';
   model: string;
 }
 
@@ -46,6 +47,9 @@ const MAX_TOTAL_CHARACTERS = 168_000;
 const MAX_ITEMS_PER_SECTION = 8;
 
 function activeProvider(): CatchUpGenerationResult['provider'] | null {
+  // Sluice first: it is the only path on which this service's spend is
+  // attributable. See Sluice ADR 10.
+  if (process.env.SLUICE_BASE_URL && process.env.SLUICE_API_KEY) return 'sluice';
   if (process.env.AZURE_OPENAI_ENDPOINT && process.env.AZURE_OPENAI_API_KEY) return 'azure';
   if (process.env.OPENAI_API_KEY) return 'openai';
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
@@ -53,6 +57,8 @@ function activeProvider(): CatchUpGenerationResult['provider'] | null {
 }
 
 function activeModel(provider: CatchUpGenerationResult['provider']): string {
+  // A logical route, not a provider model name — Sluice resolves it.
+  if (provider === 'sluice') return process.env.SLUICE_MODEL || 'default';
   if (provider === 'azure') return process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4';
   if (provider === 'openai') return process.env.OPENAI_MODEL || 'gpt-4-turbo-preview';
   return process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229';
@@ -283,18 +289,24 @@ async function requestCompletion(
   }
 
   const isAzure = provider === 'azure';
-  const endpoint = isAzure
-    ? `${process.env.AZURE_OPENAI_ENDPOINT!.replace(/\/$/, '')}/openai/deployments/${encodeURIComponent(model)}/chat/completions${process.env.AZURE_OPENAI_API_VERSION ? `?api-version=${encodeURIComponent(process.env.AZURE_OPENAI_API_VERSION)}` : ''}`
-    : 'https://api.openai.com/v1/chat/completions';
+  const isSluice = provider === 'sluice';
+  const endpoint = isSluice
+    ? `${process.env.SLUICE_BASE_URL!.replace(/\/$/, '')}/v1/chat/completions`
+    : isAzure
+      ? `${process.env.AZURE_OPENAI_ENDPOINT!.replace(/\/$/, '')}/openai/deployments/${encodeURIComponent(model)}/chat/completions${process.env.AZURE_OPENAI_API_VERSION ? `?api-version=${encodeURIComponent(process.env.AZURE_OPENAI_API_VERSION)}` : ''}`
+      : 'https://api.openai.com/v1/chat/completions';
   const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(isAzure
-        ? { 'api-key': process.env.AZURE_OPENAI_API_KEY! }
-        : { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }),
+      ...(isSluice
+        ? { Authorization: `Bearer ${process.env.SLUICE_API_KEY}` }
+        : isAzure
+          ? { 'api-key': process.env.AZURE_OPENAI_API_KEY! }
+          : { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }),
     },
     body: JSON.stringify({
+      // Azure carries the deployment in the URL; Sluice and OpenAI take a model.
       ...(!isAzure ? { model } : {}),
       messages: [
         { role: 'system', content: systemPrompt() },
@@ -302,10 +314,15 @@ async function requestCompletion(
       ],
       max_tokens: 2_000,
       temperature: 0.2,
+      // Required by Sluice ADR 10 — without it this call records as `(none)`
+      // and its cost cannot be traced back to ConvoLens.
+      ...(isSluice ? { metadata: { app: SLUICE_APP, agent: 'catch-up-generator' } } : {}),
     }),
   });
   if (!response.ok)
-    throw new Error(`${isAzure ? 'Azure OpenAI' : 'OpenAI'} request failed (${response.status})`);
+    throw new Error(
+      `${isSluice ? 'Sluice' : isAzure ? 'Azure OpenAI' : 'OpenAI'} request failed (${response.status})`
+    );
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }
