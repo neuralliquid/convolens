@@ -45,9 +45,37 @@ variable "database_name" {
 
 variable "postgres_admin_login" {
   type        = string
-  description = "PostgreSQL administrator login. The password is generated and stored in Key Vault."
+  description = "Administrator login for the legacy nl-prod-convolens-pg server. Retained for the rollback path only; the application no longer connects as this role."
   default     = "convolensadmin"
   sensitive   = true
+}
+
+# The application moved to the org-owned shared server on 2026-08-06. See
+# neuralliquid-org/docs/adr/0002-shared-data-plane-ownership.md. The server is
+# owned by neuralliquid-org Terraform; convolens owns its database, role and
+# schema, and the settings below describe how to reach it.
+variable "shared_postgres_fqdn" {
+  type        = string
+  description = "Host of the org-owned shared PostgreSQL server."
+  default     = "nl-prod-shared-pg.postgres.database.azure.com"
+}
+
+variable "shared_postgres_username" {
+  type        = string
+  description = "Scoped login role that owns the convolens database. Not a server administrator, and holds no rights on any other tenant's objects."
+  default     = "convolens"
+}
+
+variable "shared_postgres_database" {
+  type        = string
+  description = "Database name on the shared server."
+  default     = "convolens"
+}
+
+variable "shared_postgres_password_secret_name" {
+  type        = string
+  description = "Key Vault secret holding the password for shared_postgres_username. Created out of band during the migration, so it is referenced by URI rather than managed here — Terraform never reads the value."
+  default     = "shared-pg-convolens-password"
 }
 
 variable "postgres_sku_name" {
