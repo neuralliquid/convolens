@@ -46,6 +46,18 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
+      # Every workspace project that has a typecheck script. @convolens/web and
+      # @convolens/monitoring do not define one yet.
+      - name: Typecheck
+        run: >-
+          pnpm --filter @convolens/api
+          --filter @convolens/chrome-extension
+          --filter @convolens/config
+          --filter @convolens/contexts
+          --filter @convolens/ui
+          --filter @convolens/utils
+          run typecheck
+
       - name: Test extension capture matrix
         run: pnpm --filter @convolens/chrome-extension test
 

@@ -51,7 +51,10 @@ export class GroupService {
 
     const message = new Message();
     message.content = content;
-    message.sender = sender || 'System';
+    // `sender` is a display name, so it belongs on the senderName column. It was
+    // being assigned to the User relation, which persisted neither senderId nor
+    // a name and silently dropped the sender.
+    message.senderName = sender || 'System';
     message.isMedia = isMedia;
     if (mediaUrl) message.mediaUrl = mediaUrl;
     message.group = group;

@@ -109,7 +109,7 @@ function validationMiddleware(validator: (body: any) => ValidationError[]) {
   };
 }
 
-const router = Router();
+const router: Router = Router();
 
 // =============================================================================
 // Types

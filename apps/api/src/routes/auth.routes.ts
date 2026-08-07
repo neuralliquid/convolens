@@ -3,7 +3,7 @@ import { authRateLimit } from '../middleware/rate-limit.js';
 import { exchangeMystiraIdToken } from '../services/mystira-auth.service.js';
 import { logger } from '../utils/logger.js';
 
-const router = Router();
+const router: Router = Router();
 
 // Placeholder routes - implement authentication logic here
 router.post('/login', (req, res) => {

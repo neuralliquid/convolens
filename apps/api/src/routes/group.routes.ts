@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-const router = Router();
+const router: Router = Router();
 
 // Placeholder routes - implement group management logic here
 router.get('/', (req, res) => {

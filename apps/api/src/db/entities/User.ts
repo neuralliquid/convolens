@@ -23,14 +23,14 @@ export enum UserRole {
 @Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ type: 'varchar', unique: true })
-  email: string;
+  email!: string;
 
   @Column({ type: 'varchar' })
   @Exclude()
-  password: string;
+  password!: string;
 
   @Column({ type: 'varchar', nullable: true })
   name?: string;
@@ -40,28 +40,28 @@ export class User {
     enum: UserRole,
     default: UserRole.USER,
   })
-  role: UserRole;
+  role!: UserRole;
 
   @Column({ type: 'boolean', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @Column({ type: dateColumnType, nullable: true })
   lastLogin?: Date;
 
   @OneToMany(() => Group, (group) => group.owner)
-  ownedGroups: Relation<Group[]>;
+  ownedGroups!: Relation<Group[]>;
 
   @OneToMany(() => Group, (group) => group.members)
-  groups: Relation<Group[]>;
+  groups!: Relation<Group[]>;
 
   @OneToMany(() => Message, (message) => message.sender)
-  messages: Relation<Message[]>;
+  messages!: Relation<Message[]>;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @BeforeInsert()
   @BeforeUpdate()
