@@ -54,6 +54,39 @@ variable "postgres_admin_login" {
 # neuralliquid-org/docs/adr/0002-shared-data-plane-ownership.md. The server is
 # owned by neuralliquid-org Terraform; convolens owns its database, role and
 # schema, and the settings below describe how to reach it.
+variable "sluice_base_url" {
+  type        = string
+  description = "Sluice LiteLLM gateway used for governed AI requests."
+  default     = "https://litellm.sluice.phoenixvc.tech"
+
+  validation {
+    condition     = startswith(var.sluice_base_url, "https://")
+    error_message = "sluice_base_url must use HTTPS."
+  }
+}
+
+variable "sluice_api_key" {
+  type        = string
+  description = <<-EOT
+    Restricted ConvoLens Sluice virtual key. Empty by default, and that is the
+    switch: with no key, no Sluice settings reach the container app and the
+    application uses a direct provider, exactly as it does without this stack.
+
+    Deliberately not a required variable. A required one with no default breaks
+    every plan and apply until the value exists — see the api_jwt_secret failure
+    fixed in #185 — and that cost is paid by everyone applying this stack, not
+    just by whoever wants the gateway on.
+  EOT
+  sensitive   = true
+  default     = ""
+}
+
+variable "sluice_model" {
+  type        = string
+  description = "Sluice capability alias for grounded conversation catch-ups. A logical route, not a provider model name — Sluice resolves it."
+  default     = "convolens-catch-up-v1"
+}
+
 variable "shared_postgres_fqdn" {
   type        = string
   description = "Host of the org-owned shared PostgreSQL server."
