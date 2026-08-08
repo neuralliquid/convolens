@@ -19,6 +19,13 @@ locals {
   ingestion_queue_name = "ingestion"
   publish_queue_name   = "baton-publish"
 
+  # Wiring the gateway is opt-in on the key alone. Absent it, no Sluice settings
+  # reach the container app and the application falls through to a direct
+  # provider exactly as it does today — so this stack can be applied before the
+  # key exists without breaking anything, and without pretending to be
+  # configured.
+  sluice_enabled = trimspace(var.sluice_api_key) != ""
+
   tags = merge(
     {
       org         = var.org
@@ -194,6 +201,18 @@ resource "azurerm_key_vault_secret" "appinsights_connection_string" {
 # literal, so this needs to exist there. The value still originates from CI
 # (TF_VAR_api_jwt_secret) — the vault becomes the distribution point, not a new
 # source of truth.
+# Sluice is the only path on which this service's AI spend is attributable, so
+# the application prefers it (apps/api/src/services/ai/*). It selects Sluice only
+# when both SLUICE_BASE_URL and SLUICE_API_KEY are present, which is why all
+# three settings below are gated together: a half-configured gateway would leave
+# the app silently on a direct provider while looking configured.
+resource "azurerm_key_vault_secret" "sluice_api_key" {
+  count        = local.sluice_enabled ? 1 : 0
+  name         = "sluice-api-key"
+  value        = var.sluice_api_key
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
 resource "azurerm_key_vault_secret" "api_jwt_secret" {
   name         = "api-jwt-secret"
   value        = var.api_jwt_secret
@@ -240,6 +259,16 @@ resource "azurerm_container_app" "api" {
     name                = "appinsights-connection-string"
     key_vault_secret_id = azurerm_key_vault_secret.appinsights_connection_string.versionless_id
     identity            = "System"
+  }
+
+  dynamic "secret" {
+    for_each = azurerm_key_vault_secret.sluice_api_key
+
+    content {
+      name                = "sluice-api-key"
+      key_vault_secret_id = secret.value.versionless_id
+      identity            = "System"
+    }
   }
 
   # The scoped role's password on the shared server. This secret was created out
@@ -398,6 +427,35 @@ resource "azurerm_container_app" "api" {
         name  = "AZURE_PROVIDER_ENABLED"
         value = "true"
       }
+
+      # All three or none — see local.sluice_enabled.
+      dynamic "env" {
+        for_each = local.sluice_enabled ? [1] : []
+
+        content {
+          name  = "SLUICE_BASE_URL"
+          value = var.sluice_base_url
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.sluice_enabled ? [1] : []
+
+        content {
+          name        = "SLUICE_API_KEY"
+          secret_name = "sluice-api-key"
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.sluice_enabled ? [1] : []
+
+        content {
+          name  = "SLUICE_MODEL"
+          value = var.sluice_model
+        }
+      }
+
       env {
         name  = "BATON_BASE_URL"
         value = "https://baton-backend.up.railway.app"

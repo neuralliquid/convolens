@@ -150,6 +150,7 @@ jobs:
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
           TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
           TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
+          TF_VAR_sluice_api_key: ${{ secrets.SLUICE_API_KEY }}
         run: |
           set -euo pipefail
           PLAN_ARGS=()
@@ -294,6 +295,7 @@ jobs:
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
           TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
           TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
+          TF_VAR_sluice_api_key: ${{ secrets.SLUICE_API_KEY }}
         run: |
           set -euo pipefail
           APPLY_ARGS=()
