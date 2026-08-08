@@ -53,6 +53,25 @@ jobs:
             fi
           done
 
+      # Sluice owns provider credentials, model routing, budgets and telemetry,
+      # and is the only path on which this service's model spend is attributable
+      # (Sluice ADR 10). The application degrades to a direct provider when the
+      # key is absent — quietly, and billed with no record of which service
+      # incurred it. That degradation is acceptable locally and not in
+      # production, so the refusal lives here rather than in a Terraform
+      # variable: a required variable would break every plan and apply for
+      # everyone, while this fails only the thing that should fail, loudly.
+      - name: Verify Governed AI Configuration
+        env:
+          SLUICE_API_KEY: ${{ secrets.SLUICE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SLUICE_API_KEY" ]; then
+            echo "Error: the restricted SLUICE_API_KEY production secret is required for grounded catch-ups." >&2
+            echo "Without it the service falls back to a direct provider and its spend is not attributable." >&2
+            exit 1
+          fi
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -232,6 +251,7 @@ jobs:
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+          TF_VAR_sluice_api_key: ${{ secrets.SLUICE_API_KEY }}
           TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
           TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
         run: |
@@ -300,6 +320,7 @@ jobs:
         env:
           TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
           TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+          TF_VAR_sluice_api_key: ${{ secrets.SLUICE_API_KEY }}
           TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
           TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
 
