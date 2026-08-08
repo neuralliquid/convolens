@@ -16,8 +16,8 @@ enable_container_registry = true
 # rollback path. Setting this false destroys nl-prod-convolens-pg, its database,
 # its firewall rule and the old admin secret. There is no soft delete for a
 # flexible server, so this is the point of no return for that rollback.
-enable_postgres           = false
-enable_redis              = false
+enable_postgres = false
+enable_redis    = false
 
 admin_email           = ""
 monthly_budget_amount = 75
