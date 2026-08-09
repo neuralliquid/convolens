@@ -39,7 +39,11 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   assert.match(workflow, /@convolens\/chrome-extension test/);
   assert.match(
     workflow,
-    /jest --config=jest\.config\.js --runInBand[\s\S]*src\/services\/__tests__\/conversation-intake\.service\.test\.ts/,
+    /@convolens\/api exec jest --config=jest\.config\.js --ci --runInBand/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /src\/services\/__tests__\/conversation-intake\.service\.test\.ts/,
   );
   assert.match(workflow, /test:browser:persistence/);
   assert.match(workflow, /@convolens\/chrome-extension package/);
