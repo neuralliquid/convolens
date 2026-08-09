@@ -77,6 +77,14 @@ The ConvoLens brand provides:
 ### Architecture Decision Records (ADRs)
 
 - **[ADR Directory](adr/)** - Architecture decisions and their context
+- **[Agent Harnessing v1 candidate](adr/0002-agent-harnessing-v1-contracts-and-promotion.md)** - Provider-neutral contracts and evidence-gated promotion
+
+### Agent Harnessing v1 research
+
+- **[Primary-source review](research/agent-harnessing-v1-primary-sources-2026-08-09.md)** - Dated standards, security, runtime, evaluation, observability, and repository evidence
+- **[Candidate schema](schemas/agent-harnessing-v1-candidate.schema.json)** - Machine-readable roles, workflows, handoffs, evidence, evaluations, and promotion documents
+- **[Evaluation design](evals/agent-harnessing-v1-evaluation-design.md)** - Baselines, safety gates, thresholds, and restriction policy
+- **[ConvoLens fixture suite](evals/fixtures/agent-harnessing-v1-convolens.json)** - Synthetic routing, privacy, authority, landing, telemetry, and team-value cases
 
 ### Document Templates
 
@@ -117,11 +125,11 @@ The ConvoLens brand provides:
 
 ### Strategy & Planning
 
-| Document                                              | Description                      |
-| ----------------------------------------------------- | -------------------------------- |
-| [Roadmap](ROADMAP.md)                                 | Long-term product vision         |
-| [Future Considerations](FUTURE_CONSIDERATIONS.md)     | Ideas for exploration            |
-| [Code Review Analysis](CODE_REVIEW_ANALYSIS.md)       | Codebase health assessment       |
+| Document                                          | Description                |
+| ------------------------------------------------- | -------------------------- |
+| [Roadmap](ROADMAP.md)                             | Long-term product vision   |
+| [Future Considerations](FUTURE_CONSIDERATIONS.md) | Ideas for exploration      |
+| [Code Review Analysis](CODE_REVIEW_ANALYSIS.md)   | Codebase health assessment |
 
 ---
 
