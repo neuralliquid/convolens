@@ -10,6 +10,13 @@ ConvoLens adoption task: `d0e6826c-6739-443a-82cb-df9359d1f200`
 
 Predecessor: [`HANDOFF-2026-08-09-AGENT-HARNESSING-V1.md`](HANDOFF-2026-08-09-AGENT-HARNESSING-V1.md)
 
+Publication:
+
+- Branch: `docs/agent-harnessing-v1-spec`
+- Initial specification commit: `fe46da0c59faf946a14218d04a242b07e6abeee1`
+- Draft PR: [#192](https://github.com/neuralliquid/convolens/pull/192)
+- Authority: review only; ready-for-review transition, merge, implementation, and promotion remain human-held
+
 ## Outcome
 
 Agent Harnessing v1 now has a research-backed, machine-readable candidate contract and measurable promotion gates. This session did not scaffold agents, add hooks or commands, change a runtime, grant authority, or promote any capability.
