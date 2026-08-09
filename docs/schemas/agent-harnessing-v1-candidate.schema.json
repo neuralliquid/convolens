@@ -1,0 +1,1164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/neuralliquid/convolens/main/docs/schemas/agent-harnessing-v1-candidate.schema.json",
+  "title": "Agent Harnessing v1 candidate contract",
+  "description": "Provider-neutral candidate documents for harness manifests, artifact-mediated handoffs, evidence, evaluations, and promotion decisions. This v1alpha1 schema is not an approved org-meta standard.",
+  "oneOf": [
+    { "$ref": "#/$defs/HarnessManifest" },
+    { "$ref": "#/$defs/HandoffEnvelope" },
+    { "$ref": "#/$defs/EvidenceBundle" },
+    { "$ref": "#/$defs/EvaluationSuite" },
+    { "$ref": "#/$defs/PromotionDecision" }
+  ],
+  "$defs": {
+    "ApiVersion": {
+      "const": "harness.neuralliquid.dev/v1alpha1"
+    },
+    "Alias": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 2,
+      "maxLength": 80
+    },
+    "Identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "UriReference": {
+      "type": "string",
+      "format": "uri-reference",
+      "minLength": 1
+    },
+    "Extensions": {
+      "type": "object",
+      "description": "Explicit provider or repository extensions. Required core semantics may not be redefined here.",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)+(?:/[a-z0-9._-]+)?$"
+      },
+      "additionalProperties": true,
+      "default": {}
+    },
+    "Metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "createdAt", "ownerRepository"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "ownerRepository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "sourceRevision": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{7,64}$"
+        },
+        "taskId": { "$ref": "#/$defs/Identifier" },
+        "traceId": { "$ref": "#/$defs/Identifier" },
+        "labels": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/Alias" },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      }
+    },
+    "ComplexityTier": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "LifecycleState": {
+      "enum": [
+        "proposed",
+        "specified",
+        "harnessed",
+        "verified",
+        "promoted",
+        "restricted",
+        "retired"
+      ]
+    },
+    "AuthorityLevel": {
+      "enum": ["read-only", "workspace-write", "external-effect", "merge"]
+    },
+    "DataClassification": {
+      "enum": ["public", "internal", "confidential", "personal", "sensitive"]
+    },
+    "EffectType": {
+      "enum": [
+        "read-repository",
+        "write-workspace",
+        "network-read",
+        "credential-use",
+        "external-write",
+        "deploy",
+        "merge",
+        "delete",
+        "publish",
+        "message-person"
+      ]
+    },
+    "Budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxDurationSeconds", "maxAttempts"],
+      "properties": {
+        "maxDurationSeconds": { "type": "integer", "minimum": 1 },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "maxInputTokens": { "type": "integer", "minimum": 0 },
+        "maxOutputTokens": { "type": "integer", "minimum": 0 },
+        "maxCostUsd": { "type": "number", "minimum": 0 },
+        "maxParallelism": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "AuthorityScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ceiling",
+        "allowedTools",
+        "allowedEffects",
+        "workspaceRoots",
+        "networkAllowlist",
+        "dataClasses",
+        "externalEffectPolicy",
+        "mergePolicy",
+        "budget"
+      ],
+      "properties": {
+        "ceiling": { "$ref": "#/$defs/AuthorityLevel" },
+        "allowedTools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        },
+        "allowedEffects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectType" },
+          "uniqueItems": true
+        },
+        "workspaceRoots": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "networkAllowlist": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "dataClasses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DataClassification" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "externalEffectPolicy": {
+          "enum": ["deny", "confirm-each", "pre-approved"]
+        },
+        "mergePolicy": { "enum": ["deny", "human-only", "ruleset-authorized"] },
+        "budget": { "$ref": "#/$defs/Budget" }
+      }
+    },
+    "Role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stableAlias",
+        "displayName",
+        "axis",
+        "purpose",
+        "capabilities",
+        "authority",
+        "prohibitedEffects"
+      ],
+      "properties": {
+        "stableAlias": { "$ref": "#/$defs/Alias" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "axis": { "enum": ["horizontal", "vertical"] },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "authority": { "$ref": "#/$defs/AuthorityScope" },
+        "prohibitedEffects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectType" },
+          "uniqueItems": true
+        },
+        "definitionRef": { "$ref": "#/$defs/UriReference" },
+        "evaluationRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "providerAdapters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UriReference" },
+          "uniqueItems": true
+        },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "Skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "description",
+        "triggers",
+        "procedureRef",
+        "allowedTools",
+        "authorityCeiling"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "description": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "triggers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "minItems": 1
+        },
+        "procedureRef": { "$ref": "#/$defs/UriReference" },
+        "allowedTools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        },
+        "authorityCeiling": { "$ref": "#/$defs/AuthorityLevel" },
+        "inputSchemaRef": { "$ref": "#/$defs/UriReference" },
+        "outputSchemaRef": { "$ref": "#/$defs/UriReference" },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "Command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "workflowRef",
+        "authorityCeiling",
+        "confirmationPolicy"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "discover",
+            "plan",
+            "implement",
+            "validate",
+            "review",
+            "handoff",
+            "land",
+            "doctor",
+            "sync",
+            "update",
+            "diff",
+            "migrate"
+          ]
+        },
+        "workflowRef": { "$ref": "#/$defs/Alias" },
+        "authorityCeiling": { "$ref": "#/$defs/AuthorityLevel" },
+        "confirmationPolicy": { "enum": ["none", "risk-based", "always"] },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "Hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "event", "mode", "scriptRef", "failurePolicy"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "event": {
+          "enum": [
+            "session-start",
+            "session-stop",
+            "pre-tool-use",
+            "post-tool-use",
+            "pre-write",
+            "post-write",
+            "pre-push",
+            "pre-external-effect",
+            "post-run"
+          ]
+        },
+        "mode": { "enum": ["enforce", "validate", "record", "advise"] },
+        "scriptRef": { "$ref": "#/$defs/UriReference" },
+        "failurePolicy": { "enum": ["deny", "warn", "continue"] },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 300 },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "TeamMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["roleRef", "responsibility"],
+      "properties": {
+        "roleRef": { "$ref": "#/$defs/Alias" },
+        "responsibility": {
+          "enum": ["accountable", "implementer", "reviewer", "advisor"]
+        },
+        "required": { "type": "boolean", "default": true }
+      }
+    },
+    "Team": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "purpose",
+        "activation",
+        "members",
+        "maximumActiveMembers"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "activation": { "type": "string", "minLength": 1, "maxLength": 800 },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TeamMember" },
+          "minItems": 1
+        },
+        "maximumActiveMembers": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "Gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "critical", "evidenceKinds", "failurePolicy"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "type": {
+          "enum": [
+            "schema",
+            "test",
+            "privacy",
+            "security",
+            "authority",
+            "budget",
+            "review",
+            "human-approval",
+            "deployment",
+            "authentic-acceptance"
+          ]
+        },
+        "critical": { "type": "boolean" },
+        "evidenceKinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceKind" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "failurePolicy": { "enum": ["stop", "restrict", "warn"] }
+      }
+    },
+    "RetryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxAttempts",
+        "backoff",
+        "overallDeadlineSeconds",
+        "ambiguousOutcomePolicy"
+      ],
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "backoff": { "enum": ["none", "fixed", "exponential-jitter"] },
+        "overallDeadlineSeconds": { "type": "integer", "minimum": 1 },
+        "ambiguousOutcomePolicy": {
+          "enum": ["stop", "inspect-before-retry", "idempotent-retry"]
+        }
+      }
+    },
+    "WorkflowStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "actorRole",
+        "operation",
+        "dependsOn",
+        "authority",
+        "retry",
+        "idempotencyRequired",
+        "gateRefs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "actorRole": { "$ref": "#/$defs/Alias" },
+        "operation": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "dependsOn": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        },
+        "parallelGroup": { "$ref": "#/$defs/Alias" },
+        "authority": { "$ref": "#/$defs/AuthorityLevel" },
+        "retry": { "$ref": "#/$defs/RetryPolicy" },
+        "idempotencyRequired": { "type": "boolean" },
+        "gateRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        },
+        "produces": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "Workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "purpose",
+        "complexityTiers",
+        "executionPattern",
+        "gates",
+        "steps"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "complexityTiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ComplexityTier" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "executionPattern": {
+          "enum": [
+            "deterministic",
+            "single-agent",
+            "sequential-specialists",
+            "parallel-isolated",
+            "task-shaped-team",
+            "human-led"
+          ]
+        },
+        "gates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Gate" },
+          "uniqueItems": true
+        },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WorkflowStep" },
+          "minItems": 1
+        },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "PromotionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle",
+        "humanDecisionRequiredFor",
+        "evidenceRetentionDays"
+      ],
+      "properties": {
+        "lifecycle": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "proposed" },
+            { "const": "specified" },
+            { "const": "harnessed" },
+            { "const": "verified" },
+            { "const": "promoted" }
+          ],
+          "items": false
+        },
+        "humanDecisionRequiredFor": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectType" },
+          "contains": { "const": "merge" },
+          "uniqueItems": true
+        },
+        "evidenceRetentionDays": { "type": "integer", "minimum": 1 },
+        "restrictionTriggers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "OwnershipMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctrine",
+        "ledger",
+        "distribution",
+        "runtime",
+        "modelPolicy",
+        "costAttribution",
+        "reviewEvidence",
+        "product"
+      ],
+      "properties": {
+        "doctrine": { "const": "org-meta" },
+        "ledger": { "const": "baton" },
+        "distribution": { "const": "retort" },
+        "runtime": { "const": "cognitive-mesh" },
+        "modelPolicy": { "const": "sluice" },
+        "costAttribution": { "const": "docket" },
+        "reviewEvidence": { "const": "codeflow" },
+        "product": { "$ref": "#/$defs/Alias" }
+      }
+    },
+    "HarnessManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "lifecycleState",
+        "ownership",
+        "roles",
+        "skills",
+        "commands",
+        "hooks",
+        "teams",
+        "workflows",
+        "promotionPolicy"
+      ],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/ApiVersion" },
+        "kind": { "const": "HarnessManifest" },
+        "metadata": { "$ref": "#/$defs/Metadata" },
+        "lifecycleState": { "$ref": "#/$defs/LifecycleState" },
+        "ownership": { "$ref": "#/$defs/OwnershipMap" },
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Role" },
+          "minItems": 1
+        },
+        "skills": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Skill" }
+        },
+        "commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Command" }
+        },
+        "hooks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Hook" }
+        },
+        "teams": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Team" }
+        },
+        "workflows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Workflow" },
+          "minItems": 1
+        },
+        "promotionPolicy": { "$ref": "#/$defs/PromotionPolicy" },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "Actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "roleAlias", "authenticated"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "type": { "enum": ["human", "agent", "service", "system"] },
+        "roleAlias": { "$ref": "#/$defs/Alias" },
+        "authenticated": { "type": "boolean" },
+        "identityProvider": { "type": "string", "maxLength": 120 }
+      }
+    },
+    "Lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerId",
+        "acquiredAt",
+        "expiresAt",
+        "generation",
+        "status"
+      ],
+      "properties": {
+        "ownerId": { "$ref": "#/$defs/Identifier" },
+        "acquiredAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["active", "released", "expired", "revoked"] }
+      }
+    },
+    "ArtifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "uri", "mediaType", "classification"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "kind": {
+          "enum": [
+            "source",
+            "specification",
+            "plan",
+            "diff",
+            "patch",
+            "log",
+            "test-result",
+            "report",
+            "handoff",
+            "build",
+            "deployment"
+          ]
+        },
+        "uri": { "$ref": "#/$defs/UriReference" },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "digest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": {
+              "enum": ["sha256", "sha512", "git-sha1", "git-sha256"]
+            },
+            "value": { "type": "string", "pattern": "^[0-9a-fA-F]+$" }
+          }
+        },
+        "classification": { "$ref": "#/$defs/DataClassification" },
+        "containsUserContent": { "type": "boolean", "default": false }
+      }
+    },
+    "Blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "owner", "status"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "owner": { "$ref": "#/$defs/Identifier" },
+        "status": { "enum": ["open", "resolved", "accepted"] },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "ApprovalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "effect", "status", "requestedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "effect": { "$ref": "#/$defs/EffectType" },
+        "status": {
+          "enum": ["not-required", "requested", "approved", "denied", "expired"]
+        },
+        "requestedAt": { "type": "string", "format": "date-time" },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "decidedBy": { "$ref": "#/$defs/Identifier" },
+        "evidenceRef": { "$ref": "#/$defs/Identifier" }
+      }
+    },
+    "DataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "contentHandling",
+        "telemetryContentPolicy"
+      ],
+      "properties": {
+        "classification": { "$ref": "#/$defs/DataClassification" },
+        "contentHandling": {
+          "enum": ["reference-only", "redacted", "bounded-inline"]
+        },
+        "telemetryContentPolicy": { "const": "no-user-content" },
+        "retentionUntil": { "type": "string", "format": "date-time" },
+        "deletionEvidenceRef": { "$ref": "#/$defs/Identifier" }
+      }
+    },
+    "HandoffEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "taskId",
+        "traceId",
+        "runId",
+        "idempotencyKey",
+        "complexityTier",
+        "sender",
+        "accountableOwner",
+        "recipientCapability",
+        "lease",
+        "objective",
+        "assumptions",
+        "authority",
+        "dataPolicy",
+        "state",
+        "artifacts",
+        "evidenceRefs",
+        "blockers",
+        "approvals",
+        "nextAction"
+      ],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/ApiVersion" },
+        "kind": { "const": "HandoffEnvelope" },
+        "metadata": { "$ref": "#/$defs/Metadata" },
+        "taskId": { "$ref": "#/$defs/Identifier" },
+        "traceId": { "$ref": "#/$defs/Identifier" },
+        "traceparent": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+        },
+        "runId": { "$ref": "#/$defs/Identifier" },
+        "parentRunId": { "$ref": "#/$defs/Identifier" },
+        "idempotencyKey": { "$ref": "#/$defs/Identifier" },
+        "complexityTier": { "$ref": "#/$defs/ComplexityTier" },
+        "sender": { "$ref": "#/$defs/Actor" },
+        "accountableOwner": { "$ref": "#/$defs/Actor" },
+        "recipientCapability": { "$ref": "#/$defs/Alias" },
+        "lease": { "$ref": "#/$defs/Lease" },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "inputRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ArtifactRef" }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "authority": { "$ref": "#/$defs/AuthorityScope" },
+        "dataPolicy": { "$ref": "#/$defs/DataPolicy" },
+        "state": {
+          "enum": [
+            "offered",
+            "claimed",
+            "working",
+            "input-required",
+            "blocked",
+            "completed",
+            "failed",
+            "cancelled",
+            "dead-lettered"
+          ]
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ArtifactRef" }
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Blocker" }
+        },
+        "unresolvedRisks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "approvals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ApprovalRef" }
+        },
+        "nextAction": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "EvidenceKind": {
+      "enum": [
+        "source-revision",
+        "diff",
+        "test",
+        "check",
+        "privacy",
+        "security",
+        "review",
+        "review-thread",
+        "mergeability",
+        "human-approval",
+        "merge",
+        "post-merge-ci",
+        "publication",
+        "deployment",
+        "health",
+        "authentication",
+        "external-execution",
+        "authentic-acceptance",
+        "telemetry",
+        "cost",
+        "benchmark",
+        "deletion",
+        "rollback"
+      ]
+    },
+    "EvidenceSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "revision": { "type": "string", "pattern": "^[0-9a-fA-F]{7,64}$" },
+        "baseRevision": { "type": "string", "pattern": "^[0-9a-fA-F]{7,64}$" },
+        "pullRequest": { "type": "integer", "minimum": 1 },
+        "runId": { "$ref": "#/$defs/Identifier" },
+        "environment": { "$ref": "#/$defs/Alias" }
+      }
+    },
+    "EvidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "subject",
+        "uri",
+        "observedAt",
+        "producer",
+        "status",
+        "claimBoundary",
+        "classification"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "kind": { "$ref": "#/$defs/EvidenceKind" },
+        "subject": { "$ref": "#/$defs/EvidenceSubject" },
+        "uri": { "$ref": "#/$defs/UriReference" },
+        "digest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value"],
+          "properties": {
+            "algorithm": {
+              "enum": ["sha256", "sha512", "git-sha1", "git-sha256"]
+            },
+            "value": { "type": "string", "pattern": "^[0-9a-fA-F]+$" }
+          }
+        },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "producer": { "$ref": "#/$defs/Actor" },
+        "status": {
+          "enum": ["pass", "fail", "pending", "unavailable", "not-applicable"]
+        },
+        "exactHead": { "type": "boolean" },
+        "claimBoundary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "classification": { "$ref": "#/$defs/DataClassification" },
+        "supersedes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "EvidenceBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "taskId",
+        "traceId",
+        "runId",
+        "items"
+      ],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/ApiVersion" },
+        "kind": { "const": "EvidenceBundle" },
+        "metadata": { "$ref": "#/$defs/Metadata" },
+        "taskId": { "$ref": "#/$defs/Identifier" },
+        "traceId": { "$ref": "#/$defs/Identifier" },
+        "runId": { "$ref": "#/$defs/Identifier" },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceItem" },
+          "minItems": 1
+        },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "FixtureTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "synthetic", "riskFactors", "requestedEffects"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "synthetic": { "type": "boolean" },
+        "fixtureRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UriReference" }
+        },
+        "riskFactors": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "irreversible",
+              "wide-blast-radius",
+              "personal-data",
+              "sensitive-data",
+              "shared-file",
+              "production",
+              "identity",
+              "migration",
+              "external-effect",
+              "novel",
+              "high-verification-cost",
+              "authentic-human-action"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "requestedEffects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectType" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "ExpectedRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "complexityTier",
+        "executionPattern",
+        "accountableRole",
+        "requiredRoles",
+        "forbiddenRoles",
+        "maximumAgentCount",
+        "requiredApprovals",
+        "forbiddenEffects",
+        "requiredEvidenceKinds"
+      ],
+      "properties": {
+        "complexityTier": { "$ref": "#/$defs/ComplexityTier" },
+        "executionPattern": {
+          "enum": [
+            "deterministic",
+            "single-agent",
+            "sequential-specialists",
+            "parallel-isolated",
+            "task-shaped-team",
+            "human-led"
+          ]
+        },
+        "accountableRole": { "$ref": "#/$defs/Alias" },
+        "requiredRoles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        },
+        "forbiddenRoles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Alias" },
+          "uniqueItems": true
+        },
+        "maximumAgentCount": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "requiredApprovals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectType" },
+          "uniqueItems": true
+        },
+        "forbiddenEffects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EffectType" },
+          "uniqueItems": true
+        },
+        "requiredEvidenceKinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceKind" },
+          "uniqueItems": true
+        },
+        "mustSerialize": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "Grader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "assertion", "critical", "weight"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "type": { "enum": ["deterministic", "model", "human"] },
+        "assertion": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "critical": { "type": "boolean" },
+        "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "EvaluationFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "trials", "task", "expected", "graders"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Alias" },
+        "category": {
+          "enum": [
+            "routing",
+            "privacy",
+            "authority",
+            "handoff",
+            "idempotency",
+            "failure-recovery",
+            "evidence",
+            "pr-landing",
+            "cost-latency",
+            "quality"
+          ]
+        },
+        "trials": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "task": { "$ref": "#/$defs/FixtureTask" },
+        "expected": { "$ref": "#/$defs/ExpectedRoute" },
+        "graders": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Grader" },
+          "minItems": 1
+        }
+      }
+    },
+    "EvaluationSuite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "suiteId",
+        "objective",
+        "baseline",
+        "fixtures"
+      ],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/ApiVersion" },
+        "kind": { "const": "EvaluationSuite" },
+        "metadata": { "$ref": "#/$defs/Metadata" },
+        "suiteId": { "$ref": "#/$defs/Alias" },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "baseline": { "const": "best-available-single-agent" },
+        "fixtures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvaluationFixture" },
+          "minItems": 1
+        },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    },
+    "GateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gateId", "status", "critical", "evidenceRefs"],
+      "properties": {
+        "gateId": { "$ref": "#/$defs/Alias" },
+        "status": { "enum": ["pass", "fail", "pending", "not-applicable"] },
+        "critical": { "type": "boolean" },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Identifier" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "PromotionDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "apiVersion",
+        "kind",
+        "metadata",
+        "target",
+        "fromState",
+        "requestedState",
+        "authorityCeiling",
+        "decision",
+        "decidedAt",
+        "decidedBy",
+        "gateResults",
+        "rationale"
+      ],
+      "properties": {
+        "apiVersion": { "$ref": "#/$defs/ApiVersion" },
+        "kind": { "const": "PromotionDecision" },
+        "metadata": { "$ref": "#/$defs/Metadata" },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "id", "version"],
+          "properties": {
+            "type": {
+              "enum": [
+                "role",
+                "skill",
+                "team",
+                "workflow",
+                "runtime",
+                "adapter"
+              ]
+            },
+            "id": { "$ref": "#/$defs/Identifier" },
+            "version": { "$ref": "#/$defs/Identifier" }
+          }
+        },
+        "fromState": { "$ref": "#/$defs/LifecycleState" },
+        "requestedState": { "$ref": "#/$defs/LifecycleState" },
+        "authorityCeiling": { "$ref": "#/$defs/AuthorityLevel" },
+        "decision": { "enum": ["promote", "hold", "restrict", "retire"] },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "decidedBy": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Actor" },
+          "minItems": 1
+        },
+        "gateResults": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GateResult" },
+          "minItems": 1
+        },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "rollbackRef": { "$ref": "#/$defs/UriReference" },
+        "extensions": { "$ref": "#/$defs/Extensions" }
+      }
+    }
+  }
+}
