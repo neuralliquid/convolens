@@ -46,17 +46,14 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
-      # Every workspace project that has a typecheck script. @convolens/web and
-      # @convolens/monitoring do not define one yet.
+      # Runs in every workspace project that defines a typecheck script. Use an
+      # exclusion, not an allowlist: a new project must be gated the moment it
+      # lands. @convolens/web is the one carve-out — its existing typecheck
+      # baseline is not clean, and next.config.mjs sets
+      # typescript.ignoreBuildErrors. Drive that to zero, then delete the
+      # exclusion and the ignoreBuildErrors escape hatch.
       - name: Typecheck
-        run: >-
-          pnpm --filter @convolens/api
-          --filter @convolens/chrome-extension
-          --filter @convolens/config
-          --filter @convolens/contexts
-          --filter @convolens/ui
-          --filter @convolens/utils
-          run typecheck
+        run: pnpm -r --filter '!@convolens/web' run typecheck
 
       - name: Test extension capture matrix
         run: pnpm --filter @convolens/chrome-extension test
@@ -70,20 +67,10 @@ jobs:
       - name: Test extension persistence fixtures
         run: xvfb-run --auto-servernum pnpm --filter @convolens/chrome-extension test:browser:persistence
 
-      - name: Test API conversation intake
-        run: >-
-          pnpm --filter @convolens/api exec jest --config=jest.config.js --runInBand
-          src/services/__tests__/conversation-intake.service.test.ts
-          src/services/__tests__/selector-report.service.test.ts
-          src/services/__tests__/storage-managed-identity.test.ts
-          src/services/__tests__/auth.service.test.ts
-          src/services/__tests__/mystira-auth.service.test.ts
-          src/services/__tests__/metrics.service.test.ts
-          src/services/__tests__/circuit-breaker.service.test.ts
-          src/services/__tests__/deduplication.service.test.ts
-          src/db/migrations/__tests__/conversation-intake.migration.test.ts
-          src/routes/__tests__/chat-export.routes.test.ts
-          src/routes/__tests__/extension.routes.test.ts
+      # Runs every suite matched by jest.config.js testMatch. Do not reintroduce
+      # an explicit file list here: new suites must be picked up automatically.
+      - name: Test API
+        run: pnpm --filter @convolens/api exec jest --config=jest.config.js --ci --runInBand
 
       - name: Package and inspect extension
         run: pnpm --filter @convolens/chrome-extension package
