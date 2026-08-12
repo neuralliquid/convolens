@@ -12,6 +12,9 @@ on:
           - Production
           - Production-NeuralLiquid
 
+concurrency:
+  group: deploy-prod-${{ github.ref }}
+
 permissions:
   contents: read
   id-token: write

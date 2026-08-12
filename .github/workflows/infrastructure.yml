@@ -34,6 +34,9 @@ on:
           - plan
           - apply
 
+concurrency:
+  group: infrastructure-${{ github.event.pull_request.number || github.ref }}
+
 permissions:
   id-token: write
   contents: read
