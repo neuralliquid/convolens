@@ -48,7 +48,12 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
 }, ref) => {
   const [value, setValue] = React.useState(propValue || '')
   const isControlled = propValue !== undefined
-  const displayValue = isControlled ? propValue : value
+
+  React.useEffect(() => {
+    if (isControlled) {
+      setValue(propValue)
+    }
+  }, [propValue, isControlled])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isControlled) {
@@ -80,52 +85,62 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
       animate: { scale: 1, opacity: 1 },
       exit: { scale: 0.95, opacity: 0 },
     },
-  }
-
-  const currentVariant = animationVariants[animationType] || animationVariants.fade
+  }[animationType]
 
   return (
     <div className="relative w-full">
       <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : (
-            icon
-          )}
-        </div>
+        {icon && (
+          <div className="absolute left-3 top-1/2 -translate-y-1/2">
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              icon
+            )}
+          </div>
+        )}
+
         <Input
           ref={ref}
-          type="text"
+          value={isControlled ? propValue : value}
+          onChange={handleChange}
           className={cn(
-            'w-full pl-10 pr-8',
-            error && 'border-red-500 focus-visible:ring-red-500',
+            'w-full',
+            icon && 'pl-10',
+            (showClearButton && (value || propValue)) && 'pr-10',
             className
           )}
-          value={displayValue}
-          onChange={handleChange}
+          aria-invalid={!!error}
           {...props}
         />
-        {showClearButton && displayValue && (
-          <button
-            type="button"
-            className="absolute inset-y-0 right-0 pr-3 flex items-center"
-            onClick={handleClear}
-            aria-label="Clear search"
-          >
-            <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-          </button>
-        )}
+
+        <AnimatePresence>
+          {(showClearButton && (value || propValue)) && (
+            <motion.button
+              type="button"
+              onClick={handleClear}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              variants={animationVariants}
+              aria-label="Clear input"
+            >
+              <X className="h-4 w-4" />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
+
       <AnimatePresence>
         {error && (
           <motion.p
-            className="mt-1 text-sm text-red-500"
+            className="mt-1.5 text-sm text-destructive"
             initial="initial"
             animate="animate"
             exit="exit"
-            variants={currentVariant}
-            transition={{ duration: 0.2 }}
+            variants={animationVariants}
+            role="alert"
           >
             {error}
           </motion.p>
@@ -135,6 +150,6 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
   )
 })
 
-SearchInput.displayName = "SearchInput"
+SearchInput.displayName = 'SearchInput'
 
 export { Input }
