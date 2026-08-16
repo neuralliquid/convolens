@@ -4,3 +4,4 @@ export * from './input';
 export * from './label';
 export * from './card';
 export * from './dropdown-menu';
+export * from './theme-provider';

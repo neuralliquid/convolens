@@ -1,26 +1,6 @@
-"use client"
-
-import * as React from "react"
-import * as LabelPrimitive from "@radix-ui/react-label"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
-
-const labelVariants = cva(
-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-)
-
-const Label = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
-    VariantProps<typeof labelVariants>
->(({ className, ...props }, ref) => (
-  <LabelPrimitive.Root
-    ref={ref}
-    className={cn(labelVariants(), className)}
-    {...props}
-  />
-))
-Label.displayName = LabelPrimitive.Root.displayName
-
-export { Label }
+// Re-exported from @convolens/ui — see packages/ui/src/components/label.tsx.
+// This file used to hold an independent, byte-identical copy of the same
+// component; kept as a re-export so `@/components/ui/label` call sites
+// don't need to change while apps/web actually consumes the design-sync'd
+// package. See baton task 8ec9b31f.
+export { Label } from "@convolens/ui"
