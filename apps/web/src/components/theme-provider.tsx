@@ -1,6 +1,8 @@
-// Re-exported from @convolens/ui — see packages/ui/src/components/theme-provider.tsx.
-// This file used to hold an independent, byte-identical copy of the same
-// component; kept as a re-export so `@/components/theme-provider` call
-// sites don't need to change while apps/web actually consumes the
-// design-sync'd package. See baton task 8ec9b31f.
-export { ThemeProvider } from "@convolens/ui"
+"use client"
+
+import { ThemeProvider as NextThemesProvider } from "next-themes"
+import { type ThemeProviderProps } from "next-themes/dist/types"
+
+export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+}
