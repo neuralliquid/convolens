@@ -80,3 +80,12 @@ infra/bicep/*.json
 
 *storybook.log
 storybook-static
+
+# design-sync (claude.ai/design) — transient/build state only;
+# .design-sync/config.json, NOTES.md, conventions.md, previews/, overrides/ are committed
+.design-sync/sb-reference/
+.design-sync/learnings/
+.design-sync/.cache/
+.design-sync/node_modules
+.ds-sync/
+ds-bundle/

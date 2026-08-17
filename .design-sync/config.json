@@ -1,0 +1,9 @@
+{
+  "projectId": "baac1f40-0c21-48ec-be81-45083eb2ff6a",
+  "shape": "storybook",
+  "pkg": "@convolens/ui",
+  "storybookConfigDir": "packages/ui/.storybook",
+  "storybookStatic": ".design-sync/sb-reference",
+  "buildCmd": "pnpm -F \"@convolens/ui...\" build",
+  "readmeHeader": ".design-sync/conventions.md"
+}
