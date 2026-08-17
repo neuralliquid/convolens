@@ -78,11 +78,11 @@
 
 .filterButton.active {
   background: rgba(37, 211, 102, 0.1);
-  color: var(--primary);
+  color: var(--whatsapp-primary);
 }
 
 .unreadBadge {
-  background: var(--primary);
+  background: var(--whatsapp-primary);
   color: white;
   font-size: 0.75rem;
   font-weight: 600;
@@ -131,7 +131,7 @@
 .notificationIcon {
   width: 20px;
   height: 20px;
-  color: var(--primary);
+  color: var(--whatsapp-primary);
 }
 
 .notificationContent {
@@ -202,7 +202,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid rgba(37, 211, 102, 0.1);
-  border-top-color: var(--primary);
+  border-top-color: var(--whatsapp-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 1rem;
