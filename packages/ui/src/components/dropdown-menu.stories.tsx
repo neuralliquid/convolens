@@ -19,6 +19,7 @@ import { Button } from './button'
  */
 const meta: Meta<typeof DropdownMenu> = {
   title: 'Primitives/DropdownMenu',
+  component: DropdownMenu,
   tags: ['autodocs'],
 }
 export default meta

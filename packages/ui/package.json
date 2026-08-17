@@ -46,15 +46,15 @@
     "typescript": "^5.0.0",
     "storybook": "^10.5.8",
     "@storybook/react-vite": "^10.5.8",
-    "@chromatic-com/storybook": "latest",
+    "@chromatic-com/storybook": "^5.3.0",
     "@storybook/addon-vitest": "^10.5.8",
     "@storybook/addon-a11y": "^10.5.8",
     "@storybook/addon-docs": "^10.5.8",
-    "@storybook/addon-mcp": "latest",
+    "@storybook/addon-mcp": "^0.7.0",
     "eslint-plugin-storybook": "^10.5.8",
     "@vitest/browser": "^3.2.6",
     "@vitest/coverage-v8": "^3.2.6",
-    "playwright": "latest"
+    "playwright": "^1.62.1"
   },
   "peerDependencies": {
     "react": ">=16.8.0",
