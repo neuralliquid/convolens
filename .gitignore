@@ -77,3 +77,6 @@ logs
 actionlint
 infra/bicep/*.json
 **/.terraform/
+
+*storybook.log
+storybook-static
