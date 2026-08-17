@@ -23,7 +23,7 @@
 }
 
 .trigger.open {
-  border-color: var(--primary);
+  border-color: hsl(var(--primary));
   box-shadow: 0 0 0 2px var(--primary-foreground);
 }
 
@@ -74,7 +74,7 @@
 }
 
 .option.selected {
-  background: var(--primary);
+  background: hsl(var(--primary));
   color: var(--primary-foreground);
 }
 
@@ -97,5 +97,5 @@
 
 .option.selected .optionCount {
   background: var(--primary-foreground);
-  color: var(--primary);
+  color: hsl(var(--primary));
 }

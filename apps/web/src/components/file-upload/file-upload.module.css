@@ -21,12 +21,12 @@
 }
 
 .dropzone:hover {
-  border-color: var(--primary);
+  border-color: hsl(var(--primary));
   background-color: var(--background-hover);
 }
 
 .dropzone.active {
-  border-color: var(--primary);
+  border-color: hsl(var(--primary));
   background-color: var(--primary-light);
 }
 
@@ -48,7 +48,7 @@
 
 .dropzone.active .icon,
 .dropzone:hover .icon {
-  color: var(--primary);
+  color: hsl(var(--primary));
 }
 
 .dropzone.success .icon {
@@ -82,7 +82,7 @@
   width: 2.5rem;
   height: 2.5rem;
   border: 3px solid var(--border);
-  border-top-color: var(--primary);
+  border-top-color: hsl(var(--primary));
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }

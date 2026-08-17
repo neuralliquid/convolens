@@ -4,10 +4,23 @@
  */
 
 /* ===== Base Styles ===== */
+/*
+ * --legacy-primary/--legacy-secondary (renamed from --primary/--secondary
+ * 2026-08-17, Baton task 13f85318): this file is unlayered CSS imported at
+ * the top of globals.css, while the real brand tokens live in globals.css's
+ * @layer base. Per CSS cascade-layer rules, unlayered ALWAYS beats layered
+ * regardless of source order — so these names, if left as --primary/
+ * --secondary, silently shadowed the real hsl() brand tokens app-wide,
+ * making every bg-primary/text-primary/etc. utility compute to invalid
+ * hsl(#25D366) and render fully transparent. Confirmed empirically via a
+ * headless-Chromium probe against the real files before this fix.
+ * Renamed only — values unchanged, so the WhatsApp-green landing-page
+ * decorations below render identically to before.
+ */
 :root {
-  --primary: #25D366;
+  --legacy-primary: #25D366;
   --primary-hover: #34E89E;
-  --secondary: #128C7E;
+  --legacy-secondary: #128C7E;
   --dark: #075E54;
   --light: #DCF8C6;
   --bg-light: #F9FAFB;
@@ -72,7 +85,7 @@
   width: 280px;
   height: 280px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, var(--primary), var(--secondary));
+  background: radial-gradient(circle at 30% 30%, var(--legacy-primary), var(--legacy-secondary));
   top: 15%;
   left: 8%;
   animation-delay: 0s;
@@ -81,7 +94,7 @@
 .vector-square {
   width: 200px;
   height: 200px;
-  background: linear-gradient(45deg, var(--primary), var(--secondary));
+  background: linear-gradient(45deg, var(--legacy-primary), var(--legacy-secondary));
   transform: rotate(45deg);
   top: 65%;
   right: 12%;
@@ -102,7 +115,7 @@
 .vector-hexagon {
   width: 150px;
   height: 150px;
-  background: linear-gradient(60deg, var(--primary), var(--secondary));
+  background: linear-gradient(60deg, var(--legacy-primary), var(--legacy-secondary));
   clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
   top: 40%;
   left: 5%;
@@ -112,7 +125,7 @@
 .vector-diamond {
   width: 100px;
   height: 100px;
-  background: linear-gradient(45deg, var(--primary-hover), var(--primary));
+  background: linear-gradient(45deg, var(--primary-hover), var(--legacy-primary));
   transform: rotate(45deg);
   top: 80%;
   left: 70%;
@@ -121,7 +134,7 @@
 
 /* ===== Text Effects ===== */
 .text-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 50%, var(--secondary) 100%);
+  background: linear-gradient(135deg, var(--legacy-primary) 0%, var(--primary-hover) 50%, var(--legacy-secondary) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -149,7 +162,7 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  background: linear-gradient(90deg, transparent, var(--legacy-primary), transparent);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -184,7 +197,7 @@
 
 /* ===== Button Styles ===== */
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  background: linear-gradient(135deg, var(--legacy-primary) 0%, var(--legacy-secondary) 100%);
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
@@ -254,8 +267,8 @@
 
 .btn-outline {
   background: transparent;
-  color: var(--primary);
-  border: 2px solid var(--primary);
+  color: var(--legacy-primary);
+  border: 2px solid var(--legacy-primary);
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
   font-weight: 600;
@@ -279,7 +292,7 @@
 
 .btn-icon {
   background: rgba(37, 211, 102, 0.1);
-  color: var(--primary);
+  color: var(--legacy-primary);
   border: none;
   width: 3rem;
   height: 3rem;
@@ -319,7 +332,7 @@
 .section-header h1 {
   font-size: 3rem;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 50%, var(--secondary) 100%);
+  background: linear-gradient(135deg, var(--legacy-primary) 0%, var(--primary-hover) 50%, var(--legacy-secondary) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -347,7 +360,7 @@
   font-size: 1.8rem;
   font-weight: 700;
   margin-bottom: 1.5rem;
-  color: var(--primary);
+  color: var(--legacy-primary);
   position: relative;
   display: inline-block;
 }
@@ -359,7 +372,7 @@
   left: 0;
   width: 50%;
   height: 3px;
-  background: linear-gradient(90deg, var(--primary), transparent);
+  background: linear-gradient(90deg, var(--legacy-primary), transparent);
   border-radius: 3px;
 }
 
@@ -397,7 +410,7 @@
   justify-content: center;
   background: rgba(37, 211, 102, 0.1);
   border-radius: 50%;
-  color: var(--primary);
+  color: var(--legacy-primary);
   transition: all 0.3s ease;
 }
 
@@ -448,7 +461,7 @@
 
 .search-input:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: var(--legacy-primary);
   box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.1);
   background: rgba(255, 255, 255, 0.15);
 }
@@ -470,7 +483,7 @@
 
 .filter-select:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: var(--legacy-primary);
   background: rgba(255, 255, 255, 0.15);
 }
 
@@ -621,7 +634,7 @@
 .btn-icon:focus-visible,
 .search-input:focus-visible,
 .filter-select:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--legacy-primary);
   outline-offset: 2px;
 }
 
@@ -632,7 +645,7 @@
   }
 
   .card:hover {
-    border-color: var(--primary);
+    border-color: var(--legacy-primary);
   }
 
   .search-input,
