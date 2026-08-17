@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import * as React from 'react'
 import { Sun } from 'lucide-react'
 import { Button, LoadingButton } from './button'
 
