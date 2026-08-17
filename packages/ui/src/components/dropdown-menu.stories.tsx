@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import * as React from 'react'
 import { LogOut, Moon, Settings, Sun, User } from 'lucide-react'
 import {
   DropdownMenu,

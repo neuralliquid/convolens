@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import * as React from 'react'
 import { useState } from 'react'
 import { Input, SearchInput } from './input'
 
