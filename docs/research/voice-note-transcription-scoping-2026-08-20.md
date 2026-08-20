@@ -12,6 +12,13 @@
 > first claimed it wasn't (checked the task's text log, not GitHub, the first time — mistake);
 > sluice's Whisper Azure resource now exists, but on a new parallel subscription that isn't
 > wired into the production hostname yet, so the pipe is still not reachable end-to-end today.
+>
+> **Update 2, same day, ~4h later:** sluice fixed the specific bug that update 1 left open (an
+> auth-key mismatch) and closed their task as "confirmed fully working end-to-end" — but their
+> own smoke test proves that against the new stack's *temporary* domain, not the production
+> hostname xtox is actually configured to call. See
+> [**Update 2 — 2026-08-20, ~4h later**](#update-2--2026-08-20-4h-later) at the bottom. Still
+> not reachable end-to-end from convolens's real call path; still nothing new to build.
 
 ## Why this is a note and not a PR
 
@@ -242,3 +249,42 @@ against real traffic right now. Nothing for convolens to build against changes a
 this update — still no working end-to-end transcript to demo — but worth tracking: this is
 likely to resolve on the timeline of that migration's remaining phases, not on an indefinite
 "someone needs to notice and fix RBAC" timeline.
+
+## Update 2 — 2026-08-20, ~4h later
+
+Prompted by a second user report ("sluice whisper landed with foundry" — a status update
+copy-pasted from a sluice-side session). Verified independently rather than taken at face
+value, per the same discipline as update 1.
+
+**What sluice actually fixed:** the Whisper *deployment* from update 1 existed but every call
+through it 401'd — root-caused to `foundry_models`/`foundry_whisper_models` in
+`infra/modules/sluice_aca/main.tf` both authenticating with the main Azure OpenAI account's
+key instead of the separate `cel-prod-sluice-foundry` account's own key (Cognitive Services
+keys are account-scoped, not interchangeable). `celladore/sluice#239` gives Foundry its own
+key end to end (new `azure_foundry_api_key` var/secret/env var). Independently confirmed: PR
+merged 2026-08-20T11:47:22Z, GH secret `AZURE_FOUNDRY_API_KEY_CELLADORE` set 11:47:05Z, the
+"Deploy Sluice (celladore-sub)" workflow ran and succeeded shortly after. Baton `833d6a98` is
+now marked `done` on this basis, citing a smoke test that returned `HTTP 200 {"text":"you"}`.
+
+**The gap the "done" status doesn't surface:** that smoke test called
+`https://litellm.sluice.celladoresystems.com/v1/audio/transcriptions` — the new celladore-sub
+stack's own temporary hostname. It did not call `litellm.sluice.phoenixvc.tech`, which is what
+xtox is actually configured to call in prod (`celladore/xtox`
+`infra/env/prod/terraform.tfvars:40`, `sluice_base_url`). Checked
+`docs/celladore-sub-migration-plan.md` at its latest revision (`celladore/sluice#238`, merged
+2026-08-20T11:47:51Z — four minutes *before* the smoke test that closed `833d6a98`): DNS/
+custom-domain cutover from `litellm.sluice.phoenixvc.tech` (Phase 4) is still explicitly listed
+as "still genuinely open — actual remaining work," and "through Phase 3, the old stack in
+mystira-sub is untouched and continues serving production traffic." The old stack's own Foundry
+Whisper deployment is a separate, intentionally-unfixed dead end (regional capacity gap,
+deprioritized until that stack is deleted) — so it isn't a fallback either.
+
+**Net: the fix is real, but "confirmed fully working end-to-end" describes the new stack in
+isolation, not the path convolens's request would actually take.** `POST /api/transcribe-audio`
+(xtox) still resolves, on today's prod config, to a hostname that has no working Whisper route
+behind it. No change to `1e50aef3`'s status, either decision requirement, or the recommended
+staged plan above — still nothing to build against a live transcript. Posted matching
+correction notes on Baton `833d6a98` and `591273de` rather than letting the "done" status read
+as an all-clear for downstream consumers. The actual unblock signal to watch for is Phase 4
+(DNS cutover) landing in the migration plan, or `sluice_base_url` being repointed at the new
+stack's domain directly.
