@@ -5,6 +5,14 @@
 **Related task:** `591273de` (xtox, "Audio-to-transcript pipeline: WhatsApp OGG/Opus, WAV, MP3 → text")
 **Outcome of this pass:** scoping only. No code changed. Task remains blocked upstream — see below.
 
+> **Update, same day, ~3h later:** two of the "current state" claims below were already stale
+> by the time they were written, and one upstream blocker has genuinely moved. See
+> [**Update — 2026-08-20, later same day**](#update--2026-08-20-later-same-day) at the bottom
+> before reading this as current. Short version: xtox's PR was already merged when this doc
+> first claimed it wasn't (checked the task's text log, not GitHub, the first time — mistake);
+> sluice's Whisper Azure resource now exists, but on a new parallel subscription that isn't
+> wired into the production hostname yet, so the pipe is still not reachable end-to-end today.
+
 ## Why this is a note and not a PR
 
 `1e50aef3` came in marked `needs_scoping` with two pending decision requirements. Both are now
@@ -179,3 +187,58 @@ implementation PR, not discovered during review of it.
   branch and a PR-creation link waiting on the user).
 - No action was taken on sluice task `833d6a98` (cost-incurring prod infra change — outside
   this session's authority).
+
+## Update — 2026-08-20, later same day
+
+Prompted by a user report ("sluice whisper landed with foundry"). Verified directly against
+GitHub rather than re-reading Baton's task text, since Baton's own agent-message log on
+`833d6a98` turned out to be ~3 hours stale relative to what had actually happened.
+
+**Correction — xtox's PR was already merged, not "not opened yet" as stated above.**
+`celladore/xtox#7` ("feat: add audio transcription endpoint routed through sluice gateway")
+merged **2026-08-19T14:48:23Z** — 6 minutes after the branch was pushed and before this
+scoping pass even started. The "no PR opened yet" claim above was accurate at the instant the
+originating agent wrote it, but had already gone stale by the time it was copied into this
+doc and into the Baton comment on `1e50aef3`; this doc should have checked GitHub directly
+instead of trusting the task's own text log. Correcting the decision-requirement `b91e40f1`
+resolution's action line above: xtox's endpoint is merged and exists in `celladore/xtox`
+main today — the "once merged" condition was already satisfied.
+
+**Genuinely new, verified this pass: sluice's Foundry Whisper Terraform resource now exists
+in Azure — but on a new, separate subscription that isn't in the production request path
+yet.** `celladore/sluice` PRs #233–#237 (all merged between 07:30 and 10:13 UTC today) did
+not fix the original blocker (Azure RBAC 403 on the CI service principal against
+`mystira-sub`, subscription `bb4e3882-…`). Instead, per `docs/celladore-sub-migration-plan.md`
+in that repo, sluice's entire prod stack is mid-migration to a **new Azure AD tenant**
+(`celladore-sub`) — not a subscription move (`mystira-sub` and `celladore-sub` are different
+tenants; `az resource move` can't cross that boundary), a full rebuild. Verified directly from
+the latest "Deploy Sluice (celladore-sub)" run
+(`gh run view 32358330665 --repo celladore/sluice --log`):
+
+```
+module.sluice.azurerm_cognitive_deployment.foundry_whisper[0]: Creation complete after 21s
+  [id=.../resourceGroups/cel-prod-sluice-rg/.../accounts/cel-prod-sluice-foundry/deployments/whisper]
+Apply complete! Resources: 3 added, 1 changed, 0 destroyed.
+```
+
+That's real — the Azure resource exists now, at 2026-08-20T10:21:05Z. But per the migration
+plan's own phase tracking, this is Phase 2 of 5 (parallel stack build). Phase 3 (Postgres/
+LiteLLM DB + Key Vault secret migration) and Phase 4 (DNS cutover of
+`litellm.sluice.phoenixvc.tech`, the hostname convolens's own `.env.example` and presumably
+xtox's `SLUICE_BASE_URL` point at) have not run: *"Through Phase 3, the old stack in
+mystira-sub is untouched and continues serving production traffic — the new stack is
+additive."* No evidence of a minted LiteLLM virtual key on the new stack either — grepped the
+full log of the successful apply run for `manage_keys`/`virtual key`/`xtox`: zero hits, and
+the deploy workflow's own header comment says smoke/integration tests are deliberately
+skipped because that "depends on state that doesn't exist until after a first apply (a minted
+LiteLLM virtual key...)".
+
+**Net effect on `1e50aef3`: still correctly blocked, but the blocker category changed.** It's
+no longer an unowned RBAC deadlock with no visible path forward — it's a scoped, actively-
+progressing, multi-phase migration with a written plan, already 2 of 5 phases in as of this
+check. The production hostname xtox actually calls still serves the old, Whisper-less stack
+today, so `POST /api/transcribe-audio` (merged, live in `celladore/xtox` main) still 503s
+against real traffic right now. Nothing for convolens to build against changes as a result of
+this update — still no working end-to-end transcript to demo — but worth tracking: this is
+likely to resolve on the timeline of that migration's remaining phases, not on an indefinite
+"someone needs to notice and fix RBAC" timeline.
