@@ -39,6 +39,14 @@ test("renders the runtime manifest version and keeps release versions aligned", 
     optionsSource,
     /const PACKAGED_VERSION = "1\.0\.25"/,
   );
+  assert.match(
+    optionsSource,
+    /runtimeVersion === PACKAGED_VERSION/,
+  );
+  assert.match(
+    optionsSource,
+    /reload \$\{PACKAGED_VERSION\}/,
+  );
   assert.equal(manifest.version, packageJson.version);
   assert.equal(manifest.version, "1.0.25");
 });
