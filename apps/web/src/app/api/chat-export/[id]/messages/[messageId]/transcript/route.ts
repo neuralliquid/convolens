@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  ConvolensApiAuthError,
   apiAuthErrorResponse,
   getConvolensApiBaseUrl,
   getConvolensTranscriptionTokens,
@@ -90,6 +91,12 @@ export async function POST(
         { status: 504 },
       );
     }
-    return apiAuthErrorResponse(error);
+    if (error instanceof ConvolensApiAuthError) {
+      return apiAuthErrorResponse(error);
+    }
+    return NextResponse.json(
+      { error: "Voice-note transcription is temporarily unavailable." },
+      { status: 502 },
+    );
   }
 }
