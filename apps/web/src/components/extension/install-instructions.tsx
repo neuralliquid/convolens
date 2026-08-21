@@ -6,11 +6,13 @@ import {
   getExtensionVersion,
 } from "@/lib/extension-release";
 
+export interface ExtensionInstallInstructionsProps {
+  heading?: string;
+}
+
 export function ExtensionInstallInstructions({
   heading = "Install the Chrome extension",
-}: {
-  heading?: string;
-}) {
+}: ExtensionInstallInstructionsProps) {
   const version = getExtensionVersion();
 
   return (

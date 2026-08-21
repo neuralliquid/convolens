@@ -192,24 +192,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<AuthError | null>(null);
-  const [authSource, setAuthSource] = useState<"nextauth" | "api" | null>(null);
   const [authClient] = useState(createAuthClient);
   const authGenerationRef = useRef(0);
+  const authRequestRef = useRef(0);
+  const authSourceRef = useRef<"nextauth" | "api" | null>(null);
+  const logoutInProgressRef = useRef(false);
+  const expiryWatchRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Clear error helper
   const clearError = useCallback(() => setError(null), []);
 
+  const rememberAuthSource = useCallback(
+    (source: "nextauth" | "api" | null) => {
+      authSourceRef.current = source;
+    },
+    [],
+  );
+
+  const invalidateAuthChecks = useCallback(() => {
+    authGenerationRef.current += 1;
+    authRequestRef.current += 1;
+  }, []);
+
+  const stopExpiryWatch = useCallback(() => {
+    if (expiryWatchRef.current != null) {
+      window.clearInterval(expiryWatchRef.current);
+      expiryWatchRef.current = null;
+    }
+  }, []);
+
   const clearLocalAuth = useCallback(() => {
     setUser(null);
-    setAuthSource(null);
+    rememberAuthSource(null);
     localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem(SESSION_STORAGE_KEY);
-  }, []);
+  }, [rememberAuthSource]);
 
   const initializeAuth = useCallback(
     async (options?: { restoreCache?: boolean }) => {
-      const generation = ++authGenerationRef.current;
-      const isCurrent = () => generation === authGenerationRef.current;
+      if (logoutInProgressRef.current) {
+        return;
+      }
+
+      const generation = authGenerationRef.current;
+      const requestId = ++authRequestRef.current;
+      const isCurrent = () =>
+        !logoutInProgressRef.current &&
+        generation === authGenerationRef.current &&
+        requestId === authRequestRef.current;
 
       try {
         if (options?.restoreCache) {
@@ -250,7 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               avatarUrl: nextAuthSession.user.image,
             };
             setUser(mappedUser);
-            setAuthSource("nextauth");
+            rememberAuthSource("nextauth");
             localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
             return;
           }
@@ -271,7 +301,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name: session.user?.name || session.name,
             };
             setUser(mappedUser);
-            setAuthSource("api");
+            rememberAuthSource("api");
             localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
           } else {
             clearLocalAuth();
@@ -285,7 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [authClient, clearLocalAuth],
+    [authClient, clearLocalAuth, rememberAuthSource],
   );
 
   useEffect(() => {
@@ -296,17 +326,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isSignedIn) {
+      stopExpiryWatch();
       return;
     }
 
-    const expiryWatch = window.setInterval(() => {
+    stopExpiryWatch();
+    expiryWatchRef.current = window.setInterval(() => {
       void initializeAuth();
     }, 60_000);
 
     return () => {
-      window.clearInterval(expiryWatch);
+      stopExpiryWatch();
     };
-  }, [isSignedIn, initializeAuth]);
+  }, [isSignedIn, initializeAuth, stopExpiryWatch]);
 
   /**
    * Login with email and password
@@ -354,6 +386,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem(SESSION_STORAGE_KEY, response.token);
           }
 
+          invalidateAuthChecks();
+          rememberAuthSource("api");
           setUser(mappedUser);
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
 
@@ -369,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           name: email.split("@")[0],
         };
+        invalidateAuthChecks();
         setUser(devUser);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(devUser));
 
@@ -381,7 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [authClient],
+    [authClient, invalidateAuthChecks, rememberAuthSource],
   );
 
   /**
@@ -437,6 +472,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             localStorage.setItem(SESSION_STORAGE_KEY, response.token);
           }
 
+          invalidateAuthChecks();
+          rememberAuthSource("api");
           setUser(mappedUser);
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
 
@@ -449,6 +486,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           name,
         };
+        invalidateAuthChecks();
         setUser(devUser);
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(devUser));
 
@@ -461,15 +499,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [authClient],
+    [authClient, invalidateAuthChecks, rememberAuthSource],
   );
 
   /**
    * Logout the current user
    */
   const logout = useCallback(async () => {
-    authGenerationRef.current += 1;
+    logoutInProgressRef.current = true;
+    invalidateAuthChecks();
+    stopExpiryWatch();
     setIsLoading(true);
+    const shouldRevokeApiSession =
+      authSourceRef.current === "api" ||
+      Boolean(localStorage.getItem(SESSION_STORAGE_KEY));
     clearLocalAuth();
 
     try {
@@ -497,15 +540,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      if (authSource === "api" && authClient?.type === "api") {
+      if (shouldRevokeApiSession && authClient?.type === "api") {
         await authClient.logout();
       }
     } catch (err) {
       console.error("[AuthContext] API logout error:", err);
     } finally {
+      invalidateAuthChecks();
+      clearLocalAuth();
+      logoutInProgressRef.current = false;
       setIsLoading(false);
     }
-  }, [authClient, authSource, clearLocalAuth]);
+  }, [authClient, clearLocalAuth, invalidateAuthChecks, stopExpiryWatch]);
 
   /**
    * Request password reset email
