@@ -72,7 +72,7 @@ test("renders a compact inward-opening launcher with explicit position controls"
   assert.doesNotMatch(contentSource, /Move to .* edge/);
   assert.match(contentSource, /setPointerCapture/);
   assert.match(contentSource, /resolveLauncherEdge/);
-  assert.match(contentSource, /resolveLauncherPreset/);
+  assert.match(contentSource, /clampLauncherTop/);
   assert.match(contentSource, /STORAGE_KEYS\.launcherPosition/);
   assert.match(styles, /width: 44px/);
   assert.match(
@@ -87,6 +87,56 @@ test("renders a compact inward-opening launcher with explicit position controls"
   assert.match(styles, /data-preset="lower"[\s\S]*bottom: 0/);
   assert.match(styles, /\.ws-position-options \{/);
   assert.match(styles, /\.ws-position-side-options \{/);
+});
+
+test("shows a clickable pointer, not a permanent drag hand, until a drag is confirmed", () => {
+  assert.match(styles, /\.ws-launcher-toggle \{[\s\S]*cursor: pointer;/);
+  assert.doesNotMatch(styles, /\.ws-launcher-toggle:active \{[\s\S]*cursor: grabbing;/);
+  assert.match(styles, /\.ws-launcher-toggle\.ws-dragging \{[\s\S]*cursor: grabbing;/);
+  assert.match(contentSource, /toggle\.classList\.add\("ws-dragging"\)/);
+  assert.match(contentSource, /toggle\.classList\.remove\("ws-dragging"\)/);
+});
+
+test("never carries drag-suppression state into the next pointer gesture", () => {
+  const pointerdown = contentSource.slice(
+    contentSource.indexOf('toggle.addEventListener("pointerdown"'),
+    contentSource.indexOf('toggle.addEventListener("pointermove"'),
+  );
+  assert.match(pointerdown, /launcherSuppressClick = false;/);
+});
+
+test("persists free-drag placement as a clamped pixel offset instead of snapping to a preset", () => {
+  const finishDrag = contentSource.slice(
+    contentSource.indexOf("const finishDrag = "),
+    contentSource.indexOf("toggle.addEventListener(\"pointerup\""),
+  );
+  assert.match(
+    finishDrag,
+    /void setLauncherPosition\(\{[\s\S]*top: clampLauncherTop\(rect\.top, window\.innerHeight\)/,
+  );
+  assert.doesNotMatch(finishDrag, /resolveLauncherPreset/);
+  assert.match(
+    contentSource,
+    /const top =[\s\S]*typeof launcherPosition\.top === "number"[\s\S]*clampLauncherTop\(launcherPosition\.top, window\.innerHeight\)[\s\S]*getLauncherTop\(launcherPosition\.preset, window\.innerHeight\)/,
+  );
+});
+
+test("re-checks for a duplicate fab immediately before inserting a new one", () => {
+  const injection = contentSource.slice(
+    contentSource.indexOf("async function injectUI"),
+    contentSource.indexOf("function setupLauncherInteraction"),
+  );
+  const firstRemove = injection.indexOf(
+    'document.getElementById("convolens-fab")?.remove();',
+  );
+  const secondRemove = injection.indexOf(
+    'document.getElementById("convolens-fab")?.remove();',
+    firstRemove + 1,
+  );
+  const append = injection.indexOf("document.body.appendChild(fab);");
+  assert.ok(firstRemove !== -1 && secondRemove !== -1);
+  assert.ok(firstRemove < secondRemove);
+  assert.ok(secondRemove < append);
 });
 
 test("keeps operation, migration, and accessibility state inside the panel", () => {

@@ -61,10 +61,11 @@ import {
 } from "./dom-selectors";
 import {
   DEFAULT_LAUNCHER_POSITION,
+  clampLauncherTop,
   getLauncherTop,
   normalizeLauncherPosition,
   resolveLauncherEdge,
-  resolveLauncherPreset,
+  resolveLauncherPanelAnchor,
   type LauncherPosition,
   type LauncherPreset,
 } from "./launcher-position";
@@ -493,6 +494,11 @@ async function injectUI(): Promise<void> {
     </button>
   `;
 
+  // Re-check immediately before inserting: the storage read above is an
+  // await gap another concurrent injectUI() call (e.g. the popup's
+  // self-heal re-injection) could have run through, leaving its own fab
+  // behind the one removed at function entry.
+  document.getElementById("convolens-fab")?.remove();
   document.body.appendChild(fab);
   applyLauncherPosition();
   setupLauncherInteraction();
@@ -585,6 +591,10 @@ function setupLauncherInteraction(): void {
     | undefined;
   toggle.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
+    // A prior gesture's pointerup may not have been followed by a `click`
+    // (the click that normally resets this flag) — never start a new
+    // gesture carrying stale suppression state from the last one.
+    launcherSuppressClick = false;
     drag = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -601,13 +611,11 @@ function setupLauncherInteraction(): void {
     );
     if (moved < 5 && !launcherSuppressClick) return;
     launcherSuppressClick = true;
+    toggle.classList.add("ws-dragging");
     setLauncherExpanded(false);
-    const top = Math.max(
-      12,
-      Math.min(
-        window.innerHeight - 56,
-        drag.startTop + event.clientY - drag.startY,
-      ),
+    const top = clampLauncherTop(
+      drag.startTop + event.clientY - drag.startY,
+      window.innerHeight,
     );
     fab.style.top = `${top}px`;
     fab.classList.toggle("ws-edge-left", event.clientX < window.innerWidth / 2);
@@ -621,6 +629,7 @@ function setupLauncherInteraction(): void {
     if (toggle.hasPointerCapture(event.pointerId)) {
       toggle.releasePointerCapture(event.pointerId);
     }
+    toggle.classList.remove("ws-dragging");
     if (cancelled) {
       drag = undefined;
       launcherSuppressClick = false;
@@ -630,11 +639,9 @@ function setupLauncherInteraction(): void {
     if (launcherSuppressClick) {
       const rect = fab.getBoundingClientRect();
       void setLauncherPosition({
+        ...launcherPosition,
         edge: resolveLauncherEdge(event.clientX, window.innerWidth),
-        preset: resolveLauncherPreset(
-          rect.top + rect.height / 2,
-          window.innerHeight,
-        ),
+        top: clampLauncherTop(rect.top, window.innerHeight),
       });
     }
     drag = undefined;
@@ -649,6 +656,7 @@ function setupLauncherInteraction(): void {
         void setLauncherPosition({
           ...launcherPosition,
           preset: button.dataset.launcherPreset as LauncherPreset,
+          top: undefined,
         });
       });
     });
@@ -695,14 +703,23 @@ function applyLauncherPosition(): void {
   if (!fab) return;
   fab.classList.toggle("ws-edge-left", launcherPosition.edge === "left");
   fab.classList.toggle("ws-edge-right", launcherPosition.edge === "right");
-  fab.dataset.preset = launcherPosition.preset;
-  fab.style.top = `${getLauncherTop(launcherPosition.preset, window.innerHeight)}px`;
+  const top =
+    typeof launcherPosition.top === "number"
+      ? clampLauncherTop(launcherPosition.top, window.innerHeight)
+      : getLauncherTop(launcherPosition.preset, window.innerHeight);
+  // Derived from the actual position, not the (possibly stale after a
+  // free-drag) preset label, so the panel never renders off-screen.
+  fab.dataset.preset = resolveLauncherPanelAnchor(top, window.innerHeight);
+  fab.style.top = `${top}px`;
   fab
     .querySelectorAll<HTMLButtonElement>("[data-launcher-preset]")
     .forEach((button) => {
       button.setAttribute(
         "aria-pressed",
-        String(button.dataset.launcherPreset === launcherPosition.preset),
+        String(
+          launcherPosition.top === undefined &&
+            button.dataset.launcherPreset === launcherPosition.preset,
+        ),
       );
     });
   fab

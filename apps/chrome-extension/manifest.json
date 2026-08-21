@@ -44,6 +44,11 @@
       "js": ["dist/content.js"],
       "css": ["dist/content.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://convolens.neuralliquid.ai/*"],
+      "js": ["dist/session-bridge.js"],
+      "run_at": "document_idle"
     }
   ],
 

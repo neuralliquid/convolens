@@ -25,6 +25,14 @@ await Promise.all([
     target: "chrome111",
   }),
   build({
+    entryPoints: ["./src/session-bridge.ts"],
+    bundle: true,
+    outfile: "./dist/session-bridge.js",
+    format: "iife",
+    platform: "browser",
+    target: "chrome111",
+  }),
+  build({
     entryPoints: ["./src/background.ts"],
     bundle: true,
     outfile: "./dist/background.js",
