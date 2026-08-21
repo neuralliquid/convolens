@@ -31,6 +31,17 @@ variable "projname" {
   }
 }
 
+variable "global_name_suffix" {
+  type        = string
+  description = "Optional lowercase suffix for globally unique resources during an isolated blue-green deployment. Empty preserves the live Mystira names."
+  default     = ""
+
+  validation {
+    condition     = var.global_name_suffix == "" || can(regex("^[a-z0-9]{1,6}$", var.global_name_suffix))
+    error_message = "global_name_suffix must be empty or 1-6 lowercase alphanumeric characters."
+  }
+}
+
 variable "location" {
   type        = string
   description = "Primary Azure region for production resources."
@@ -79,6 +90,24 @@ variable "sluice_api_key" {
   EOT
   sensitive   = true
   default     = ""
+}
+
+variable "enable_sluice" {
+  type        = bool
+  description = "Enable Sluice using an out-of-band Key Vault secret even when Terraform is not given the secret value."
+  default     = false
+}
+
+variable "manage_runtime_secrets_with_terraform" {
+  type        = bool
+  description = "Legacy compatibility switch. New targets must keep this false so API JWT and Sluice values never enter Terraform state."
+  default     = true
+}
+
+variable "sluice_api_key_secret_name" {
+  type        = string
+  description = "Key Vault secret name for the restricted ConvoLens Sluice virtual key."
+  default     = "sluice-api-key"
 }
 
 variable "sluice_model" {
@@ -149,13 +178,26 @@ variable "api_target_port" {
 
 variable "api_jwt_secret" {
   type        = string
-  description = "JWT signing secret for the production API."
+  description = "Legacy Terraform-managed JWT signing secret. New targets preload the secret out of band and leave this empty."
   sensitive   = true
+  default     = ""
 
   validation {
-    condition     = length(var.api_jwt_secret) >= 32
-    error_message = "api_jwt_secret must be at least 32 characters."
+    condition     = !var.manage_runtime_secrets_with_terraform || length(var.api_jwt_secret) >= 32
+    error_message = "api_jwt_secret must be at least 32 characters when Terraform manages runtime secrets."
   }
+}
+
+variable "api_jwt_secret_name" {
+  type        = string
+  description = "Key Vault secret name for the API JWT signing secret."
+  default     = "api-jwt-secret"
+}
+
+variable "deployment_principal_object_id" {
+  type        = string
+  description = "Optional object ID of the GitHub OIDC deployment principal. When set, grants permanent read access to deployment-managed Key Vault secrets."
+  default     = ""
 }
 
 variable "frontend_runtime_stack" {

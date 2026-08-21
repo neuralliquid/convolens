@@ -1,12 +1,174 @@
-# Convolens Mystira Azure Go-Live Plan
+# ConvoLens Azure Go-Live Plan
 
-Status: Validated — durable intake deployment pending
+Status: Approved for preparation — validation findings remain open
 Recipe: Terraform
 Date: 2026-07-16
-Target subscription: bb4e3882-2079-4bab-8974-611bc0b8bb58
-Target tenant: 9530cd32-9e33-47f0-9247-ed964730b580
-Target region: southafricanorth wherever the selected Azure service supports it; use the nearest approved fallback only when a service is unavailable there
+Target subscription: neuralliquid-sub (5a95ddee-dd63-441a-8306-c8b0803dcdd4)
+Target tenant: 5384ef74-e517-4b22-9472-df990f61e8b5
+Target region: southafricanorth (approved for the isolated blue-green target)
 Target hostname: convolens.neuralliquid.ai
+
+## 2026-08-21 target-correction addendum
+
+This addendum supersedes the subscription and tenant fields in the historical plan below. The
+older validation and deployment proof remains evidence for the currently live Mystira-hosted
+stack only; it does not authorize or validate a deployment into `neuralliquid-sub`.
+
+### Corrected objective and mode
+
+- Mode: MODIFY an existing production Azure application by moving its web/API/storage/telemetry
+  deployment target to `neuralliquid-sub`.
+- Classification: production, small scale, cost-optimized within the existing USD 75 monthly
+  resource-group budget.
+- Data constraints: WhatsApp exports and transcripts remain sensitive; current retention,
+  deletion, private-storage, managed-identity, and no-content-telemetry controls remain mandatory.
+- Voice-note activation remains fail-closed until xtox accepts a legitimate ConvoLens token,
+  verifies `retain=false`, and an authentic configured-hostname request reaches Sluice/Foundry.
+
+### Authoritative current-state evidence
+
+- Azure confirms `5a95ddee-dd63-441a-8306-c8b0803dcdd4` is enabled as
+  `neuralliquid-sub` in tenant `5384ef74-e517-4b22-9472-df990f61e8b5`.
+- No ConvoLens resource group or planned application resource currently exists in that
+  subscription.
+- The `neuralliquid.ai` Azure DNS zone is already owned there in `nl-global-shared-rg`.
+- `convolens.neuralliquid.ai` currently points to
+  `nl-prod-convolens-web.azurewebsites.net`, the live Mystira-hosted web app.
+- The existing GitHub Production environment still targets subscription
+  `bb4e3882-2079-4bab-8974-611bc0b8bb58`, tenant
+  `9530cd32-9e33-47f0-9247-ed964730b580`, and client
+  `8f57a349-eb88-40fd-81eb-1065f84e668b`. Dispatching it unchanged would deploy to the wrong
+  subscription.
+- The live `nl-prod-shared-pg` PostgreSQL 16 server remains in the Mystira subscription. It is
+  ready in South Africa North, permits Azure-service traffic, and its scoped ConvoLens password
+  exists in the old ConvoLens Key Vault. The first blue-green target can reuse this source of
+  truth without a data copy, but the secret must be transferred directly between vaults without
+  printing or persisting it.
+- Existing globally scoped storage and ACR names are unavailable because the live stack owns them.
+  Verified available blue-green names are `nltfstateconvolensnl`,
+  `nlprodconvolensnlst`, `nlprodconvolensnlacr`, and
+  `nl-prod-convolens-nl-kv`. The proposed web app name is
+  `nl-prod-convolens-web-nl`.
+- South Africa North is advertised for Container Apps managed environments and Linux App Service
+  B1 in this subscription.
+- At 2026-08-21T08:10Z, `litellm.sluice.phoenixvc.tech` resolved to the new South Africa North
+  Sluice Container App and returned HTTP 401 over HTTPS without credentials. This proves the
+  production DNS, TLS, and unauthenticated routing boundary now reach the new stack; it does not
+  prove an authenticated Whisper request.
+- xtox PR #22 merged as `d9147c9f5b07d4a47a99ab999606da0bc334df96`, and exact post-merge
+  deployment run `32465908392` succeeded. `api.xtox.celladoresystems.com` now completes TLS and an
+  unauthenticated `POST /api/transcribe-audio?retain=false` returns 401, proving the real hostname
+  routes to the fail-closed auth boundary. PR #23 is reconciling the managed-certificate binding
+  in Terraform state. Authenticated Sluice/Foundry execution and the route-scoped ConvoLens token
+  contract remain independent activation gates.
+
+### Proposed blue-green architecture
+
+Keep subscription-scoped names such as `nl-prod-convolens-rg`, the Container Apps environment,
+and the API app name. Add a configurable global-name suffix only to resources whose public/global
+names collide: Terraform state storage, application storage, ACR, Key Vault, and App Service.
+
+The deployment sequence is:
+
+1. Register required resource providers and create a least-privilege GitHub OIDC deployment
+   identity in tenant `5384ef74-e517-4b22-9472-df990f61e8b5`.
+2. Add a separate GitHub environment for the neuralliquid target rather than overwriting the live
+   Mystira Production variables.
+3. Use a distinct Terraform backend and state key in `nltfstateconvolensnl`; never point the new
+   subscription at the old state.
+4. Provision the new stack without changing DNS or deleting the live stack.
+5. Transfer required secrets directly into the new Key Vault, including the scoped shared
+   PostgreSQL credential, without exposing values in logs, files, Terraform state, or chat.
+6. Deploy merge commit `e85b20a2e2fb9be16958a26bf0d77061232567a9` with voice
+   transcription disabled.
+7. Verify build identity, migrations, API readiness, web auth configuration, protected-route
+   failure behavior, storage access, and telemetry on Azure-assigned hostnames.
+8. Bind and validate the canonical hostname on the new web app, then perform an explicit DNS
+   cutover with rollback to the old CNAME retained.
+9. Keep the old stack intact until authentic acceptance and an agreed observation period complete.
+   Old resource deletion is separate destructive work and is not authorized by this plan.
+
+### Resource inventory and provisioning-limit status
+
+Current South Africa North counts in `neuralliquid-sub` are zero for every planned application
+resource type.
+
+| Resource type                                  |   Planned |   Total after | Current limit/evidence                                                          | Status                                  |
+| ---------------------------------------------- | --------: | ------------: | ------------------------------------------------------------------------------- | --------------------------------------- |
+| Microsoft.App/managedEnvironments              |         1 |             1 | Quota API limit is 20 in South Africa North                                     | Supported                               |
+| Microsoft.App/containerApps                    |         1 |             1 | Provider registered; managed-environment location and quota verified            | Supported                               |
+| Microsoft.Web/serverFarms (Linux B1)           |         1 |             1 | `az appservice list-locations` includes South Africa North                      | Supported                               |
+| Microsoft.Web/sites                            |         1 |             1 | No existing web apps in-region; collision-free blue-green name required         | Supported pending name check            |
+| Microsoft.Storage/storageAccounts              |         2 |             2 | Zero existing in-region; both proposed global names are available               | Within documented default account limit |
+| Microsoft.ContainerRegistry/registries (Basic) |         1 |             1 | Provider registered; zero existing in-region; proposed global name is available | Supported                               |
+| Microsoft.KeyVault/vaults                      |         1 |             1 | Zero existing in-region; proposed global name is available                      | Within documented service limit         |
+| Microsoft.OperationalInsights/workspaces       |         1 |             1 | Zero existing in-region                                                         | Within documented service limit         |
+| Microsoft.Insights/components                  |         1 |             1 | Zero existing in-region                                                         | Within documented service limit         |
+| Microsoft.Authorization/roleAssignments        |         7 |             7 | Six Terraform-managed application assignments plus one persistent backend assignment | Supported                       |
+| Microsoft.Network/dnszones record sets         | 2 changes | Existing zone | Zone is already in target subscription                                          | Cutover step only                       |
+| Microsoft.DBforPostgreSQL/flexibleServers      |         0 |             0 | Reuse existing scoped database in Mystira subscription                          | No new quota required                   |
+| Microsoft.Cache/Redis                          |         0 |             0 | Disabled                                                                        | Not applicable                          |
+
+`Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`, `Microsoft.Storage`,
+`Microsoft.OperationalInsights`, and `Microsoft.Quota` are registered in the target subscription.
+The final no-refresh target plan contains 26 creates, zero changes, and zero destroys, including
+six Terraform-managed application assignments: four for the API identity, one for the frontend
+identity, and one permanent read-only deployment-principal assignment. Bootstrap separately creates
+one persistent `Storage Blob Data Contributor` assignment at the NeuralLiquid Terraform-state storage
+account scope. It is not Terraform-managed because it is required before backend initialization. The corresponding read-only
+legacy-state plan recognizes the explicit address moves and contains zero destroys (its three
+changes are expected placeholder/runtime-input differences in the validation command). That
+is configuration evidence only; it does not authorize apply or prove runtime readiness.
+
+### Open validation findings before deployment
+
+1. The new target uses a separate bootstrap-only workflow for state storage plus Key Vault/RBAC.
+   After that reviewed bootstrap, an authorized human secret-transfer operator must copy these five
+   values directly from the existing Mystira-hosted ConvoLens Key Vault into the target vault,
+   without printing or persisting their values: `api-jwt-secret` (API signing secret),
+   `sluice-api-key` (restricted ConvoLens virtual key), `nextauth-secret` (web session secret),
+   `mystira-identity-client-secret` (seeded OIDC client secret), and
+   `shared-pg-convolens-password` (scoped shared PostgreSQL credential). GitHub receives only
+   permanent `Key Vault Secrets User` access; the deploy workflow verifies all five names and enabled
+   states but cannot create or change their values.
+2. A user-assigned API identity and `AcrPull` replace first-run system-identity and ACR-admin
+   credential cycles for the blue-green target. A one-time five-minute propagation barrier, keyed
+   to the four API role-assignment IDs, prevents Container App creation from racing newly-created
+   Key Vault, storage, queue, and ACR permissions. Exact target and legacy-state plans must still
+   be captured in CI before deployment.
+3. Authentic sign-in cannot be proved on the Azure-assigned hostname while `NEXTAUTH_URL`, CORS,
+   and the Identity redirect URI remain canonical-host-only. Before cutover, either authorize a
+   temporary validation hostname and matching Identity redirect URI, or treat authenticated
+   validation as a cutover gate with an immediate rollback path. Azure health alone is not user
+   acceptance.
+4. The production dispatch must be restricted to `refs/heads/main`, and both protected GitHub
+   environments must enforce deployment-branch policy, before either can receive OIDC and secrets.
+
+The `Production-NeuralLiquid` GitHub environment now exists with a custom `main`-only branch
+policy. Entra application client `bad4e43a-1835-45e4-b635-46edb722f4b0` has an environment-scoped
+federated credential for `repo:neuralliquid/convolens:environment:Production-NeuralLiquid`; its
+service principal is intentionally not yet granted Azure deployment roles, so neither bootstrap
+nor deploy can run until reviewed least-privilege assignments are approved.
+
+The bootstrap plan grants the deployment principal permanent `Key Vault Secrets User` access only.
+It never grants GitHub secret-write access. The NeuralLiquid API receives its Terraform-produced App
+Insights connection string as a Container Apps secret value, consistent with the web app's existing
+direct configuration, while the five externally owned runtime secrets remain Key Vault references.
+Cancellation, timeout, or failed apply therefore cannot strand a temporary Secrets Officer role.
+A missing permanent read assignment is repaired by rerunning the reviewed bootstrap workflow.
+
+### Approval checkpoint for the corrected target
+
+Approval of this addendum authorizes preparation only: provider registration, isolated
+Terraform/workflow changes, OIDC identity setup for the new tenant, validation, and a reviewed
+blue-green plan. It does not authorize DNS cutover, removal of the live Mystira stack, secret
+disclosure, voice-transcription activation, or fabricated user acceptance.
+
+Approval received in-thread on 2026-08-21 when the user directed the agent to address the pending
+`neuralliquid-sub` deployment-plan approval together with the xtox production blockers. The
+approved context is subscription `5a95ddee-dd63-441a-8306-c8b0803dcdd4`, location
+`southafricanorth`, and temporary reuse of the existing scoped PostgreSQL database during the
+blue-green deployment. The exclusions above remain in force.
 
 ## 1. Objective
 
