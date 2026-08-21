@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
+import { MessageTranscript } from '../../db/entities/MessageTranscript';
 import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
 import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import {
@@ -86,7 +87,13 @@ describe('ConversationIntakeService', () => {
       type: 'sqlite',
       database: ':memory:',
       synchronize: true,
-      entities: [ConversationIntake, ConversationMessage, TicketCandidate, BatonPublishAttempt],
+      entities: [
+        ConversationIntake,
+        ConversationMessage,
+        MessageTranscript,
+        TicketCandidate,
+        BatonPublishAttempt,
+      ],
     });
     await dataSource.initialize();
     service = new ConversationIntakeService(dataSource);
@@ -1162,6 +1169,89 @@ describe('ConversationIntakeService', () => {
     expect(createConversationCompatibilityHash(current)).toBe(
       createConversationCompatibilityHash(legacy)
     );
+  });
+
+  it('upgrades a previously imported attachment marker without creating a duplicate intake', async () => {
+    const legacy = {
+      ...baseInput,
+      sourceKind: 'upload' as const,
+      messages: baseInput.messages.map((message, index) =>
+        index === 0
+          ? {
+              ...message,
+              content: '<attached: voice-note.opus>',
+              isMedia: false,
+              mediaType: undefined,
+            }
+          : { ...message }
+      ),
+    };
+    const first = await service.save(legacy);
+    const corrected = {
+      ...legacy,
+      messages: legacy.messages.map((message, index) =>
+        index === 0 ? { ...message, isMedia: true, mediaType: 'audio' as const } : message
+      ),
+    };
+
+    const second = await service.save(corrected);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.messages[0]).toMatchObject({ isMedia: true, mediaType: 'audio' });
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+  });
+
+  it('serializes concurrent legacy and classified attachment imports', async () => {
+    const legacy = {
+      ...baseInput,
+      sourceKind: 'upload' as const,
+      messages: baseInput.messages.map((message, index) =>
+        index === 0
+          ? {
+              ...message,
+              content: '<attached: voice-note.opus>',
+              isMedia: false,
+              mediaType: undefined,
+            }
+          : { ...message }
+      ),
+    };
+    const corrected = {
+      ...legacy,
+      messages: legacy.messages.map((message, index) =>
+        index === 0 ? { ...message, isMedia: true, mediaType: 'audio' as const } : message
+      ),
+    };
+
+    const results = await Promise.all([service.save(legacy), service.save(corrected)]);
+
+    expect(new Set(results.map((result) => result.conversation.id)).size).toBe(1);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+  });
+
+  it('keeps attachment corrections from distinct stable conversations separate', async () => {
+    const legacy = stableInput('whatsapp:120363111111111@g.us');
+    legacy.messages[0] = {
+      ...legacy.messages[0],
+      content: '<attached: voice-note.opus>',
+      isMedia: false,
+      mediaType: undefined,
+    };
+    const first = await service.save(legacy);
+    const corrected = stableInput('whatsapp:120363222222222@g.us');
+    corrected.messages[0] = {
+      ...corrected.messages[0],
+      content: '<attached: voice-note.opus>',
+      isMedia: true,
+      mediaType: 'audio',
+    };
+
+    const second = await service.save(corrected);
+
+    expect(second.duplicate).toBe(false);
+    expect(second.conversation.id).not.toBe(first.conversation.id);
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(2);
   });
 
   it('keeps current image and video evidence distinct when the media has a caption', () => {

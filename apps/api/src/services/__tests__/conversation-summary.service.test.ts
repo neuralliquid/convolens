@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
+import { MessageTranscript } from '../../db/entities/MessageTranscript';
 import { ConversationSummary } from '../../db/entities/ConversationSummary';
 import {
   ConversationSummaryService,
@@ -48,7 +49,7 @@ describe('ConversationSummaryService', () => {
       type: 'sqlite',
       database: ':memory:',
       synchronize: true,
-      entities: [ConversationIntake, ConversationMessage, ConversationSummary],
+      entities: [ConversationIntake, ConversationMessage, MessageTranscript, ConversationSummary],
     });
     await dataSource.initialize();
     const intake = await dataSource.getRepository(ConversationIntake).save({

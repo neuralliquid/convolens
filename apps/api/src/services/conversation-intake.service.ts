@@ -215,30 +215,54 @@ export function createConversationContentHashV2(input: ConversationIntakeInput):
 export function createConversationCompatibilityHash(
   input: Pick<ConversationIntakeInput, 'messages'>
 ): string {
-  return createCompatibilityHash(input, false);
+  return createCompatibilityHash(input, false, false);
 }
 
 function createLegacyVisualCompatibilityHash(
   input: Pick<ConversationIntakeInput, 'messages'>
 ): string {
-  return createCompatibilityHash(input, true);
+  return createCompatibilityHash(input, true, false);
 }
 
 function createCompatibilityHash(
   input: Pick<ConversationIntakeInput, 'messages'>,
-  mapVideoToLegacyImage: boolean
+  mapVideoToLegacyImage: boolean,
+  mapNamedAttachmentsToUnclassified: boolean
 ): string {
-  const canonical = input.messages.map((message) => ({
-    content: normalizeCompatibilityContent(message),
-    sentAt: message.sentAt.toISOString(),
-    isOutgoing: Boolean(message.isOutgoing),
-    isMedia: Boolean(message.isMedia),
-    mediaType:
-      mapVideoToLegacyImage && message.isMedia && message.mediaType === 'video'
-        ? 'image'
-        : message.mediaType || null,
-  }));
+  const canonical = input.messages.map((message) => {
+    const mapToUnclassified =
+      mapNamedAttachmentsToUnclassified && isNamedExportAttachment(message.content);
+    return {
+      content: normalizeCompatibilityContent(message),
+      sentAt: message.sentAt.toISOString(),
+      isOutgoing: Boolean(message.isOutgoing),
+      isMedia: mapToUnclassified ? false : Boolean(message.isMedia),
+      mediaType: mapToUnclassified
+        ? null
+        : mapVideoToLegacyImage && message.isMedia && message.mediaType === 'video'
+          ? 'image'
+          : message.mediaType || null,
+    };
+  });
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function isNamedExportAttachment(content: string): boolean {
+  const normalized = content.trim();
+  return (
+    /^<attached:\s*[^<>]+>$/i.test(normalized) ||
+    /^.+\.[a-z0-9]{2,8}\s+\(file attached\)$/i.test(normalized)
+  );
+}
+
+function createPreAttachmentCompatibilityHash(
+  input: Pick<ConversationIntakeInput, 'messages'>
+): string {
+  return createCompatibilityHash(input, false, true);
+}
+
+function createCompatibilityLockHash(input: Pick<ConversationIntakeInput, 'messages'>): string {
+  return createCompatibilityHash(input, true, true);
 }
 
 function normalizeCompatibilityContent(message: ConversationMessageInput): string {
@@ -287,6 +311,24 @@ function hasConflictingStableEvidence(
         !participantsShareStableEvidence(existingParticipant, incomingParticipant)
     );
   });
+}
+
+function hasMatchingOrUnavailableStableSourceIdentity(
+  candidate: ConversationIntake,
+  input: ConversationIntakeInput
+): boolean {
+  if (
+    !candidate.sourceConversationIdentityStable ||
+    !candidate.sourceConversationId ||
+    !input.sourceConversationIdentityStable ||
+    !input.sourceConversationId
+  ) {
+    return true;
+  }
+  return (
+    normalizeStableSourceConversationId(candidate.sourceConversationId) ===
+    normalizeStableSourceConversationId(input.sourceConversationId)
+  );
 }
 
 function findParticipantEvidenceMatch(
@@ -344,19 +386,15 @@ function mergeParticipantEvidence(
   return merged;
 }
 
-function applyCorrectedVisualMediaEvidence(
+function applyCorrectedMediaEvidence(
   conversation: ConversationIntake,
   input: ConversationIntakeInput
 ): ConversationMessage[] {
   return conversation.messages.filter((message, position) => {
     const incoming = input.messages[position];
-    if (
-      message.isMedia &&
-      incoming?.isMedia &&
-      message.mediaType === 'image' &&
-      incoming.mediaType === 'video'
-    ) {
-      message.mediaType = 'video';
+    if (incoming?.isMedia && (!message.isMedia || message.mediaType !== incoming.mediaType)) {
+      message.isMedia = true;
+      message.mediaType = incoming.mediaType;
       return true;
     }
     return false;
@@ -424,6 +462,23 @@ function isLegacyVisualCorrectionCandidate(
       input.messages[position]?.isMedia &&
       input.messages[position]?.mediaType === 'video'
   );
+}
+
+function isPreAttachmentCorrectionCandidate(
+  candidate: ConversationIntake,
+  input: ConversationIntakeInput,
+  preAttachmentCompatibilityHash: string
+): boolean {
+  if (candidate.compatibilityHash !== preAttachmentCompatibilityHash) return false;
+  return candidate.messages.some((message, position) => {
+    const incoming = input.messages[position];
+    return (
+      !message.isMedia &&
+      Boolean(incoming?.isMedia) &&
+      isNamedExportAttachment(message.content) &&
+      message.content === incoming?.content
+    );
+  });
 }
 
 function isContentHashUniqueConstraintError(error: unknown): boolean {
@@ -730,7 +785,7 @@ export class ConversationIntakeService {
       conversation.sourceConversationId = input.sourceConversationId;
     }
     const correctedMessages = options.applyMediaCorrections
-      ? applyCorrectedVisualMediaEvidence(conversation, input)
+      ? applyCorrectedMediaEvidence(conversation, input)
       : [];
     if (correctedMessages.length > 0) {
       conversation.compatibilityHash = compatibilityHash;
@@ -754,7 +809,10 @@ export class ConversationIntakeService {
         correctedMessages.map((message) =>
           repositoryProvider
             .getRepository(ConversationMessage)
-            .update({ id: message.id, intakeId: conversation.id }, { mediaType: 'video' })
+            .update(
+              { id: message.id, intakeId: conversation.id },
+              { isMedia: message.isMedia, mediaType: message.mediaType }
+            )
         )
       );
     }
@@ -779,6 +837,8 @@ export class ConversationIntakeService {
     const contentHash = usesStableV2 ? createConversationContentHashV2(input) : legacyContentHash;
     const compatibilityHash = createConversationCompatibilityHash(input);
     const legacyVisualCompatibilityHash = createLegacyVisualCompatibilityHash(input);
+    const preAttachmentCompatibilityHash = createPreAttachmentCompatibilityHash(input);
+    const compatibilityLockHash = createCompatibilityLockHash(input);
     const intakeRepository = this.dataSource.getRepository(ConversationIntake);
     const exactLookupOptions = {
       relations: { messages: true },
@@ -816,7 +876,7 @@ export class ConversationIntakeService {
     const compatibilityLockKey = [
       input.userId,
       input.sourcePlatform.toLowerCase(),
-      legacyVisualCompatibilityHash,
+      compatibilityLockHash,
     ]
       .map((value) => normalizeHashValue(value))
       .join('\u0000');
@@ -865,7 +925,11 @@ export class ConversationIntakeService {
             where: {
               userId: input.userId,
               sourcePlatform: input.sourcePlatform,
-              compatibilityHash: In([compatibilityHash, legacyVisualCompatibilityHash]),
+              compatibilityHash: In([
+                compatibilityHash,
+                legacyVisualCompatibilityHash,
+                preAttachmentCompatibilityHash,
+              ]),
             },
             relations: { messages: true },
             order: { messages: { position: 'ASC' } },
@@ -876,7 +940,8 @@ export class ConversationIntakeService {
           ].filter(
             (candidate, index, candidates) =>
               (candidate.compatibilityHash === compatibilityHash ||
-                candidate.compatibilityHash === legacyVisualCompatibilityHash) &&
+                candidate.compatibilityHash === legacyVisualCompatibilityHash ||
+                candidate.compatibilityHash === preAttachmentCompatibilityHash) &&
               candidates.findIndex((other) => other.id === candidate.id) === index
           );
           const lockedSameStableConversation = usesStableV2
@@ -888,6 +953,24 @@ export class ConversationIntakeService {
                     input.sourceConversationId
               )
             : [];
+          const lockedPreAttachmentCandidates = lockedSemanticCandidates.filter((candidate) =>
+            isPreAttachmentCorrectionCandidate(candidate, input, preAttachmentCompatibilityHash)
+          );
+          if (
+            lockedPreAttachmentCandidates.length === 1 &&
+            !hasDeferredCompatibilityCandidates &&
+            hasMatchingOrUnavailableStableSourceIdentity(lockedPreAttachmentCandidates[0], input) &&
+            !hasConflictingStableEvidence(lockedPreAttachmentCandidates[0], input)
+          ) {
+            return this.updateDuplicate(
+              lockedPreAttachmentCandidates[0],
+              input,
+              compatibilityHash,
+              contentHash,
+              { applyMediaCorrections: true },
+              manager
+            );
+          }
           const lockedCompatibleCandidates = lockedSameStableConversation.filter(
             (candidate) =>
               !hasConflictingStableEvidence(candidate, input) &&
@@ -1021,7 +1104,7 @@ export class ConversationIntakeService {
   async getForUser(userId: string, id: string): Promise<ConversationIntake | null> {
     return this.dataSource.getRepository(ConversationIntake).findOne({
       where: { id, userId },
-      relations: { messages: true },
+      relations: { messages: { transcript: true } },
       order: { messages: { position: 'ASC' } },
     });
   }

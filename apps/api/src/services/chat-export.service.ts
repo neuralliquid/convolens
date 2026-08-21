@@ -7,6 +7,8 @@ export interface ChatMessage {
   sender: string;
   content: string;
   isMedia: boolean;
+  mediaType?: 'image' | 'video' | 'audio' | 'document' | 'sticker';
+  mediaFileName?: string;
   mediaUrl?: string;
 }
 
@@ -31,6 +33,29 @@ const SYSTEM_MESSAGE_REGEX =
 
 // Media indicator in WhatsApp exports
 const MEDIA_INDICATOR = '<Media omitted>';
+const ATTACHED_MEDIA_INDICATOR = /^<attached:\s*([^<>]+)>$/i;
+const FILE_ATTACHED_INDICATOR = /^(.+\.[a-z0-9]{2,8})\s+\(file attached\)$/i;
+
+type ChatMediaType = NonNullable<ChatMessage['mediaType']>;
+
+function classifyAttachedMedia(fileName: string): ChatMediaType {
+  const extension = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (!extension) return 'document';
+  if (['opus', 'ogg', 'mp3', 'wav', 'm4a', 'aac', 'flac'].includes(extension)) return 'audio';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(extension)) return 'image';
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(extension)) return 'video';
+  return 'document';
+}
+
+function attachedMedia(content: string): {
+  fileName: string;
+  mediaType: ChatMediaType;
+} | null {
+  const match = ATTACHED_MEDIA_INDICATOR.exec(content) || FILE_ATTACHED_INDICATOR.exec(content);
+  const fileName = match?.[1]?.trim();
+  if (!fileName) return null;
+  return { fileName, mediaType: classifyAttachedMedia(fileName) };
+}
 
 /**
  * Parses a WhatsApp chat export file content into structured data
@@ -102,7 +127,8 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
         }
 
         const trimmedContent = content.trim();
-        const isMedia = trimmedContent === MEDIA_INDICATOR;
+        const attachment = attachedMedia(trimmedContent);
+        const isMedia = trimmedContent === MEDIA_INDICATOR || Boolean(attachment);
 
         // Add sender to participants if it's not a system message
         if (!isSystemMessage) {
@@ -114,8 +140,10 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
           id: randomUUID(),
           timestamp,
           sender: isSystemMessage ? 'System' : trimmedSender,
-          content: isMedia ? MEDIA_INDICATOR : trimmedContent,
+          content: trimmedContent,
           isMedia,
+          mediaType: attachment?.mediaType,
+          mediaFileName: attachment?.fileName,
           mediaUrl: isMedia ? undefined : undefined,
         });
       } catch (error) {

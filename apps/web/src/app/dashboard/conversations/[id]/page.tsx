@@ -16,6 +16,10 @@ import {
   type CatchUpSummary,
 } from "@/components/conversations/catch-up-summary";
 import { AnnotatedSourceConversation } from "@/components/conversations/annotated-source-conversation";
+import {
+  VoiceNoteTranscriptionPanel,
+  type VoiceNoteTranscript,
+} from "@/components/conversations/voice-note-transcription-panel";
 
 interface ConversationMessage {
   id: string;
@@ -27,6 +31,7 @@ interface ConversationMessage {
   isOutgoing: boolean;
   isMedia: boolean;
   mediaType?: string;
+  transcript?: VoiceNoteTranscript | null;
 }
 
 interface ParticipantEvidence {
@@ -253,6 +258,27 @@ export default function ConversationPage() {
                   ? "Browser capture"
                   : "Chat export",
             }))}
+          />
+          <VoiceNoteTranscriptionPanel
+            conversationId={conversation.id}
+            messages={conversation.messages.filter(
+              (message) =>
+                message.isMedia && message.mediaType?.toLowerCase() === "audio",
+            )}
+            onTranscribed={(messageId, transcript) =>
+              setConversation((current) =>
+                current
+                  ? {
+                      ...current,
+                      messages: current.messages.map((message) =>
+                        message.id === messageId
+                          ? { ...message, transcript }
+                          : message,
+                      ),
+                    }
+                  : current,
+              )
+            }
           />
           <TicketCandidateReview intakeId={conversation.id} />
         </>

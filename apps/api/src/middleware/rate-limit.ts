@@ -52,6 +52,7 @@ class RateLimitStore {
   constructor() {
     // Clean up expired entries every minute
     this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+    this.cleanupInterval.unref();
   }
 
   increment(key: string, windowMs: number): RateLimitEntry {

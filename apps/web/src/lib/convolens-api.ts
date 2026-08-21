@@ -64,9 +64,9 @@ export async function getConvolensApiToken(): Promise<string> {
   return exchangeConvolensApiToken(session || {});
 }
 
-export async function getConvolensPublishTokens(): Promise<{
+async function getConvolensForwardedTokens(): Promise<{
   apiToken: string;
-  batonToken: string;
+  accessToken: string;
 }> {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {
@@ -77,8 +77,24 @@ export async function getConvolensPublishTokens(): Promise<{
   }
   return {
     apiToken: await exchangeConvolensApiToken(session),
-    batonToken: session.accessToken,
+    accessToken: session.accessToken,
   };
+}
+
+export async function getConvolensPublishTokens(): Promise<{
+  apiToken: string;
+  batonToken: string;
+}> {
+  const { apiToken, accessToken } = await getConvolensForwardedTokens();
+  return { apiToken, batonToken: accessToken };
+}
+
+export async function getConvolensTranscriptionTokens(): Promise<{
+  apiToken: string;
+  mystiraToken: string;
+}> {
+  const { apiToken, accessToken } = await getConvolensForwardedTokens();
+  return { apiToken, mystiraToken: accessToken };
 }
 
 export async function getMystiraAccessToken(): Promise<string> {

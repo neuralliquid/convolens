@@ -67,6 +67,33 @@ This is not a valid line
       expect(result.messages[1].isMedia).toBe(false);
     });
 
+    it('classifies iOS attached Opus voice notes without discarding the attachment name', async () => {
+      const chatContent = `
+[08/01/2023, 10:30:00] John Doe: <attached: 00000002-AUDIO-20230108-WA0001.opus>
+      `;
+
+      const result = await parseWhatsAppExport(chatContent);
+
+      expect(result.messages[0]).toMatchObject({
+        content: '<attached: 00000002-AUDIO-20230108-WA0001.opus>',
+        isMedia: true,
+        mediaType: 'audio',
+        mediaFileName: '00000002-AUDIO-20230108-WA0001.opus',
+      });
+    });
+
+    it('classifies the alternate file-attached voice-note marker', async () => {
+      const result = await parseWhatsAppExport(
+        '[08/01/2023, 10:30:00] Jane Smith: PTT-20230108-WA0002.ogg (file attached)'
+      );
+
+      expect(result.messages[0]).toMatchObject({
+        isMedia: true,
+        mediaType: 'audio',
+        mediaFileName: 'PTT-20230108-WA0002.ogg',
+      });
+    });
+
     it('should parse Windows CRLF exports', async () => {
       const chatContent =
         '[25/07/2026, 09:00:00] Hans: First message\r\n' +

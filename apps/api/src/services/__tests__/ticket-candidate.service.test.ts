@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
+import { MessageTranscript } from '../../db/entities/MessageTranscript';
 import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import { ConversationIntakeService } from '../conversation-intake.service';
 import {
@@ -23,7 +24,13 @@ describe('TicketCandidateService', () => {
       type: 'sqlite',
       database: ':memory:',
       synchronize: true,
-      entities: [ConversationIntake, ConversationMessage, TicketCandidate, BatonPublishAttempt],
+      entities: [
+        ConversationIntake,
+        ConversationMessage,
+        MessageTranscript,
+        TicketCandidate,
+        BatonPublishAttempt,
+      ],
     });
     await dataSource.initialize();
   });
