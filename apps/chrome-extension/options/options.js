@@ -102,9 +102,15 @@ function runAction(action) {
 // Initialization
 // =============================================================================
 
+const PACKAGED_VERSION = "1.0.25";
+
 async function init() {
-  // Set version
-  elements.version.textContent = chrome.runtime.getManifest().version;
+  const runtimeVersion = chrome.runtime.getManifest().version;
+  if (runtimeVersion === PACKAGED_VERSION) {
+    elements.version.textContent = runtimeVersion;
+  } else {
+    elements.version.textContent = `${runtimeVersion} — reload ${PACKAGED_VERSION}`;
+  }
 
   // Load and display data
   await loadAuthStatus();

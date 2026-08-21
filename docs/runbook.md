@@ -74,10 +74,15 @@ above.
 The current integration is an operator-assisted Chrome extension path:
 
 1. Build the extension in `apps/chrome-extension`.
-2. Open `chrome://extensions`, enable Developer mode, and choose Load unpacked.
-3. Select the extracted extension ZIP root (the directory containing
-   `manifest.json`) or the local built output according to the extension README.
-4. In ConvoLens, open Dashboard -> Import -> WhatsApp Web and complete the
+2. Open `chrome://extensions`, enable Developer mode, and remove any previous
+   ConvoLens unpacked card.
+3. Choose Load unpacked and select the extracted extension ZIP root (the
+   directory containing `manifest.json`) or the local built output according to
+   the extension README.
+4. Confirm the card shows the current manifest version. If it still shows an
+   older version, click Reload — Chrome keeps the previous unpacked copy until
+   the card is removed or reloaded.
+5. In ConvoLens, open Dashboard -> Import -> WhatsApp Web and complete the
    import flow.
 
 The extension targets the production API and dashboard through

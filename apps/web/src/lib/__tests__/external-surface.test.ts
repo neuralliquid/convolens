@@ -66,6 +66,12 @@ describe("external surface containment", () => {
     expect(read("components/extension/install-instructions.tsx")).toMatch(
       /convolens-extension\.zip/,
     );
+    expect(read("components/extension/install-instructions.tsx")).toMatch(
+      /If ConvoLens is already listed, click/,
+    );
+    expect(read("components/extension/install-instructions.tsx")).toMatch(
+      /Confirm the card shows v\{version\}/,
+    );
   });
 
   it("does not ship the developer theme-test route", () => {

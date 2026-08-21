@@ -20,19 +20,30 @@ export function ExtensionInstallInstructions({
       <div>
         <h3 className="font-medium">{heading}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Download ConvoLens v{version}, extract the ZIP, then load the folder
-          that contains <code>manifest.json</code> as an unpacked Chrome
-          extension. There is no Chrome Web Store listing yet.
+          Download ConvoLens v{version}, extract the ZIP into a new folder, then
+          load that folder as an unpacked Chrome extension. If Chrome already
+          has ConvoLens loaded, remove it first so it does not keep showing an
+          older version. There is no Chrome Web Store listing yet.
         </p>
       </div>
       <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>Download and extract <code>convolens-extension.zip</code>.</li>
+        <li>
+          Download and extract <code>convolens-extension.zip</code> into a new
+          folder. Do not overwrite an older unpacked copy.
+        </li>
         <li>
           Open <code>chrome://extensions</code> and turn on Developer mode.
         </li>
         <li>
+          If ConvoLens is already listed, click <strong>Remove</strong>.
+        </li>
+        <li>
           Choose <strong>Load unpacked</strong> and select the extracted folder
           that contains <code>manifest.json</code>.
+        </li>
+        <li>
+          Confirm the card shows v{version}. If it still shows an older version,
+          click <strong>Reload</strong>.
         </li>
         <li>
           Sign in to ConvoLens, then open WhatsApp Web and send the chat you

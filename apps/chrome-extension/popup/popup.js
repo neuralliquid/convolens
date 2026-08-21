@@ -61,7 +61,15 @@ let activeWhatsAppTabId = null;
 let captureModeChangeGeneration = 0;
 let operationalState = { preferredMode: "loaded" };
 
-extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
+const PACKAGED_VERSION = "1.0.25";
+const runtimeVersion = chrome.runtime.getManifest().version;
+if (runtimeVersion === PACKAGED_VERSION) {
+  extensionVersion.textContent = `v${runtimeVersion}`;
+} else {
+  extensionVersion.textContent = `v${runtimeVersion} — reload ${PACKAGED_VERSION}`;
+  extensionVersion.title =
+    "Chrome is still running an older unpacked copy. Remove it, load the extracted folder, and click Reload.";
+}
 dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
 
 function setActionStatus(message = "", type = "info") {
