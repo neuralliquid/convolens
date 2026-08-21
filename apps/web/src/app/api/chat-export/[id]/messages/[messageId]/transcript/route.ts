@@ -71,6 +71,7 @@ export async function POST(
         },
         body: outgoing,
         cache: "no-store",
+        signal: AbortSignal.timeout(140_000),
       },
     );
     const payload = await response.json().catch(() => ({
@@ -80,6 +81,15 @@ export async function POST(
     }));
     return NextResponse.json(payload, { status: response.status });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "AbortError" || error.name === "TimeoutError")
+    ) {
+      return NextResponse.json(
+        { error: "Voice-note transcription timed out. Please try again." },
+        { status: 504 },
+      );
+    }
     return apiAuthErrorResponse(error);
   }
 }

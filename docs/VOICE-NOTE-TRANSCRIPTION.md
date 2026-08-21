@@ -18,6 +18,8 @@ the matching exported audio file for an audio message and explicitly consent to 
   artifact storage, the database, logs, metrics, or traces.
 - Operational logs contain only bounded error codes. They do not include filenames, audio,
   transcript text, provider response bodies, or bearer tokens.
+- The API applies a per-user transcription limit before reading the upload body. The default is
+  10 requests per hour and can be lowered with `VOICE_NOTE_TRANSCRIPTIONS_PER_HOUR`.
 - The transcript is stored as a sibling `message_transcripts` record. It is deliberately excluded
   from all conversation content hashes and deduplication identity.
 
@@ -48,6 +50,8 @@ All gates are required. A merge or healthy endpoint is not sufficient.
    `XTOX_EPHEMERAL_TRANSCRIPTION_VERIFIED=true` are deployed to ConvoLens only after gates 1-4.
 6. An authenticated ConvoLens user completes the UI flow; deletion removes the transcript from the
    primary ConvoLens database, and evidence contains no conversation content or credentials.
+7. Before scaling the API beyond one replica, replace or complement the process-local limiter with
+   a shared quota control so the paid-provider limit remains global per user.
 
 Until then, the UI can render stored transcript state in development, but the API returns a
 privacy-safe `503` before transmitting audio.

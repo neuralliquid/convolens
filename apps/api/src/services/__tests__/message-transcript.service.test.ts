@@ -113,6 +113,49 @@ describe('MessageTranscriptService', () => {
     );
   });
 
+  it('clears nullable provider metadata when a replacement omits it', async () => {
+    const { intake, message } = await seedMessage();
+    const common = {
+      userId: 'user-1',
+      intakeId: intake.id,
+      messageId: message.id,
+      modelProcessingConsentAt: new Date(),
+    };
+    await service.saveForUser({
+      ...common,
+      text: 'First result',
+      providerTranscriptId: 'provider-1',
+      language: 'en',
+      durationSeconds: 2,
+    });
+
+    const replacement = await service.saveForUser({ ...common, text: 'Replacement' });
+
+    expect(replacement).toMatchObject({
+      text: 'Replacement',
+      providerTranscriptId: null,
+      language: null,
+      durationMs: null,
+    });
+  });
+
+  it('rejects empty and oversized transcript results', async () => {
+    const { intake, message } = await seedMessage();
+    const common = {
+      userId: 'user-1',
+      intakeId: intake.id,
+      messageId: message.id,
+      modelProcessingConsentAt: new Date(),
+    };
+
+    await expect(service.saveForUser({ ...common, text: '   ' })).rejects.toMatchObject({
+      code: 'TRANSCRIPT_EMPTY',
+    });
+    await expect(
+      service.saveForUser({ ...common, text: 'x'.repeat(1_000_001) })
+    ).rejects.toMatchObject({ code: 'TRANSCRIPT_TOO_LARGE' });
+  });
+
   it('rejects cross-owner and non-audio writes', async () => {
     const audio = await seedMessage();
     await expect(

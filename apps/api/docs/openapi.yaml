@@ -394,7 +394,7 @@ paths:
                   enum: ['true']
                 language:
                   type: string
-                  description: Optional ISO-639-1 language hint.
+                  description: Optional two-letter ISO-639-1 language hint.
       responses:
         '201':
           description: Transcript generated and attached to the owned message.
@@ -406,8 +406,14 @@ paths:
           description: Conversation or message not found for this user.
         '422':
           description: xtox rejected the audio.
+        '429':
+          description: Per-user transcription limit reached.
+        '502':
+          description: The provider returned an invalid transcript result.
         '503':
           description: Feature disabled or a production privacy/runtime gate is not verified.
+        '504':
+          description: The bounded transcription request timed out.
 
   /api/chat-export/extension:
     post:

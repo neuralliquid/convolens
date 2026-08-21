@@ -42,7 +42,7 @@ export interface TranscribeAudioInput {
 export class XtoxTranscriptionService {
   constructor(private readonly fetchFn: typeof fetch = fetch) {}
 
-  async transcribe(input: TranscribeAudioInput): Promise<XtoxTranscriptionResult> {
+  assertReady(): string {
     if (process.env.FEATURE_VOICE_TRANSCRIPTION !== 'true') {
       throw new XtoxTranscriptionError('VOICE_TRANSCRIPTION_DISABLED');
     }
@@ -54,13 +54,18 @@ export class XtoxTranscriptionService {
     if (process.env.XTOX_EPHEMERAL_TRANSCRIPTION_VERIFIED !== 'true') {
       throw new XtoxTranscriptionError('XTOX_EPHEMERAL_MODE_NOT_VERIFIED');
     }
+    return baseUrl;
+  }
+
+  async transcribe(input: TranscribeAudioInput): Promise<XtoxTranscriptionResult> {
+    const baseUrl = this.assertReady();
     if (!/^Bearer\s+\S+$/i.test(input.mystiraAuthorization)) {
       throw new XtoxTranscriptionError('XTOX_AUTH_REJECTED');
     }
 
     const url = new URL(`${baseUrl}/api/transcribe-audio`);
     url.searchParams.set('retain', 'false');
-    if (input.language && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(input.language)) {
+    if (input.language && !/^[A-Za-z]{2}$/.test(input.language)) {
       throw new XtoxTranscriptionError('XTOX_REJECTED_AUDIO');
     }
     if (input.language) url.searchParams.set('language', input.language);

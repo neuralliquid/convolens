@@ -44,13 +44,13 @@ export class MessageTranscript {
   provider!: string;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
-  providerTranscriptId?: string;
+  providerTranscriptId?: string | null;
 
   @Column({ type: 'varchar', length: 20, nullable: true })
-  language?: string;
+  language?: string | null;
 
   @Column({ type: 'integer', nullable: true })
-  durationMs?: number;
+  durationMs?: number | null;
 
   @Column({ type: dateColumnType })
   modelProcessingConsentAt!: Date;

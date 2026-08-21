@@ -262,7 +262,8 @@ export default function ConversationPage() {
           <VoiceNoteTranscriptionPanel
             conversationId={conversation.id}
             messages={conversation.messages.filter(
-              (message) => message.isMedia && message.mediaType === "audio",
+              (message) =>
+                message.isMedia && message.mediaType?.toLowerCase() === "audio",
             )}
             onTranscribed={(messageId, transcript) =>
               setConversation((current) =>

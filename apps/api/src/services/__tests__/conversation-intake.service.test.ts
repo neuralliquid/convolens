@@ -1171,6 +1171,37 @@ describe('ConversationIntakeService', () => {
     );
   });
 
+  it('upgrades a previously imported attachment marker without creating a duplicate intake', async () => {
+    const legacy = {
+      ...baseInput,
+      sourceKind: 'upload' as const,
+      messages: baseInput.messages.map((message, index) =>
+        index === 0
+          ? {
+              ...message,
+              content: '<attached: voice-note.opus>',
+              isMedia: false,
+              mediaType: undefined,
+            }
+          : { ...message }
+      ),
+    };
+    const first = await service.save(legacy);
+    const corrected = {
+      ...legacy,
+      messages: legacy.messages.map((message, index) =>
+        index === 0 ? { ...message, isMedia: true, mediaType: 'audio' as const } : message
+      ),
+    };
+
+    const second = await service.save(corrected);
+
+    expect(second.duplicate).toBe(true);
+    expect(second.conversation.id).toBe(first.conversation.id);
+    expect(second.conversation.messages[0]).toMatchObject({ isMedia: true, mediaType: 'audio' });
+    expect(await dataSource.getRepository(ConversationIntake).count()).toBe(1);
+  });
+
   it('keeps current image and video evidence distinct when the media has a caption', () => {
     const legacy = stableInput();
     legacy.messages[0] = {

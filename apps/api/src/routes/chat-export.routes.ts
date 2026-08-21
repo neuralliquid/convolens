@@ -1,6 +1,7 @@
 import { Router, Request, type NextFunction, type Response } from 'express';
 import multer from 'multer';
 import { authenticateToken } from '../middleware/auth.middleware.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { parseWhatsAppExport, isValidWhatsAppExport } from '../services/chat-export.service.js';
 import { logger } from '../utils/logger.js';
 import { metrics } from '../services/metrics.service.js';
@@ -52,6 +53,37 @@ const voiceNoteUpload = multer({
     else cb(new Error('Only supported audio files are allowed'));
   },
 });
+const configuredVoiceNoteTranscriptionsPerHour = Number.parseInt(
+  process.env.VOICE_NOTE_TRANSCRIPTIONS_PER_HOUR || '10',
+  10
+);
+const voiceNoteTranscriptionsPerHour =
+  Number.isFinite(configuredVoiceNoteTranscriptionsPerHour) &&
+  configuredVoiceNoteTranscriptionsPerHour > 0
+    ? Math.min(configuredVoiceNoteTranscriptionsPerHour, 100)
+    : 10;
+const voiceNoteRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: voiceNoteTranscriptionsPerHour,
+  message: 'Voice-note transcription limit reached. Please try again later.',
+  keyGenerator: (req) => `voice-transcription:${req.user?.id || 'unknown'}`,
+});
+
+function requireVoiceTranscriptionReady(_req: Request, res: Response, next: NextFunction): void {
+  try {
+    xtoxTranscriptionService.assertReady();
+    next();
+  } catch (error) {
+    if (error instanceof XtoxTranscriptionError) {
+      res.status(503).json({
+        error: 'Voice-note transcription is not available yet.',
+        code: error.code,
+      });
+      return;
+    }
+    next(error);
+  }
+}
 
 function receiveVoiceNote(req: Request, res: Response, next: NextFunction): void {
   voiceNoteUpload.single('file')(req, res, (error: unknown) => {
@@ -610,6 +642,8 @@ router.post('/:id/summary', authenticateToken, async (req, res) => {
 router.post(
   '/:id/messages/:messageId/transcript',
   authenticateToken,
+  requireVoiceTranscriptionReady,
+  voiceNoteRateLimit,
   receiveVoiceNote,
   async (req, res) => {
     try {
@@ -666,7 +700,13 @@ router.post(
         if (error.code === 'CONVERSATION_NOT_FOUND' || error.code === 'MESSAGE_NOT_FOUND') {
           return res.status(404).json({ error: 'Audio message not found' });
         }
-        return res.status(400).json({ error: 'The selected message is not an audio message.' });
+        if (error.code === 'MESSAGE_NOT_AUDIO') {
+          return res.status(400).json({ error: 'The selected message is not an audio message.' });
+        }
+        return res.status(502).json({
+          error: 'The transcription service returned an invalid transcript.',
+          code: 'TRANSCRIPTION_RESULT_INVALID',
+        });
       }
       if (error instanceof XtoxTranscriptionError) {
         if (error.code === 'XTOX_AUTH_REJECTED') {

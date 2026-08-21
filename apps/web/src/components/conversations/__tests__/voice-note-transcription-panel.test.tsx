@@ -57,6 +57,9 @@ describe("VoiceNoteTranscriptionPanel", () => {
         files: [new File(["audio"], "voice.opus", { type: "audio/ogg" })],
       },
     });
+    expect(
+      screen.getByRole("button", { name: "Transcribe voice note" }),
+    ).toBeDisabled();
     fireEvent.click(
       screen.getByRole("checkbox", { name: /I consent to sending this audio/ }),
     );
@@ -74,6 +77,70 @@ describe("VoiceNoteTranscriptionPanel", () => {
     const body = (global.fetch as jest.Mock).mock.calls[0][1].body as FormData;
     expect(body.get("modelProcessingConsent")).toBe("true");
     expect((body.get("file") as File).name).toBe("voice.opus");
+  });
+
+  it("shows a safe provider error without reporting a transcript", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      json: async () => ({
+        error: "Transcription is temporarily unavailable.",
+      }),
+    });
+    const onTranscribed = jest.fn();
+    render(
+      <VoiceNoteTranscriptionPanel
+        conversationId="conversation-1"
+        messages={[message]}
+        onTranscribed={onTranscribed}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Exported voice-note file"), {
+      target: {
+        files: [new File(["audio"], "voice.opus", { type: "audio/ogg" })],
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /I consent to sending this audio/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Transcribe voice note" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Transcription is temporarily unavailable.",
+    );
+    expect(onTranscribed).not.toHaveBeenCalled();
+  });
+
+  it("uses the safe fallback when the proxy response is not JSON", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      json: async () => {
+        throw new SyntaxError("Unexpected token");
+      },
+    });
+    render(
+      <VoiceNoteTranscriptionPanel
+        conversationId="conversation-1"
+        messages={[message]}
+        onTranscribed={jest.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Exported voice-note file"), {
+      target: {
+        files: [new File(["audio"], "voice.opus", { type: "audio/ogg" })],
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /I consent to sending this audio/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Transcribe voice note" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Voice-note transcription failed.",
+    );
   });
 
   it("shows a stored transcript without asking for the audio again", () => {

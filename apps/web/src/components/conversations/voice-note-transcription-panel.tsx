@@ -56,7 +56,7 @@ function VoiceNoteItem({
         `/api/chat-export/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(message.id)}/transcript`,
         { method: "POST", body },
       );
-      const payload = (await response.json()) as {
+      const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         data?: { transcript?: VoiceNoteTranscript };
       };

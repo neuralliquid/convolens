@@ -1,7 +1,7 @@
 import type { DataSource } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
-import type { ConversationMessage } from '../db/entities/ConversationMessage';
+import { ConversationMessage } from '../db/entities/ConversationMessage';
 import { MessageTranscript } from '../db/entities/MessageTranscript';
 
 export type MessageTranscriptErrorCode =
@@ -40,13 +40,15 @@ export class MessageTranscriptService {
   ): Promise<ConversationMessage> {
     const conversation = await this.dataSource.getRepository(ConversationIntake).findOne({
       where: { id: intakeId, userId },
-      relations: { messages: true },
+      select: { id: true },
     });
     if (!conversation) throw new MessageTranscriptError('CONVERSATION_NOT_FOUND');
 
-    const message = conversation.messages.find((candidate) => candidate.id === messageId);
+    const message = await this.dataSource
+      .getRepository(ConversationMessage)
+      .findOneBy({ id: messageId, intakeId });
     if (!message) throw new MessageTranscriptError('MESSAGE_NOT_FOUND');
-    if (!message.isMedia || message.mediaType !== 'audio') {
+    if (!message.isMedia || message.mediaType?.toLowerCase() !== 'audio') {
       throw new MessageTranscriptError('MESSAGE_NOT_AUDIO');
     }
     return message;
@@ -68,11 +70,11 @@ export class MessageTranscriptService {
       userId: input.userId,
       text,
       provider: 'xtox',
-      providerTranscriptId: input.providerTranscriptId,
-      language: input.language,
+      providerTranscriptId: input.providerTranscriptId ?? null,
+      language: input.language ?? null,
       durationMs:
         input.durationSeconds === undefined
-          ? undefined
+          ? null
           : Math.max(0, Math.round(input.durationSeconds * 1000)),
       modelProcessingConsentAt: input.modelProcessingConsentAt,
       generatedAt: new Date(),
