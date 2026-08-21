@@ -34,6 +34,19 @@ on:
           - plan
           - apply
 
+concurrency:
+  # PRs share a group. Dispatches key by environment only (not git ref) so
+  # plan and apply against the same Terraform backend serialize even when
+  # dispatched from different branches. Different environments stay
+  # independent. Pushes use github.sha so each commit keeps its own run
+  # (GitHub is not a FIFO queue).
+  group: >-
+    ${{
+      github.event_name == 'pull_request' && format('infrastructure-pr-{0}', github.event.pull_request.number)
+      || github.event_name == 'workflow_dispatch' && format('infrastructure-{0}', inputs.environment)
+      || format('infrastructure-{0}', github.sha)
+    }}
+
 permissions:
   id-token: write
   contents: read

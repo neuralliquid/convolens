@@ -12,6 +12,11 @@ on:
           - Production
           - Production-NeuralLiquid
 
+concurrency:
+  # Scope by environment so Production and Production-NeuralLiquid do not
+  # share a group. GitHub still keeps only one pending run per group.
+  group: deploy-prod-${{ github.ref }}-${{ inputs.deployment_environment }}
+
 permissions:
   contents: read
   id-token: write

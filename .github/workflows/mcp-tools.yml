@@ -18,6 +18,9 @@ on:
         required: false
         default: '{}'
 
+concurrency:
+  group: mcp-tools-${{ github.ref }}-${{ inputs.tool }}
+
 jobs:
   execute-tool:
     runs-on: ubuntu-latest
