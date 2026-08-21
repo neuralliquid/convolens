@@ -216,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const stopExpiryWatch = useCallback(() => {
     if (expiryWatchRef.current != null) {
-      window.clearInterval(expiryWatchRef.current);
+      clearInterval(expiryWatchRef.current);
       expiryWatchRef.current = null;
     }
   }, []);
@@ -331,7 +331,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     stopExpiryWatch();
-    expiryWatchRef.current = window.setInterval(() => {
+    expiryWatchRef.current = setInterval(() => {
       void initializeAuth();
     }, 60_000);
 
