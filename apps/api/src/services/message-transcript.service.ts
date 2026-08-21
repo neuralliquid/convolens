@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { DataSource } from 'typeorm';
 import { AppDataSource } from '../config/database';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
@@ -8,10 +9,12 @@ export type MessageTranscriptErrorCode =
   | 'CONVERSATION_NOT_FOUND'
   | 'MESSAGE_NOT_FOUND'
   | 'MESSAGE_NOT_AUDIO'
+  | 'TRANSCRIPTION_IN_PROGRESS'
   | 'TRANSCRIPT_EMPTY'
   | 'TRANSCRIPT_TOO_LARGE';
 
 const MAX_TRANSCRIPT_CHARACTERS = 1_000_000;
+export const MESSAGE_TRANSCRIPTION_CLAIM_LEASE_MS = 6 * 60 * 1000;
 
 export class MessageTranscriptError extends Error {
   constructor(public readonly code: MessageTranscriptErrorCode) {
@@ -82,6 +85,39 @@ export class MessageTranscriptService {
 
     await repository.upsert(values, { conflictPaths: ['messageId'] });
     return repository.findOneByOrFail({ messageId: input.messageId });
+  }
+
+  async acquireClaimForUser(userId: string, intakeId: string, messageId: string): Promise<string> {
+    await this.requireOwnedAudioMessage(userId, intakeId, messageId);
+    const claimId = randomUUID();
+    const claimedAt = new Date();
+    const expiredBefore = new Date(claimedAt.getTime() - MESSAGE_TRANSCRIPTION_CLAIM_LEASE_MS);
+    const result = await this.dataSource
+      .getRepository(ConversationMessage)
+      .createQueryBuilder()
+      .update()
+      .set({ transcriptionClaimId: claimId, transcriptionClaimedAt: claimedAt })
+      .where('"id" = :messageId', { messageId })
+      .andWhere('"intakeId" = :intakeId', { intakeId })
+      .andWhere(
+        '("transcriptionClaimId" IS NULL OR "transcriptionClaimedAt" IS NULL OR "transcriptionClaimedAt" < :expiredBefore)',
+        { expiredBefore }
+      )
+      .execute();
+    if (result.affected !== 1) {
+      await this.requireOwnedAudioMessage(userId, intakeId, messageId);
+      throw new MessageTranscriptError('TRANSCRIPTION_IN_PROGRESS');
+    }
+    return claimId;
+  }
+
+  async releaseClaim(messageId: string, claimId: string): Promise<void> {
+    await this.dataSource
+      .getRepository(ConversationMessage)
+      .update(
+        { id: messageId, transcriptionClaimId: claimId },
+        { transcriptionClaimId: null, transcriptionClaimedAt: null }
+      );
   }
 }
 

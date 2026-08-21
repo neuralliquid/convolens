@@ -83,6 +83,8 @@ describe('CreateConversationIntake migration', () => {
       )?.columnNames
     ).toEqual(['userId', 'sourcePlatform', 'compatibilityHash', 'sourceConversationId']);
     expect(messageTable?.findColumnByName('senderRef')).toBeDefined();
+    expect(messageTable?.findColumnByName('transcriptionClaimId')).toBeDefined();
+    expect(messageTable?.findColumnByName('transcriptionClaimedAt')).toBeDefined();
     expect(
       messageTable?.foreignKeys.some(
         (foreignKey) =>

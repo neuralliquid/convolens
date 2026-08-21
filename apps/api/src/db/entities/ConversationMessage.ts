@@ -60,6 +60,12 @@ export class ConversationMessage {
   @Column({ type: 'varchar', length: 500, nullable: true })
   replyToSourceMessageId?: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  transcriptionClaimId?: string | null;
+
+  @Column({ type: dateColumnType, nullable: true })
+  transcriptionClaimedAt?: Date | null;
+
   @OneToOne(() => MessageTranscript, (transcript) => transcript.message)
   transcript?: Relation<MessageTranscript>;
 }

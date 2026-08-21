@@ -404,6 +404,8 @@ paths:
           description: ConvoLens or xtox authentication failed.
         '404':
           description: Conversation or message not found for this user.
+        '409':
+          description: This message already has a transcription request in progress.
         '422':
           description: xtox rejected the audio.
         '429':

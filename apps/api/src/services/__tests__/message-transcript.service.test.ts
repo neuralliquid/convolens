@@ -3,7 +3,11 @@ import { DataSource } from 'typeorm';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import { MessageTranscript } from '../../db/entities/MessageTranscript';
-import { MessageTranscriptError, MessageTranscriptService } from '../message-transcript.service';
+import {
+  MESSAGE_TRANSCRIPTION_CLAIM_LEASE_MS,
+  MessageTranscriptError,
+  MessageTranscriptService,
+} from '../message-transcript.service';
 
 describe('MessageTranscriptService', () => {
   let dataSource: DataSource;
@@ -154,6 +158,22 @@ describe('MessageTranscriptService', () => {
     await expect(
       service.saveForUser({ ...common, text: 'x'.repeat(1_000_001) })
     ).rejects.toMatchObject({ code: 'TRANSCRIPT_TOO_LARGE' });
+  });
+
+  it('serializes provider work with a crash-expiring per-message claim', async () => {
+    const { intake, message } = await seedMessage();
+    const firstClaim = await service.acquireClaimForUser('user-1', intake.id, message.id);
+
+    await expect(
+      service.acquireClaimForUser('user-1', intake.id, message.id)
+    ).rejects.toMatchObject({ code: 'TRANSCRIPTION_IN_PROGRESS' });
+
+    await dataSource.getRepository(ConversationMessage).update(message.id, {
+      transcriptionClaimedAt: new Date(Date.now() - MESSAGE_TRANSCRIPTION_CLAIM_LEASE_MS - 1),
+    });
+    const replacementClaim = await service.acquireClaimForUser('user-1', intake.id, message.id);
+    expect(replacementClaim).not.toBe(firstClaim);
+    await service.releaseClaim(message.id, replacementClaim);
   });
 
   it('rejects cross-owner and non-audio writes', async () => {

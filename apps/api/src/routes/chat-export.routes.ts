@@ -646,6 +646,7 @@ router.post(
   voiceNoteRateLimit,
   receiveVoiceNote,
   async (req, res) => {
+    let transcriptionClaimId: string | undefined;
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -657,7 +658,7 @@ router.post(
         });
       }
 
-      await messageTranscriptService.requireOwnedAudioMessage(
+      transcriptionClaimId = await messageTranscriptService.acquireClaimForUser(
         userId,
         req.params.id,
         req.params.messageId
@@ -703,6 +704,12 @@ router.post(
         if (error.code === 'MESSAGE_NOT_AUDIO') {
           return res.status(400).json({ error: 'The selected message is not an audio message.' });
         }
+        if (error.code === 'TRANSCRIPTION_IN_PROGRESS') {
+          return res.status(409).json({
+            error: 'This voice note is already being transcribed.',
+            code: error.code,
+          });
+        }
         return res.status(502).json({
           error: 'The transcription service returned an invalid transcript.',
           code: 'TRANSCRIPTION_RESULT_INVALID',
@@ -730,6 +737,12 @@ router.post(
         error: error instanceof Error ? error.message : 'unknown_error',
       });
       return res.status(500).json({ error: 'Voice-note transcription failed' });
+    } finally {
+      if (transcriptionClaimId) {
+        await messageTranscriptService
+          .releaseClaim(req.params.messageId, transcriptionClaimId)
+          .catch(() => logger.error('Voice-note transcription claim release failed'));
+      }
     }
   }
 );

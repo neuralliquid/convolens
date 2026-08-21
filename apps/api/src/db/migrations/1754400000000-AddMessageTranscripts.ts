@@ -1,9 +1,30 @@
-import { MigrationInterface, QueryRunner, Table, TableForeignKey, TableIndex } from 'typeorm';
+import {
+  MigrationInterface,
+  QueryRunner,
+  Table,
+  TableColumn,
+  TableForeignKey,
+  TableIndex,
+} from 'typeorm';
 
 export class AddMessageTranscripts1754400000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     const dateType =
       queryRunner.connection.options.type === 'postgres' ? 'timestamptz' : 'datetime';
+
+    await queryRunner.addColumns('conversation_messages', [
+      new TableColumn({
+        name: 'transcriptionClaimId',
+        type: 'varchar',
+        length: '100',
+        isNullable: true,
+      }),
+      new TableColumn({
+        name: 'transcriptionClaimedAt',
+        type: dateType,
+        isNullable: true,
+      }),
+    ]);
 
     await queryRunner.createTable(
       new Table({
@@ -64,5 +85,9 @@ export class AddMessageTranscripts1754400000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.dropTable('message_transcripts', true);
+    await queryRunner.dropColumns('conversation_messages', [
+      'transcriptionClaimId',
+      'transcriptionClaimedAt',
+    ]);
   }
 }
