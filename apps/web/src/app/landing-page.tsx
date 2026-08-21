@@ -78,6 +78,12 @@ export default function LandingPage() {
                 Sign in to import a conversation
               </Link>
               <Link
+                href="/extension"
+                className="glassmorphism flex items-center justify-center rounded-lg px-8 py-3 text-center font-semibold text-gray-900 shadow-md transition hover:shadow-lg dark:text-white"
+              >
+                Install the browser extension
+              </Link>
+              <Link
                 href="/features"
                 className="glassmorphism flex items-center justify-center rounded-lg px-8 py-3 text-center font-semibold text-gray-900 shadow-md transition hover:shadow-lg dark:text-white"
               >

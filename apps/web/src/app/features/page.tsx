@@ -54,6 +54,9 @@ export default function FeaturesPage() {
                 </Link>
               </Button>
               <Button asChild variant="outline">
+                <Link href="/extension">Install the browser extension</Link>
+              </Button>
+              <Button asChild variant="outline">
                 <Link href="/">Back to home</Link>
               </Button>
             </div>
