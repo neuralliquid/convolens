@@ -92,6 +92,27 @@ describe('MessageTranscriptService', () => {
     ).toBe('<attached: voice-note.opus>');
   });
 
+  it('atomically replaces concurrent transcripts without creating duplicate rows', async () => {
+    const { intake, message } = await seedMessage();
+    const common = {
+      userId: 'user-1',
+      intakeId: intake.id,
+      messageId: message.id,
+      modelProcessingConsentAt: new Date(),
+    };
+
+    await Promise.all([
+      service.saveForUser({ ...common, text: 'First result' }),
+      service.saveForUser({ ...common, text: 'Second result' }),
+    ]);
+
+    const repository = dataSource.getRepository(MessageTranscript);
+    expect(await repository.countBy({ messageId: message.id })).toBe(1);
+    expect((await repository.findOneByOrFail({ messageId: message.id })).text).toMatch(
+      /^(First|Second) result$/
+    );
+  });
+
   it('rejects cross-owner and non-audio writes', async () => {
     const audio = await seedMessage();
     await expect(

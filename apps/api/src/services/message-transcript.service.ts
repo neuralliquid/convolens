@@ -62,7 +62,6 @@ export class MessageTranscriptService {
     }
 
     const repository = this.dataSource.getRepository(MessageTranscript);
-    const existing = await repository.findOneBy({ messageId: input.messageId });
     const values = {
       messageId: input.messageId,
       intakeId: input.intakeId,
@@ -79,11 +78,8 @@ export class MessageTranscriptService {
       generatedAt: new Date(),
     };
 
-    if (existing) {
-      repository.merge(existing, values);
-      return repository.save(existing);
-    }
-    return repository.save(repository.create(values));
+    await repository.upsert(values, { conflictPaths: ['messageId'] });
+    return repository.findOneByOrFail({ messageId: input.messageId });
   }
 }
 

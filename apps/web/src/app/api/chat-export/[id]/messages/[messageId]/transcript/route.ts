@@ -6,12 +6,29 @@ import {
 } from "@/lib/convolens-api";
 
 export const maxDuration = 150;
+const MAX_VOICE_NOTE_BYTES = 25 * 1024 * 1024;
+const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; messageId: string }> },
 ) {
   try {
+    const contentLengthHeader = request.headers.get("content-length") || "";
+    if (!/^\d+$/.test(contentLengthHeader)) {
+      return NextResponse.json(
+        { error: "A bounded upload length is required." },
+        { status: 411 },
+      );
+    }
+    const contentLength = Number.parseInt(contentLengthHeader, 10);
+    if (contentLength > MAX_VOICE_NOTE_BYTES + MAX_MULTIPART_OVERHEAD_BYTES) {
+      return NextResponse.json(
+        { error: "Voice-note file exceeds the 25 MB size limit." },
+        { status: 413 },
+      );
+    }
+
     const { id, messageId } = await params;
     const { apiToken, mystiraToken } = await getConvolensTranscriptionTokens();
     const incoming = await request.formData();
@@ -21,6 +38,12 @@ export async function POST(
       return NextResponse.json(
         { error: "Choose the exported voice-note file." },
         { status: 400 },
+      );
+    }
+    if (file.size > MAX_VOICE_NOTE_BYTES) {
+      return NextResponse.json(
+        { error: "Voice-note file exceeds the 25 MB size limit." },
+        { status: 413 },
       );
     }
     if (consent !== "true") {
