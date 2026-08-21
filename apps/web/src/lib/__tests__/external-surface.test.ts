@@ -37,6 +37,7 @@ describe("external surface containment", () => {
       "app/layout.tsx",
       "app/login/page.tsx",
       "app/extension-welcome/page.tsx",
+      "app/extension/page.tsx",
       "app/dashboard/page.tsx",
       "app/dashboard/import/page.tsx",
     ]
@@ -59,6 +60,12 @@ describe("external surface containment", () => {
     expect(read("app/dashboard/import/page.tsx")).toMatch(/text export/i);
     expect(read("app/dashboard/import/page.tsx")).toMatch(/browser extension/i);
     expect(read("app/dashboard/import/page.tsx")).toMatch(/planned/i);
+    expect(read("components/extension/install-instructions.tsx")).toMatch(
+      /Load unpacked/i,
+    );
+    expect(read("components/extension/install-instructions.tsx")).toMatch(
+      /convolens-extension\.zip/,
+    );
   });
 
   it("does not ship the developer theme-test route", () => {
@@ -78,6 +85,9 @@ describe("external surface containment", () => {
     ).toBe(true);
     expect(read("app/extension-welcome/page.tsx")).toMatch(
       /ConvoLens is installed/i,
+    );
+    expect(read("app/extension/page.tsx")).toMatch(
+      /Install ConvoLens for Chrome/i,
     );
   });
 

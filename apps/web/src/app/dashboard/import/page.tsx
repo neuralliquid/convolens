@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Chrome, ExternalLink, FileText, ShieldCheck } from "lucide-react";
+import { ExtensionInstallInstructions } from "@/components/extension/install-instructions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -117,6 +118,9 @@ export default function ImportChatPage() {
                       <Chrome className="h-5 w-5 text-primary" />
                       Use the browser extension
                     </div>
+                    <div className="mb-6">
+                      <ExtensionInstallInstructions />
+                    </div>
                     <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
                       <li>Open WhatsApp Web and select a conversation.</li>
                       <li>
@@ -128,13 +132,6 @@ export default function ImportChatPage() {
                         or <strong>Send to ConvoLens</strong> beside the chat.
                       </li>
                     </ol>
-                    <div className="mt-4 flex gap-3 rounded-md bg-muted p-3 text-sm text-muted-foreground">
-                      <FileText className="mt-0.5 h-4 w-4 shrink-0" />
-                      <p>
-                        The browser extension is available to private-preview
-                        participants.
-                      </p>
-                    </div>
                   </div>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row">

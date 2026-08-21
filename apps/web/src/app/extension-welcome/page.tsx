@@ -10,6 +10,7 @@ import {
 import PageWrapper from "../page-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExtensionInstallInstructions } from "@/components/extension/install-instructions";
 
 const steps = [
   {
@@ -93,6 +94,14 @@ export default function ExtensionWelcomePage() {
             </Card>
 
             <div className="space-y-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Need to install it?</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ExtensionInstallInstructions heading="Download and load unpacked" />
+                </CardContent>
+              </Card>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">

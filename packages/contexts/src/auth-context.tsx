@@ -223,19 +223,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? await nextAuthResponse.json().catch(() => null)
           : null;
 
-        if (nextAuthSession?.user && isMounted) {
-          const mappedUser: User = {
-            id:
-              nextAuthSession.user.id ||
-              nextAuthSession.user.email ||
-              "mystira-user",
-            email: nextAuthSession.user.email || "",
-            name: nextAuthSession.user.name,
-            avatarUrl: nextAuthSession.user.image,
-          };
-          setUser(mappedUser);
-          setAuthSource("nextauth");
-          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
+        if (nextAuthResponse?.ok && isMounted) {
+          if (nextAuthSession?.user) {
+            const mappedUser: User = {
+              id:
+                nextAuthSession.user.id ||
+                nextAuthSession.user.email ||
+                "mystira-user",
+              email: nextAuthSession.user.email || "",
+              name: nextAuthSession.user.name,
+              avatarUrl: nextAuthSession.user.image,
+            };
+            setUser(mappedUser);
+            setAuthSource("nextauth");
+            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
+            return;
+          }
+
+          // An empty NextAuth session is authoritative: do not keep a cached
+          // user after cookie/token expiry or sign-out.
+          setUser(null);
+          setAuthSource(null);
+          localStorage.removeItem(USER_STORAGE_KEY);
+          localStorage.removeItem(SESSION_STORAGE_KEY);
           return;
         }
 
@@ -270,9 +280,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initializeAuth();
+    const expiryWatch = window.setInterval(() => {
+      void initializeAuth();
+    }, 60_000);
 
     return () => {
       isMounted = false;
+      window.clearInterval(expiryWatch);
     };
   }, [authClient]);
 
@@ -439,25 +453,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
 
     try {
-      if (authSource === "nextauth") {
-        const csrfResponse = await fetch("/api/auth/csrf", {
-          cache: "no-store",
+      const csrfResponse = await fetch("/api/auth/csrf", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+
+      if (csrf?.csrfToken) {
+        await fetch("/api/auth/signout", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            csrfToken: csrf.csrfToken,
+            callbackUrl: "/",
+          }),
           credentials: "include",
         });
-        const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+      }
 
-        if (csrf?.csrfToken) {
-          await fetch("/api/auth/signout", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              csrfToken: csrf.csrfToken,
-              callbackUrl: "/",
-            }),
-            credentials: "include",
-          });
-        }
-      } else if (authClient?.type === "api") {
+      if (authSource === "api" && authClient?.type === "api") {
         await authClient.logout();
       }
     } catch (err) {

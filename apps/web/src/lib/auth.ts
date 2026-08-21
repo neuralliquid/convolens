@@ -1,4 +1,4 @@
-import { NextAuthOptions } from "next-auth";
+import { NextAuthOptions, type Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import type { OAuthConfig } from "next-auth/providers/oauth";
 
@@ -130,10 +130,27 @@ const mystiraIdentityProvider = (): OAuthConfig<MystiraProfile> => ({
   },
 });
 
+export function sessionFromToken(session: Session, token: JWT): Session {
+  if (token.refreshError) {
+    return {
+      expires: new Date(0).toISOString(),
+    };
+  }
+
+  return {
+    ...session,
+    accessToken: token.accessToken as string | undefined,
+    idToken: token.idToken as string | undefined,
+  };
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [mystiraIdentityProvider()],
   session: {
     strategy: "jwt",
+    // Browser cookie lifetime. Mystira access tokens refresh ~30s before they
+    // expire; a failed refresh must not keep the user signed in (see sessionFromToken).
+    maxAge: 30 * 24 * 60 * 60,
   },
   pages: {
     signIn: "/login",
@@ -169,13 +186,7 @@ export const authOptions: NextAuthOptions = {
       return refreshMystiraToken(token);
     },
     async session({ session, token }) {
-      session.accessToken = token.refreshError
-        ? undefined
-        : (token.accessToken as string | undefined);
-      session.idToken = token.refreshError
-        ? undefined
-        : (token.idToken as string | undefined);
-      return session;
+      return sessionFromToken(session, token);
     },
   },
 };
