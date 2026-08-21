@@ -1,0 +1,16 @@
+schema: md-agent/v1
+source: docs/HANDOFF-2026-08-21-SLUICE-CEL-PROD-CUTOVER.md
+title: "ConvoLens pointer — Sluice cutover to cel-prod-sluice"
+purpose: "Consumer-side stub pointing at the Sluice cutover handoff. ConvoLens should call the Celladore gateway, not a new NeuralLiquid Sluice stack or the Mystira phoenixvc host."
+audience:
+  - agent
+  - human
+facts:
+  - "Canonical cutover notes are celladore/sluice docs/handoffs/2026-08-21-cel-prod-sluice-cutover.md on the sluice dev branch."
+  - "Target gateway is https://litellm.sluice.celladoresystems.com."
+  - "Do not provision nl-prod-sluice; neuralliquid-sub has nl-prod-convolens-rg and no Sluice stack."
+  - "Stop using https://litellm.sluice.phoenixvc.tech once Celladore LiteLLM virtual keys work."
+  - "Next ConvoLens edits are infra/terraform/env/prod/variables.tf sluice_base_url, apps/api/.env.example, and GitHub SLUICE_BASE_URL plus SLUICE_API_KEY for Production and Production-NeuralLiquid."
+  - "Do not flip consumers until Sluice Gate 0 passes: a restricted Celladore key is accepted on the gateway, not merely a green health check."
+  - "ConvoLens PRs 193, 201, and 205 merged on 2026-08-21."
+last_synced: "2026-08-21"
