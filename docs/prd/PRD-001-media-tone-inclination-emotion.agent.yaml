@@ -1,7 +1,7 @@
 schema: md-agent/v1
 source: docs/prd/PRD-001-media-tone-inclination-emotion.md
 title: "PRD-001: Media tone, inclination, and emotion-indicator analysis"
-purpose: "ConvoLens product contract for acoustic tone, conversational inclination, and optional emotion indicators on WhatsApp audio (and later video soundtrack). Planning only; does not authorize implementation."
+purpose: "ConvoLens product contract for acoustic tone, conversational inclination, and optional emotion indicators on WhatsApp audio (and later video soundtrack). Does not enable production flags. Phase 1 DSP may proceed as a follow-on after ADR-0003 and SPEC-001."
 audience:
   - agent
   - human
