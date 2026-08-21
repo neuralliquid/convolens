@@ -65,6 +65,7 @@ import {
   getLauncherTop,
   normalizeLauncherPosition,
   resolveLauncherEdge,
+  resolveLauncherPanelAnchor,
   type LauncherPosition,
   type LauncherPreset,
 } from "./launcher-position";
@@ -702,11 +703,13 @@ function applyLauncherPosition(): void {
   if (!fab) return;
   fab.classList.toggle("ws-edge-left", launcherPosition.edge === "left");
   fab.classList.toggle("ws-edge-right", launcherPosition.edge === "right");
-  fab.dataset.preset = launcherPosition.preset;
   const top =
     typeof launcherPosition.top === "number"
       ? clampLauncherTop(launcherPosition.top, window.innerHeight)
       : getLauncherTop(launcherPosition.preset, window.innerHeight);
+  // Derived from the actual position, not the (possibly stale after a
+  // free-drag) preset label, so the panel never renders off-screen.
+  fab.dataset.preset = resolveLauncherPanelAnchor(top, window.innerHeight);
   fab.style.top = `${top}px`;
   fab
     .querySelectorAll<HTMLButtonElement>("[data-launcher-preset]")

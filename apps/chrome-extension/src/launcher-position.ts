@@ -79,6 +79,36 @@ export function clampLauncherTop(
   return Math.round(Math.min(maximum, Math.max(minimum, top)));
 }
 
+export type LauncherPanelAnchor = "upper" | "middle" | "lower";
+
+// Must match `.ws-launcher-panel`'s `max-height: min(520px, calc(100vh - 120px))` in content.css.
+const PANEL_MAX_HEIGHT_CAP = 520;
+const PANEL_MAX_HEIGHT_VIEWPORT_INSET = 120;
+
+/**
+ * Picks which CSS panel-anchor the settings panel should render with for a
+ * given launcher top position, derived from real viewport geometry rather
+ * than the (possibly stale, e.g. after a free-drag) launcher preset label.
+ */
+export function resolveLauncherPanelAnchor(
+  top: number,
+  viewportHeight: number,
+  launcherSize: number = 44,
+): LauncherPanelAnchor {
+  const panelHeight = Math.min(
+    PANEL_MAX_HEIGHT_CAP,
+    viewportHeight - PANEL_MAX_HEIGHT_VIEWPORT_INSET,
+  );
+  const centerY = top + launcherSize / 2;
+  const fitsMiddle =
+    centerY - panelHeight / 2 >= 0 &&
+    centerY + panelHeight / 2 <= viewportHeight;
+  if (fitsMiddle) return "middle";
+  if (top + panelHeight <= viewportHeight) return "upper";
+  if (top + launcherSize - panelHeight >= 0) return "lower";
+  return top < viewportHeight / 2 ? "upper" : "lower";
+}
+
 export function resolveLauncherEdge(
   pointerX: number,
   viewportWidth: number,
