@@ -144,6 +144,22 @@ export function sessionFromToken(session: Session, token: JWT): Session {
   };
 }
 
+export function shouldRefreshMystiraSession(token: JWT): boolean {
+  if (token.refreshError) {
+    return false;
+  }
+
+  const idExpiresAt = token.idTokenExpiresAt;
+  const accessExpiresAt = token.accessTokenExpiresAt;
+  return !(
+    Boolean(token.idToken) &&
+    Boolean(token.accessToken) &&
+    typeof idExpiresAt === "number" &&
+    typeof accessExpiresAt === "number" &&
+    Date.now() < Math.min(idExpiresAt, accessExpiresAt) - 30_000
+  );
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [mystiraIdentityProvider()],
   session: {
@@ -171,15 +187,7 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      const idExpiresAt = token.idTokenExpiresAt as number | undefined;
-      const accessExpiresAt = token.accessTokenExpiresAt as number | undefined;
-      if (
-        token.idToken &&
-        token.accessToken &&
-        idExpiresAt &&
-        accessExpiresAt &&
-        Date.now() < Math.min(idExpiresAt, accessExpiresAt) - 30_000
-      ) {
+      if (!shouldRefreshMystiraSession(token)) {
         return token;
       }
 

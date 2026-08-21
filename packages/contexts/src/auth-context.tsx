@@ -31,6 +31,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 
@@ -193,37 +194,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<AuthError | null>(null);
   const [authSource, setAuthSource] = useState<"nextauth" | "api" | null>(null);
   const [authClient] = useState(createAuthClient);
+  const authGenerationRef = useRef(0);
 
   // Clear error helper
   const clearError = useCallback(() => setError(null), []);
 
-  // Initialize authentication state on mount
-  useEffect(() => {
-    let isMounted = true;
+  const clearLocalAuth = useCallback(() => {
+    setUser(null);
+    setAuthSource(null);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }, []);
 
-    const initializeAuth = async () => {
+  const initializeAuth = useCallback(
+    async (options?: { restoreCache?: boolean }) => {
+      const generation = ++authGenerationRef.current;
+      const isCurrent = () => generation === authGenerationRef.current;
+
       try {
-        // Try to load cached user for immediate display
-        const cachedUser = localStorage.getItem(USER_STORAGE_KEY);
-        if (cachedUser && isMounted) {
-          try {
-            const parsed = JSON.parse(cachedUser);
-            setUser(parsed);
-          } catch {
-            localStorage.removeItem(USER_STORAGE_KEY);
+        if (options?.restoreCache) {
+          const cachedUser = localStorage.getItem(USER_STORAGE_KEY);
+          if (cachedUser && isCurrent()) {
+            try {
+              setUser(JSON.parse(cachedUser));
+            } catch {
+              localStorage.removeItem(USER_STORAGE_KEY);
+            }
           }
         }
 
-        // Prefer the Mystira/NextAuth browser session used by the web app and extension.
         const nextAuthResponse = await fetch("/api/auth/session", {
           cache: "no-store",
           credentials: "include",
         }).catch(() => null);
+        if (!isCurrent()) {
+          return;
+        }
+
         const nextAuthSession = nextAuthResponse?.ok
           ? await nextAuthResponse.json().catch(() => null)
           : null;
+        if (!isCurrent()) {
+          return;
+        }
 
-        if (nextAuthResponse?.ok && isMounted) {
+        if (nextAuthResponse?.ok) {
           if (nextAuthSession?.user) {
             const mappedUser: User = {
               id:
@@ -240,19 +255,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // An empty NextAuth session is authoritative: do not keep a cached
-          // user after cookie/token expiry or sign-out.
-          setUser(null);
-          setAuthSource(null);
-          localStorage.removeItem(USER_STORAGE_KEY);
-          localStorage.removeItem(SESSION_STORAGE_KEY);
+          clearLocalAuth();
           return;
         }
 
-        // Fall back to the legacy API session when NextAuth is not active.
         if (authClient?.type === "api") {
           const session = await authClient.getSession();
-          if (session && isMounted) {
+          if (!isCurrent()) {
+            return;
+          }
+          if (session) {
             const mappedUser: User = {
               id: session.user?.id || session.userId,
               email: session.user?.email || session.email,
@@ -261,34 +273,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(mappedUser);
             setAuthSource("api");
             localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mappedUser));
-          } else if (!session && isMounted) {
-            // Session expired or invalid
-            setUser(null);
-            localStorage.removeItem(USER_STORAGE_KEY);
-            localStorage.removeItem(SESSION_STORAGE_KEY);
-            setAuthSource(null);
+          } else {
+            clearLocalAuth();
           }
         }
       } catch (err) {
         console.error("[AuthContext] Initialization error:", err);
-        // On error, keep cached user if available
       } finally {
-        if (isMounted) {
+        if (isCurrent()) {
           setIsLoading(false);
         }
       }
-    };
+    },
+    [authClient, clearLocalAuth],
+  );
 
-    initializeAuth();
+  useEffect(() => {
+    void initializeAuth({ restoreCache: true });
+  }, [initializeAuth]);
+
+  const isSignedIn = Boolean(user);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      return;
+    }
+
     const expiryWatch = window.setInterval(() => {
       void initializeAuth();
     }, 60_000);
 
     return () => {
-      isMounted = false;
       window.clearInterval(expiryWatch);
     };
-  }, [authClient]);
+  }, [isSignedIn, initializeAuth]);
 
   /**
    * Login with email and password
@@ -450,7 +468,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Logout the current user
    */
   const logout = useCallback(async () => {
+    authGenerationRef.current += 1;
     setIsLoading(true);
+    clearLocalAuth();
 
     try {
       const csrfResponse = await fetch("/api/auth/csrf", {
@@ -477,14 +497,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("[AuthContext] Logout error:", err);
     } finally {
-      // Always clear local state
-      setUser(null);
-      setAuthSource(null);
-      localStorage.removeItem(USER_STORAGE_KEY);
-      localStorage.removeItem(SESSION_STORAGE_KEY);
       setIsLoading(false);
     }
-  }, [authClient, authSource]);
+  }, [authClient, authSource, clearLocalAuth]);
 
   /**
    * Request password reset email

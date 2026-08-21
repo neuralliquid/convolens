@@ -1,4 +1,8 @@
-import { refreshMystiraToken, sessionFromToken } from "../auth";
+import {
+  refreshMystiraToken,
+  sessionFromToken,
+  shouldRefreshMystiraSession,
+} from "../auth";
 
 describe("Mystira Identity token refresh", () => {
   const originalWellKnown = process.env.MYSTIRA_IDENTITY_WELL_KNOWN;
@@ -103,5 +107,14 @@ describe("Mystira Identity token refresh", () => {
     expect(session.accessToken).toBeUndefined();
     expect(session.idToken).toBeUndefined();
     expect(Date.parse(session.expires)).toBe(0);
+  });
+
+  it("does not retry Mystira refresh after a terminal failure", () => {
+    expect(
+      shouldRefreshMystiraSession({
+        refreshError: "RefreshAccessTokenError",
+        refreshToken: "refresh-1",
+      }),
+    ).toBe(false);
   });
 });
