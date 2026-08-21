@@ -389,6 +389,12 @@ jobs:
             export TF_VAR_api_jwt_secret="$API_JWT_SECRET"
             export TF_VAR_sluice_api_key="$SLUICE_API_KEY"
           fi
+          # Production-NeuralLiquid preloads the Celladore cutover key under its own
+          # secret name in Key Vault rather than rotating the legacy sluice-api-key in
+          # place, so the plan must reference that name to pick it up.
+          if [ "${{ inputs.deployment_environment }}" = "Production-NeuralLiquid" ]; then
+            export TF_VAR_sluice_api_key_secret_name="sluice-api-key-celladore"
+          fi
           terraform -chdir=infra/terraform/env/prod plan \
             -out=base.tfplan \
             -var "container_image_api=${{ steps.base-api.outputs.image }}" \
@@ -458,6 +464,9 @@ jobs:
           if [ "$TF_VAR_manage_runtime_secrets_with_terraform" = "true" ]; then
             export TF_VAR_api_jwt_secret="$API_JWT_SECRET"
             export TF_VAR_sluice_api_key="$SLUICE_API_KEY"
+          fi
+          if [ "${{ inputs.deployment_environment }}" = "Production-NeuralLiquid" ]; then
+            export TF_VAR_sluice_api_key_secret_name="sluice-api-key-celladore"
           fi
           terraform -chdir=infra/terraform/env/prod plan \
             -out=api-image.tfplan \
