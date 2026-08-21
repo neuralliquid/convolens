@@ -728,6 +728,18 @@ router.post(
             code: error.code,
           });
         }
+        if (error.code === 'XTOX_INVALID_RESPONSE') {
+          return res.status(502).json({
+            error: 'The transcription service returned an invalid response.',
+            code: error.code,
+          });
+        }
+        if (error.code === 'XTOX_TIMEOUT' || error.upstreamStatus === 504) {
+          return res.status(504).json({
+            error: 'The transcription service timed out.',
+            code: error.code,
+          });
+        }
         return res.status(503).json({
           error: 'Voice-note transcription is not available yet.',
           code: error.code,

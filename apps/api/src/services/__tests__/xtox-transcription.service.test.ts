@@ -102,6 +102,39 @@ describe('XtoxTranscriptionService', () => {
     });
   });
 
+  it('distinguishes invalid responses from unavailable transport', async () => {
+    process.env.FEATURE_VOICE_TRANSCRIPTION = 'true';
+    process.env.XTOX_BASE_URL = 'https://api.xtox.example';
+    process.env.XTOX_EPHEMERAL_TRANSCRIPTION_VERIFIED = 'true';
+    const invalidFetcher = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('not-json', { status: 200 }));
+    const unavailableFetcher = jest.fn<typeof fetch>().mockRejectedValue(new Error('offline'));
+
+    await expect(
+      new XtoxTranscriptionService(invalidFetcher).transcribe(input)
+    ).rejects.toMatchObject<XtoxTranscriptionError>({ code: 'XTOX_INVALID_RESPONSE' });
+    await expect(
+      new XtoxTranscriptionService(unavailableFetcher).transcribe(input)
+    ).rejects.toMatchObject<XtoxTranscriptionError>({ code: 'XTOX_UNAVAILABLE' });
+  });
+
+  it('reports an aborted request as a timeout', async () => {
+    process.env.FEATURE_VOICE_TRANSCRIPTION = 'true';
+    process.env.XTOX_BASE_URL = 'https://api.xtox.example';
+    process.env.XTOX_EPHEMERAL_TRANSCRIPTION_VERIFIED = 'true';
+    process.env.XTOX_TRANSCRIBE_TIMEOUT_MS = '1000';
+    const fetcher = jest.fn<typeof fetch>((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    });
+
+    await expect(
+      new XtoxTranscriptionService(fetcher).transcribe(input)
+    ).rejects.toMatchObject<XtoxTranscriptionError>({ code: 'XTOX_TIMEOUT' });
+  });
+
   it('rejects an invalid language hint before sending audio', async () => {
     process.env.FEATURE_VOICE_TRANSCRIPTION = 'true';
     process.env.XTOX_BASE_URL = 'https://api.xtox.example';

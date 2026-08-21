@@ -4,6 +4,7 @@ export type XtoxTranscriptionErrorCode =
   | 'XTOX_EPHEMERAL_MODE_NOT_VERIFIED'
   | 'XTOX_AUTH_REJECTED'
   | 'XTOX_UNAVAILABLE'
+  | 'XTOX_TIMEOUT'
   | 'XTOX_REJECTED_AUDIO'
   | 'XTOX_INVALID_RESPONSE';
 
@@ -91,7 +92,9 @@ export class XtoxTranscriptionService {
         signal: controller.signal,
       });
     } catch {
-      throw new XtoxTranscriptionError('XTOX_UNAVAILABLE');
+      throw new XtoxTranscriptionError(
+        controller.signal.aborted ? 'XTOX_TIMEOUT' : 'XTOX_UNAVAILABLE'
+      );
     } finally {
       clearTimeout(timeout);
     }
