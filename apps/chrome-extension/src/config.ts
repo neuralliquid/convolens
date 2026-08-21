@@ -311,6 +311,18 @@ export interface SyncMystiraAuthMessage {
   action: "SYNC_MYSTIRA_AUTH";
 }
 
+/**
+ * Pushed by the session-bridge content script running on the dashboard
+ * origin, which can read the NextAuth session cookie same-origin. The
+ * background service worker's own cross-origin session fetch can't rely on
+ * that cookie being sent (SameSite=Lax), so this is the primary channel for
+ * detecting a completed sign-in.
+ */
+export interface MystiraSessionObservedMessage {
+  action: "MYSTIRA_SESSION_OBSERVED";
+  idToken: string;
+}
+
 export interface LoginMessage {
   action: "LOGIN";
   email: string;
@@ -384,6 +396,7 @@ export type ExtensionMessage =
   | OpenDashboardMessage
   | GetAuthStatusMessage
   | SyncMystiraAuthMessage
+  | MystiraSessionObservedMessage
   | LoginMessage
   | LogoutMessage
   | GetSettingsMessage

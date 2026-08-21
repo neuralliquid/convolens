@@ -19,6 +19,7 @@ import {
   type ExtensionResponse,
   type ExtensionSettings,
   type LoginMessage,
+  type MystiraSessionObservedMessage,
   type UpdateSettingsMessage,
   type SendChatDataMessage,
   type OpenDashboardMessage,
@@ -258,6 +259,17 @@ async function handleMessage(
 
     case "SYNC_MYSTIRA_AUTH":
       return await syncMystiraSession(++authenticationIntentGeneration);
+
+    case "MYSTIRA_SESSION_OBSERVED": {
+      const typedMessage = message as MystiraSessionObservedMessage;
+      if (!typedMessage.idToken || typeof typedMessage.idToken !== "string") {
+        return { success: false, error: "Invalid Mystira session payload." };
+      }
+      return await exchangeMystiraIdToken(
+        typedMessage.idToken,
+        ++authenticationIntentGeneration,
+      );
+    }
 
     case "LOGIN": {
       const typedMessage = message as LoginMessage;
@@ -1632,6 +1644,29 @@ async function syncMystiraSession(
       };
     }
 
+    return await exchangeMystiraIdToken(session.idToken, authenticationIntent);
+  } catch (error) {
+    console.error("[Background] Mystira session sync failed:", error);
+    return {
+      success: false,
+      error:
+        "Unable to connect the extension to the ConvoLens sign-in session.",
+    };
+  }
+}
+
+/**
+ * Exchanges an already-obtained Mystira Identity idToken for an extension
+ * bearer session. Shared by syncMystiraSession() (background-initiated,
+ * cross-origin, may fail to see the session cookie) and the
+ * MYSTIRA_SESSION_OBSERVED handler (pushed by the dashboard-origin content
+ * script, which read the session cookie same-origin).
+ */
+async function exchangeMystiraIdToken(
+  idToken: string,
+  authenticationIntent: number,
+): Promise<ExtensionResponse> {
+  try {
     const apiConfig = await getApiConfig();
     const exchangeResponse = await fetch(
       `${apiConfig.apiUrl}/api/auth/mystira/exchange`,
@@ -1641,7 +1676,7 @@ async function syncMystiraSession(
           "Content-Type": "application/json",
           ...getTracingHeaders(),
         },
-        body: JSON.stringify({ idToken: session.idToken }),
+        body: JSON.stringify({ idToken }),
       },
     );
 
@@ -1685,7 +1720,7 @@ async function syncMystiraSession(
       },
     };
   } catch (error) {
-    console.error("[Background] Mystira session sync failed:", error);
+    console.error("[Background] Mystira session exchange failed:", error);
     return {
       success: false,
       error:
