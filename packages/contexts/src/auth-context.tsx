@@ -476,8 +476,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const csrfResponse = await fetch("/api/auth/csrf", {
         cache: "no-store",
         credentials: "include",
-      });
-      const csrf = csrfResponse.ok ? await csrfResponse.json() : null;
+      }).catch(() => null);
+      const csrf = csrfResponse?.ok
+        ? await csrfResponse.json().catch(() => null)
+        : null;
 
       if (csrf?.csrfToken) {
         await fetch("/api/auth/signout", {
@@ -490,12 +492,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           credentials: "include",
         });
       }
+    } catch (err) {
+      console.error("[AuthContext] NextAuth logout error:", err);
+    }
 
+    try {
       if (authSource === "api" && authClient?.type === "api") {
         await authClient.logout();
       }
     } catch (err) {
-      console.error("[AuthContext] Logout error:", err);
+      console.error("[AuthContext] API logout error:", err);
     } finally {
       setIsLoading(false);
     }
