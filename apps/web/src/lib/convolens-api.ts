@@ -81,6 +81,23 @@ export async function getConvolensPublishTokens(): Promise<{
   };
 }
 
+export async function getConvolensTranscriptionTokens(): Promise<{
+  apiToken: string;
+  mystiraToken: string;
+}> {
+  const session = await getServerSession(authOptions);
+  if (!session?.accessToken) {
+    throw new ConvolensApiAuthError(
+      "Your Mystira Identity session needs to be refreshed",
+      401,
+    );
+  }
+  return {
+    apiToken: await exchangeConvolensApiToken(session),
+    mystiraToken: session.accessToken,
+  };
+}
+
 export async function getMystiraAccessToken(): Promise<string> {
   const session = await getServerSession(authOptions);
   if (!session?.accessToken) {

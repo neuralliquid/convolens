@@ -123,5 +123,6 @@ export const FEATURES = {
   EMAIL_VERIFICATION: process.env.FEATURE_EMAIL_VERIFICATION === 'true',
   PASSWORD_RESET: process.env.FEATURE_PASSWORD_RESET === 'true',
   AI_SUMMARY: process.env.FEATURE_AI_SUMMARY !== 'false',
+  VOICE_TRANSCRIPTION: process.env.FEATURE_VOICE_TRANSCRIPTION === 'true',
   CHROME_EXTENSION: process.env.FEATURE_CHROME_EXTENSION !== 'false',
 } as const

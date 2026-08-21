@@ -8,6 +8,7 @@ import { SelectorReport } from '../db/entities/SelectorReport';
 import { TicketCandidate } from '../db/entities/TicketCandidate';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationSummary } from '../db/entities/ConversationSummary';
+import { MessageTranscript } from '../db/entities/MessageTranscript';
 import { postgresNativeUuidOptions } from './postgres-uuid';
 import { CONVERSATION_MIGRATIONS } from './migrations';
 import { logger } from '../utils/logger';
@@ -40,6 +41,7 @@ const commonOptions = {
     TicketCandidate,
     BatonPublishAttempt,
     ConversationSummary,
+    MessageTranscript,
   ],
   migrations: CONVERSATION_MIGRATIONS,
   migrationsRun,

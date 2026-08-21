@@ -4,11 +4,13 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
   type Relation,
 } from 'typeorm';
 import { ConversationIntake } from './ConversationIntake';
 import { dateColumnType } from '../column-types';
+import { MessageTranscript } from './MessageTranscript';
 
 @Entity({ name: 'conversation_messages' })
 @Index('UQ_conversation_messages_intake_position', ['intakeId', 'position'], {
@@ -57,4 +59,7 @@ export class ConversationMessage {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   replyToSourceMessageId?: string;
+
+  @OneToOne(() => MessageTranscript, (transcript) => transcript.message)
+  transcript?: Relation<MessageTranscript>;
 }

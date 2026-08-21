@@ -9,6 +9,16 @@ A comprehensive platform for analyzing and summarizing conversations across mess
 
 **"See Your Conversations Clearly"** - The ConvoLens tagline embodies our mission to bring clarity and insight to your communication patterns.
 
+## Capability status
+
+- **Implemented:** deterministic intake and analytics for the supported WhatsApp text export and
+  browser-extension capture formats.
+- **Experimental and production-gated:** per-message WhatsApp voice-note transcription through
+  xtox, Sluice, and Azure AI Foundry. It requires explicit consent and stays disabled until the
+  cross-service authentication, non-retention, and authentic end-to-end gates in
+  [the voice-note transcription contract](docs/VOICE-NOTE-TRANSCRIPTION.md) pass.
+- **Planned:** additional messaging-platform import formats. They are not currently supported.
+
 ---
 
 ## 🚀 Project Overview

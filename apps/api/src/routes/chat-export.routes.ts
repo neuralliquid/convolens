@@ -1,4 +1,4 @@
-import { Router, Request } from 'express';
+import { Router, Request, type NextFunction, type Response } from 'express';
 import multer from 'multer';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { parseWhatsAppExport, isValidWhatsAppExport } from '../services/chat-export.service.js';
@@ -9,6 +9,14 @@ import {
   ConversationSummaryError,
   conversationSummaryService,
 } from '../services/conversation-summary.service.js';
+import {
+  MessageTranscriptError,
+  messageTranscriptService,
+} from '../services/message-transcript.service.js';
+import {
+  XtoxTranscriptionError,
+  xtoxTranscriptionService,
+} from '../services/xtox-transcription.service.js';
 
 const router: Router = Router();
 const upload = multer({
@@ -24,6 +32,37 @@ const upload = multer({
     }
   },
 });
+const configuredVoiceNoteMaxBytes = Number.parseInt(
+  process.env.VOICE_NOTE_MAX_BYTES || `${25 * 1024 * 1024}`,
+  10
+);
+const voiceNoteMaxBytes =
+  Number.isFinite(configuredVoiceNoteMaxBytes) && configuredVoiceNoteMaxBytes > 0
+    ? Math.min(configuredVoiceNoteMaxBytes, 100 * 1024 * 1024)
+    : 25 * 1024 * 1024;
+const voiceNoteUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fileSize: voiceNoteMaxBytes,
+  },
+  fileFilter: (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+    const audioExtension = /\.(?:opus|ogg|mp3|wav|m4a|aac|flac)$/i.test(file.originalname);
+    if (file.mimetype.startsWith('audio/') || audioExtension) cb(null, true);
+    else cb(new Error('Only supported audio files are allowed'));
+  },
+});
+
+function receiveVoiceNote(req: Request, res: Response, next: NextFunction): void {
+  voiceNoteUpload.single('file')(req, res, (error: unknown) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({ error: 'Voice-note file exceeds the configured size limit.' });
+      return;
+    }
+    res.status(400).json({ error: 'Only one supported audio file is allowed.' });
+  });
+}
 
 // =============================================================================
 // Validation Helpers
@@ -306,10 +345,12 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
         consentBasis: 'user-selected-conversation',
       },
       messages: chatData.messages.map((message) => ({
+        sourceMessageId: message.id,
         senderName: message.sender,
         content: message.content,
         sentAt: message.timestamp,
         isMedia: message.isMedia,
+        mediaType: message.mediaType,
       })),
     });
     const persisted = await conversationIntakeService.ensureRawArtifact(
@@ -562,6 +603,98 @@ router.post('/:id/summary', authenticateToken, async (req, res) => {
 });
 
 /**
+ * @route POST /api/chat-export/:id/messages/:messageId/transcript
+ * @description Transcribe one owned audio message without retaining raw audio in ConvoLens
+ * @access Private
+ */
+router.post(
+  '/:id/messages/:messageId/transcript',
+  authenticateToken,
+  receiveVoiceNote,
+  async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+      if (!req.file) return res.status(400).json({ error: 'No voice-note file uploaded' });
+      if (req.body?.modelProcessingConsent !== 'true') {
+        return res.status(400).json({
+          error: 'Explicit model-processing consent is required for this voice note.',
+          code: 'MODEL_PROCESSING_CONSENT_REQUIRED',
+        });
+      }
+
+      await messageTranscriptService.requireOwnedAudioMessage(
+        userId,
+        req.params.id,
+        req.params.messageId
+      );
+      const upstreamAuthorization = req.header('x-xtox-authorization') || '';
+      const result = await xtoxTranscriptionService.transcribe({
+        bytes: req.file.buffer,
+        fileName: req.file.originalname,
+        contentType: req.file.mimetype || 'application/octet-stream',
+        mystiraAuthorization: upstreamAuthorization,
+        ...(typeof req.body?.language === 'string' && req.body.language.trim()
+          ? { language: req.body.language.trim() }
+          : {}),
+      });
+      const transcript = await messageTranscriptService.saveForUser({
+        userId,
+        intakeId: req.params.id,
+        messageId: req.params.messageId,
+        text: result.text,
+        providerTranscriptId: result.id,
+        language: result.language,
+        durationSeconds: result.duration,
+        modelProcessingConsentAt: new Date(),
+      });
+
+      return res.status(201).json({
+        message: 'Voice note transcribed',
+        data: {
+          transcript: {
+            id: transcript.id,
+            text: transcript.text,
+            language: transcript.language,
+            durationMs: transcript.durationMs,
+            generatedAt: transcript.generatedAt,
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof MessageTranscriptError) {
+        if (error.code === 'CONVERSATION_NOT_FOUND' || error.code === 'MESSAGE_NOT_FOUND') {
+          return res.status(404).json({ error: 'Audio message not found' });
+        }
+        return res.status(400).json({ error: 'The selected message is not an audio message.' });
+      }
+      if (error instanceof XtoxTranscriptionError) {
+        if (error.code === 'XTOX_AUTH_REJECTED') {
+          return res.status(401).json({
+            error: 'Your Mystira session is not authorized for transcription.',
+            code: error.code,
+          });
+        }
+        if (error.code === 'XTOX_REJECTED_AUDIO') {
+          return res.status(422).json({
+            error: 'The transcription service could not process this audio file.',
+            code: error.code,
+          });
+        }
+        return res.status(503).json({
+          error: 'Voice-note transcription is not available yet.',
+          code: error.code,
+        });
+      }
+      logger.error('Voice-note transcription failed', {
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+      return res.status(500).json({ error: 'Voice-note transcription failed' });
+    }
+  }
+);
+
+/**
  * @route GET /api/chat-export/:id
  * @description Get one durable conversation intake for the current user
  * @access Private
@@ -616,6 +749,15 @@ router.get('/:id', authenticateToken, async (req, res) => {
             isMedia: message.isMedia,
             mediaType: message.mediaType,
             replyToSourceMessageId: message.replyToSourceMessageId,
+            transcript: message.transcript
+              ? {
+                  id: message.transcript.id,
+                  text: message.transcript.text,
+                  language: message.transcript.language,
+                  durationMs: message.transcript.durationMs,
+                  generatedAt: message.transcript.generatedAt,
+                }
+              : null,
           })),
         },
       },

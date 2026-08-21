@@ -344,6 +344,71 @@ paths:
         '503':
           description: No real AI provider is configured
 
+  /api/chat-export/{id}/messages/{messageId}/transcript:
+    post:
+      summary: Transcribe one owned WhatsApp voice note
+      description: >-
+        Sends one explicitly selected audio attachment through xtox, Sluice, and
+        Azure AI Foundry. ConvoLens does not persist the raw audio. This route is
+        disabled until the authenticated cross-service audience and xtox's
+        non-retaining retain=false contract are verified in production.
+      tags:
+        - Chat Export
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: x-xtox-authorization
+          in: header
+          required: true
+          description: Current Mystira user bearer token for xtox; never persisted or logged.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - modelProcessingConsent
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Exported Opus, OGG, MP3, WAV, M4A, AAC, or FLAC voice note.
+                modelProcessingConsent:
+                  type: string
+                  enum: ['true']
+                language:
+                  type: string
+                  description: Optional ISO-639-1 language hint.
+      responses:
+        '201':
+          description: Transcript generated and attached to the owned message.
+        '400':
+          description: Missing consent, file, or non-audio message.
+        '401':
+          description: ConvoLens or xtox authentication failed.
+        '404':
+          description: Conversation or message not found for this user.
+        '422':
+          description: xtox rejected the audio.
+        '503':
+          description: Feature disabled or a production privacy/runtime gate is not verified.
+
   /api/chat-export/extension:
     post:
       summary: Receive extension chat data
@@ -743,6 +808,31 @@ components:
           type: boolean
         mediaType:
           type: string
+        transcript:
+          allOf:
+            - $ref: '#/components/schemas/MessageTranscript'
+          nullable: true
+
+    MessageTranscript:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+        language:
+          type: string
+        durationMs:
+          type: integer
+          minimum: 0
+        generatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - text
+        - generatedAt
 
     SelectorResponse:
       type: object

@@ -1021,7 +1021,7 @@ export class ConversationIntakeService {
   async getForUser(userId: string, id: string): Promise<ConversationIntake | null> {
     return this.dataSource.getRepository(ConversationIntake).findOne({
       where: { id, userId },
-      relations: { messages: true },
+      relations: { messages: { transcript: true } },
       order: { messages: { position: 'ASC' } },
     });
   }
