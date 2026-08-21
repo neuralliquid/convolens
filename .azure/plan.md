@@ -126,8 +126,10 @@ is configuration evidence only; it does not authorize apply or prove runtime rea
    Vault/RBAC. After that reviewed bootstrap, all five required secrets must be transferred
    directly into the target vault without printing them; the deploy workflow only verifies names.
 2. A user-assigned API identity and `AcrPull` replace first-run system-identity and ACR-admin
-   credential cycles for the blue-green target. Exact target and legacy-state plans must still be
-   captured in CI before deployment.
+   credential cycles for the blue-green target. A one-time five-minute propagation barrier, keyed
+   to the four API role-assignment IDs, prevents Container App creation from racing newly-created
+   Key Vault, storage, queue, and ACR permissions. Exact target and legacy-state plans must still
+   be captured in CI before deployment.
 3. Authentic sign-in cannot be proved on the Azure-assigned hostname while `NEXTAUTH_URL`, CORS,
    and the Identity redirect URI remain canonical-host-only. Before cutover, either authorize a
    temporary validation hostname and matching Identity redirect URI, or treat authenticated

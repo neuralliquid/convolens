@@ -183,8 +183,8 @@ variable "api_jwt_secret" {
   default     = ""
 
   validation {
-    condition     = var.api_jwt_secret == "" || length(var.api_jwt_secret) >= 32
-    error_message = "api_jwt_secret must be empty or at least 32 characters."
+    condition     = !var.manage_runtime_secrets_with_terraform || length(var.api_jwt_secret) >= 32
+    error_message = "api_jwt_secret must be at least 32 characters when Terraform manages runtime secrets."
   }
 }
 

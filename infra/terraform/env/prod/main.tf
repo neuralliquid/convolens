@@ -677,15 +677,24 @@ resource "azurerm_role_assignment" "blue_green_api_acr_pull" {
   principal_id         = azurerm_user_assigned_identity.api[0].principal_id
 }
 
+resource "time_sleep" "blue_green_api_rbac_propagation" {
+  count           = local.is_blue_green_target ? 1 : 0
+  create_duration = "5m"
+
+  triggers = {
+    blob_role_assignment_id      = azurerm_role_assignment.blue_green_api_blob_contributor[0].id
+    queue_role_assignment_id     = azurerm_role_assignment.blue_green_api_queue_contributor[0].id
+    key_vault_role_assignment_id = azurerm_role_assignment.blue_green_api_key_vault_secrets_user[0].id
+    acr_role_assignment_id       = try(azurerm_role_assignment.blue_green_api_acr_pull[0].id, "")
+  }
+}
+
 resource "terraform_data" "api_identity_ready" {
   count = local.is_blue_green_target ? 1 : 0
   input = azurerm_user_assigned_identity.api[0].id
 
   depends_on = [
-    azurerm_role_assignment.blue_green_api_blob_contributor,
-    azurerm_role_assignment.blue_green_api_queue_contributor,
-    azurerm_role_assignment.blue_green_api_key_vault_secrets_user,
-    azurerm_role_assignment.blue_green_api_acr_pull,
+    time_sleep.blue_green_api_rbac_propagation,
   ]
 }
 
