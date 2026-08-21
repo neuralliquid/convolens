@@ -11,7 +11,7 @@ facts:
   - "Unpacked installs default to production ConvoLens endpoints, not localhost. Settings may override the API URL for local or non-production use."
   - "Default API URL is https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io. Default dashboard is https://convolens.neuralliquid.ai. Local override is http://localhost:3001."
   - "WhatsApp selectors prefer data-testid values (msg-container, msg-text) with class fallbacks; they can break when WhatsApp Web changes."
-  - "API traffic is HTTPS only. Auth tokens live in chrome.storage.local. Chat content is not persisted locally; extraction history is local-only and can be cleared in settings."
+  - "Production API traffic is HTTPS. Local development may use the HTTP override at http://localhost:3001. Auth tokens live in chrome.storage.local. Chat content is not persisted locally; extraction history is local-only and can be cleared in settings."
   - "Chat data is sent only after an explicit user action. There is no background collection or third-party tracking."
   - "Chrome Web Store listing and Firefox/Edge ports are still open. Rate-limit retries wait 60 seconds."
   - "License is MIT (repo LICENSE)."
