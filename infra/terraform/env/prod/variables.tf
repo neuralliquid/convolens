@@ -200,12 +200,6 @@ variable "deployment_principal_object_id" {
   default     = ""
 }
 
-variable "deployment_principal_can_write_secrets" {
-  type        = bool
-  description = "Whether to add temporary Key Vault Secrets Officer access for bootstrap and the first base apply. Normal deploys leave only permanent Secrets User access."
-  default     = false
-}
-
 variable "frontend_runtime_stack" {
   type        = string
   description = "Linux App Service runtime stack for the Next.js frontend."

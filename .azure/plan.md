@@ -104,7 +104,7 @@ resource type.
 | Microsoft.KeyVault/vaults                      |         1 |             1 | Zero existing in-region; proposed global name is available                      | Within documented service limit         |
 | Microsoft.OperationalInsights/workspaces       |         1 |             1 | Zero existing in-region                                                         | Within documented service limit         |
 | Microsoft.Insights/components                  |         1 |             1 | Zero existing in-region                                                         | Within documented service limit         |
-| Microsoft.Authorization/roleAssignments        | 7 peak / 6 steady | 7 peak / 6 steady | Provider registered; far below subscription limit                         | Supported                               |
+| Microsoft.Authorization/roleAssignments        |         7 |             7 | Six Terraform-managed application assignments plus one persistent backend assignment | Supported                       |
 | Microsoft.Network/dnszones record sets         | 2 changes | Existing zone | Zone is already in target subscription                                          | Cutover step only                       |
 | Microsoft.DBforPostgreSQL/flexibleServers      |         0 |             0 | Reuse existing scoped database in Mystira subscription                          | No new quota required                   |
 | Microsoft.Cache/Redis                          |         0 |             0 | Disabled                                                                        | Not applicable                          |
@@ -112,19 +112,25 @@ resource type.
 `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.KeyVault`, `Microsoft.Storage`,
 `Microsoft.OperationalInsights`, and `Microsoft.Quota` are registered in the target subscription.
 The final no-refresh target plan contains 26 creates, zero changes, and zero destroys, including
-six steady-state scoped role assignments: four for the API identity, one for the frontend identity,
-and one permanent read-only deployment-principal assignment. Bootstrap and the first base apply can
-temporarily add a seventh Secrets Officer assignment for direct secret transfer. The corresponding read-only
+six Terraform-managed application assignments: four for the API identity, one for the frontend
+identity, and one permanent read-only deployment-principal assignment. Bootstrap separately creates
+one persistent `Storage Blob Data Contributor` assignment at the NeuralLiquid Terraform-state storage
+account scope. It is not Terraform-managed because it is required before backend initialization. The corresponding read-only
 legacy-state plan recognizes the explicit address moves and contains zero destroys (its three
 changes are expected placeholder/runtime-input differences in the validation command). That
 is configuration evidence only; it does not authorize apply or prove runtime readiness.
 
 ### Open validation findings before deployment
 
-1. The new target now references `api-jwt-secret`, `sluice-api-key`, and the shared PostgreSQL
-   password out of band, and uses a separate bootstrap-only workflow for state storage plus Key
-   Vault/RBAC. After that reviewed bootstrap, all five required secrets must be transferred
-   directly into the target vault without printing them; the deploy workflow only verifies names.
+1. The new target uses a separate bootstrap-only workflow for state storage plus Key Vault/RBAC.
+   After that reviewed bootstrap, an authorized human secret-transfer operator must copy these five
+   values directly from the existing Mystira-hosted ConvoLens Key Vault into the target vault,
+   without printing or persisting their values: `api-jwt-secret` (API signing secret),
+   `sluice-api-key` (restricted ConvoLens virtual key), `nextauth-secret` (web session secret),
+   `mystira-identity-client-secret` (seeded OIDC client secret), and
+   `shared-pg-convolens-password` (scoped shared PostgreSQL credential). GitHub receives only
+   permanent `Key Vault Secrets User` access; the deploy workflow verifies all five names and enabled
+   states but cannot create or change their values.
 2. A user-assigned API identity and `AcrPull` replace first-run system-identity and ACR-admin
    credential cycles for the blue-green target. A one-time five-minute propagation barrier, keyed
    to the four API role-assignment IDs, prevents Container App creation from racing newly-created
@@ -144,14 +150,12 @@ federated credential for `repo:neuralliquid/convolens:environment:Production-Neu
 service principal is intentionally not yet granted Azure deployment roles, so neither bootstrap
 nor deploy can run until reviewed least-privilege assignments are approved.
 
-The bootstrap plan grants the deployment principal permanent `Key Vault Secrets User` access and a
-separate temporary `Key Vault Secrets Officer` assignment for direct secret transfer. On the first
-full deployment, the workflow retains the temporary write assignment through the base apply only
-when the Terraform-managed App Insights secret does not yet exist, then removes only that assignment.
-It verifies the permanent read role with a bounded secret-read retry before continuing. A failed
-first base apply can leave the temporary Officer assignment in place and therefore requires either a
-successful rerun or an explicit reviewed revocation; a missing permanent read assignment is repaired
-by rerunning the reviewed bootstrap workflow.
+The bootstrap plan grants the deployment principal permanent `Key Vault Secrets User` access only.
+It never grants GitHub secret-write access. The NeuralLiquid API receives its Terraform-produced App
+Insights connection string as a Container Apps secret value, consistent with the web app's existing
+direct configuration, while the five externally owned runtime secrets remain Key Vault references.
+Cancellation, timeout, or failed apply therefore cannot strand a temporary Secrets Officer role.
+A missing permanent read assignment is repaired by rerunning the reviewed bootstrap workflow.
 
 ### Approval checkpoint for the corrected target
 

@@ -204,6 +204,7 @@ resource "azurerm_key_vault_secret" "postgres_password" {
 }
 
 resource "azurerm_key_vault_secret" "appinsights_connection_string" {
+  count        = local.is_blue_green_target ? 0 : 1
   name         = "appinsights-connection-string"
   value        = azurerm_application_insights.ai.connection_string
   key_vault_id = azurerm_key_vault.kv.id
@@ -228,6 +229,11 @@ resource "azurerm_key_vault_secret" "sluice_api_key" {
 moved {
   from = random_password.postgres_admin
   to   = random_password.postgres_admin[0]
+}
+
+moved {
+  from = azurerm_key_vault_secret.appinsights_connection_string
+  to   = azurerm_key_vault_secret.appinsights_connection_string[0]
 }
 
 moved {
@@ -296,8 +302,9 @@ resource "azurerm_container_app" "api" {
   # holds Key Vault Secrets User via azurerm_role_assignment.api_key_vault_secrets_user.
   secret {
     name                = "appinsights-connection-string"
-    key_vault_secret_id = azurerm_key_vault_secret.appinsights_connection_string.versionless_id
-    identity            = local.is_blue_green_target ? terraform_data.api_identity_ready[0].output : "System"
+    value               = local.is_blue_green_target ? azurerm_application_insights.ai.connection_string : null
+    key_vault_secret_id = local.is_blue_green_target ? null : azurerm_key_vault_secret.appinsights_connection_string[0].versionless_id
+    identity            = local.is_blue_green_target ? null : "System"
   }
 
   dynamic "secret" {
@@ -702,13 +709,6 @@ resource "azurerm_role_assignment" "deployment_key_vault_secrets_user" {
   count                = var.deployment_principal_object_id == "" ? 0 : 1
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
-  principal_id         = var.deployment_principal_object_id
-}
-
-resource "azurerm_role_assignment" "deployment_key_vault_secrets_officer" {
-  count                = var.deployment_principal_object_id != "" && var.deployment_principal_can_write_secrets ? 1 : 0
-  scope                = azurerm_key_vault.kv.id
-  role_definition_name = "Key Vault Secrets Officer"
   principal_id         = var.deployment_principal_object_id
 }
 

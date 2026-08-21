@@ -19,7 +19,6 @@ env:
   TF_VAR_manage_runtime_secrets_with_terraform: "false"
   TF_VAR_enable_sluice: "true"
   TF_VAR_deployment_principal_object_id: ${{ vars.AZURE_OBJECT_ID }}
-  TF_VAR_deployment_principal_can_write_secrets: "true"
 
 jobs:
   bootstrap:
@@ -30,6 +29,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          persist-credentials: false
 
       - name: Verify approved ref and target
         run: |
@@ -110,8 +111,7 @@ jobs:
           terraform -chdir=infra/terraform/env/prod plan \
             -out=secret-bootstrap.tfplan \
             -target=azurerm_key_vault.kv \
-            -target=azurerm_role_assignment.deployment_key_vault_secrets_user \
-            -target=azurerm_role_assignment.deployment_key_vault_secrets_officer
+            -target=azurerm_role_assignment.deployment_key_vault_secrets_user
 
       - name: Apply Key Vault bootstrap only
         run: terraform -chdir=infra/terraform/env/prod apply secret-bootstrap.tfplan

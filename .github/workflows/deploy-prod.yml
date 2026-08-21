@@ -29,13 +29,15 @@ env:
 
 jobs:
   deploy:
-    name: Deploy Convolens Production
+    name: Deploy ConvoLens Production
     runs-on: ubuntu-latest
     environment: ${{ inputs.deployment_environment }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          persist-credentials: false
 
       - name: Verify Production Ref
         run: |
@@ -186,22 +188,6 @@ jobs:
                 exit 1
             fi
           done
-
-      - name: Select Temporary Deployment Principal Vault Access
-        if: inputs.deployment_environment == 'Production-NeuralLiquid'
-        run: |
-          set -euo pipefail
-          appinsights_secret_enabled=$(az keyvault secret show \
-            --vault-name "${{ steps.target.outputs.key-vault-name }}" \
-            --name appinsights-connection-string \
-            --query attributes.enabled \
-            --output tsv 2>/dev/null || true)
-          if [ "$appinsights_secret_enabled" = "true" ]; then
-            can_write_secrets="false"
-          else
-            can_write_secrets="true"
-          fi
-          echo "TF_VAR_deployment_principal_can_write_secrets=$can_write_secrets" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         timeout-minutes: 10
@@ -405,34 +391,6 @@ jobs:
 
       - name: Terraform Apply Base Infrastructure
         run: terraform -chdir=infra/terraform/env/prod apply base.tfplan
-
-      - name: Remove Temporary Deployment Principal Vault Access
-        if: inputs.deployment_environment == 'Production-NeuralLiquid'
-        env:
-          TF_VAR_deployment_principal_can_write_secrets: "false"
-        run: |
-          set -euo pipefail
-          terraform -chdir=infra/terraform/env/prod plan \
-            -out=vault-access.tfplan \
-            -target=azurerm_role_assignment.deployment_key_vault_secrets_officer
-          terraform -chdir=infra/terraform/env/prod apply vault-access.tfplan
-          for attempt in $(seq 1 12); do
-            if az keyvault secret show \
-              --vault-name "${{ steps.target.outputs.key-vault-name }}" \
-              --name api-jwt-secret \
-              --query id \
-              --output tsv \
-              --only-show-errors >/dev/null 2>&1; then
-              break
-            fi
-            if [ "$attempt" -eq 12 ]; then
-              echo "Error: permanent Key Vault Secrets User access did not become readable after removing temporary write access." >&2
-              echo "Recovery: rerun the reviewed bootstrap workflow before retrying this deployment." >&2
-              exit 1
-            fi
-            sleep 10
-          done
-          echo "TF_VAR_deployment_principal_can_write_secrets=false" >> "$GITHUB_ENV"
 
       - name: Ensure Web Secrets In Key Vault
         if: inputs.deployment_environment == 'Production'
