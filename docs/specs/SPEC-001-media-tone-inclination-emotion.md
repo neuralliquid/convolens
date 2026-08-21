@@ -30,8 +30,14 @@ Out: faces, speaker ID, raw audio to LLMs, Semantic Kernel, Foundry agents, Azur
 
 ```text
 POST ConvoLens /api/chat-export/:id/messages/:messageId/media-analysis
-  multipart: file, dspConsent=true, modelProcessingConsent=true when a model path is requested, features=acoustic[,inclination][,affect]
-  header: x-xtox-authorization: Bearer <Mystira user token>
+  headers (required before the body is read):
+    Content-Length
+    x-xtox-authorization: Bearer <Mystira user token>
+    x-convolens-dsp-consent: true
+    x-convolens-features: acoustic[,inclination][,affect]   # default acoustic
+    x-convolens-model-processing-consent: true              # when a model path is requested
+    x-convolens-affect-consent: true                        # when affect is requested
+  multipart: file
         │
         ▼  retain=false, format=json
 xtox POST /api/extract-acoustic-features
@@ -61,7 +67,7 @@ Acoustic-only (Phase 1) does **not** require Whisper. It does require the xtox n
 - Body must match [`media-acoustic-features-v1.schema.json`](../schemas/media-acoustic-features-v1.schema.json).
 - `retain=false`: no Mongo row, no blob persistence, temp files deleted in `finally`.
 - On `quality.ok=false`, still return 200 with metrics null and `quality.code` set. `source.codec` and `source.sample_rate_hz` may be `null` when the file cannot be decoded (`not_audio`, `unsupported_codec`). ConvoLens maps that to UI **Unknown**. Do not coerce to Neutral. `quality.ok=true` requires `quality.code="ok"`; `quality.ok=false` forbids `code="ok"`.
-- Max duration: 10 minutes. Max upload: same as transcription (document the byte cap in the xtox PR; ConvoLens should reject first).
+- Max duration: 10 minutes. Max upload: `VOICE_NOTE_MAX_BYTES`, default `26214400` (25 MiB), same env as transcription, hard ceiling `104857600` (100 MiB). ConvoLens must reject a missing `Content-Length` with 411 `UPLOAD_LENGTH_REQUIRED`, and reject `Content-Length` greater than `VOICE_NOTE_MAX_BYTES + 1048576` (1 MiB multipart overhead) with 413 `UPLOAD_TOO_LARGE`, **before** buffering the body. After parsing, reject `file.size` over `VOICE_NOTE_MAX_BYTES` before forwarding to xtox. xtox applies the same cap.
 - `speaking_rate_wpm` is null unless the caller also supplies word timestamps (Phase 2). DSP must not invent rate from energy bursts.
 
 Physical names only: `rms_db`, `pause_ratio`, `f0_slope_hz_per_s`. Never `emotionIndicator`, `inclination`, `sentiment`.
@@ -103,7 +109,7 @@ New table `message_media_analyses` (name fixed here; PRD left it open).
 
 Sibling of `message_transcripts`. One current row per message. History is not required in v1; replace in place like transcripts.
 
-JSON columns use TypeORM `simple-json` (SQLite-portable). On Postgres they map to JSON/JSONB; do not specify a Postgres-only `jsonb` type in the entity.
+JSON columns use TypeORM `simple-json`, which stores `JSON.stringify` text (SQLite `text` and PostgreSQL `text`, not native `json`/`jsonb`). Do not document or implement these as `jsonb` in v1. Native JSON columns, if needed for sparkline queries, are a follow-on migration.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -117,7 +123,7 @@ JSON columns use TypeORM `simple-json` (SQLite-portable). On Postgres they map t
 | `schemaVersion` | varchar 64 | `media-acoustic-features.v1` |
 | `sourceMediaKind` | varchar 32 | `audio` \| `video_soundtrack` |
 | `qualityCode` | varchar 32 | from xtox |
-| `acoustic` | simple-json not null | full acoustic object; empty object until complete |
+| `acoustic` | simple-json null | full acoustic object when `status=complete`; `null` while pending or when analysis failed before a payload existed |
 | `inclination` | simple-json null | Phase 2 `{ label, confidence, evidenceSpans, source }` |
 | `affectCue` | simple-json null | Phase 3, nullable even when flag on |
 | `processors` | simple-json not null | named processors actually invoked |
@@ -132,9 +138,9 @@ Indexes: unique `messageId`; `(userId, intakeId)`.
 Lifecycle (before any audio is sent to xtox):
 
 1. Enforce feature flags and consent for every requested feature (see §5).
-2. Atomically insert or claim the row (`status=pending`, `analysisClaimId`, `analysisClaimedAt`) the same way transcripts use `transcriptionClaimId` / `transcriptionClaimedAt`. A second concurrent POST that loses the claim returns 409 `ANALYSIS_IN_PROGRESS`.
-3. Only the claim holder reads the upload and calls xtox.
-4. On success, update the same row to `status=complete` with acoustic payload. On failure, `status=failed` and release the claim. Do not insert a second row.
+2. Atomically insert or claim the row (`status=pending`, `acoustic=null`, `analysisClaimId`, `analysisClaimedAt`) the same way transcripts use `transcriptionClaimId` / `transcriptionClaimedAt`. A second concurrent POST that loses the claim returns 409 `ANALYSIS_IN_PROGRESS`.
+3. Only the claim holder reads the upload and calls xtox. The xtox request carries a stable idempotency key `convolens-media-analysis:{messageId}` so a stolen lease that retries does not create a second distinct extraction.
+4. Complete, fail, and claim-release updates are compare-and-set: `WHERE analysisClaimId = <holderClaimId> AND status = 'pending'`. Zero rows means the lease was stolen or already finished; the stale worker must not overwrite a newer result. Do not insert a second row.
 
 Rules:
 
@@ -145,7 +151,9 @@ Rules:
 - Do not store voice embeddings, speaker galleries, or Content Understanding `speaker` strings as identity.
 
 Permitted inclination `label` values: `question`, `request`, `agreement`, `hedge`, `emphasis`, `continuation`, `unknown`.  
-Permitted `source` values: `llm`, `heuristic`.
+Permitted `source` values: `llm`, `heuristic`.  
+`confidence` is a number in `[0, 1]` inclusive.  
+`evidenceSpans` are Unicode code-point offsets into the stored transcript text. Each span has integer `start` and `end` ≥ 0 with `start <= end`. An empty array is allowed when `label` is `unknown`. Phase 2 implementation must validate these before persist.
 
 Inclination JSON example:
 
@@ -166,18 +174,34 @@ Mirror the transcript route.
 
 `POST /api/chat-export/:id/messages/:messageId/media-analysis`
 
-Server-side gates run **before** reading the upload or calling xtox. A direct POST with a missing consent field or a disabled flag must not reach xtox.
+Gate metadata is **not** in the multipart body. A client can put `file` first; a buffering parser would then read audio before consent checks. Send gates as headers so they are available before multipart parsing:
+
+| Header | When |
+| --- | --- |
+| `Content-Length` | always; reject missing (411) or over cap (413) before buffering |
+| `x-xtox-authorization` | always |
+| `x-convolens-dsp-consent: true` | always, including acoustic-only |
+| `x-convolens-features` | comma list; default `acoustic` if omitted |
+| `x-convolens-model-processing-consent: true` | any model path (inclination, affect, Whisper) |
+| `x-convolens-affect-consent: true` | `features` includes `affect` |
+
+Server-side order: authenticate → read headers → enforce flags, consent, and feature prerequisites → apply quota → check `Content-Length` against `VOICE_NOTE_MAX_BYTES` → only then parse multipart `file`. Invalid gates must return without consuming file bytes. A direct POST with a missing consent header or a disabled flag must not reach xtox.
 
 - Auth: existing session + `x-xtox-authorization` Bearer Mystira token.
-- Multipart: `file`, `dspConsent=true` (required for every feature set, including acoustic-only), `modelProcessingConsent=true` when any model path is requested, `features` = comma list defaulting to `acoustic`.
+- Multipart contains `file` only.
 - Persist `dspConsentAt` on the analysis row for every successful claim.
 - `FEATURE_VOICE_ACOUSTIC` must be true for any analysis. Otherwise 503 `VOICE_ANALYSIS_DISABLED`.
 - `features=acoustic` is DSP-only. Consent copy still names xtox (conversion). No Foundry name unless a model feature is also requested.
 - `features=acoustic,inclination` requires `FEATURE_VOICE_INCLINATION=true`, a stored or in-flight transcript, and Whisper gates. Otherwise 503 / 400 as appropriate.
-- `features=acoustic,affect` requires `FEATURE_VOICE_AFFECT_CUES=true` and a second checkbox `affectCueConsent=true`.
+- `features=acoustic,affect` requires `FEATURE_VOICE_AFFECT_CUES=true` and `x-convolens-affect-consent: true`.
 - Video messages: accepted only when `FEATURE_VOICE_VIDEO_DEMUX=true` (Phase 4). Until then 400 `VIDEO_ANALYSIS_NOT_ENABLED`.
 
-`GET` same path — returns stored analysis or 404.
+`GET` same path:
+
+- `status=complete`: stored analysis (`acoustic` is the schema object).
+- `status=pending`: 409 `ANALYSIS_IN_PROGRESS`. Do not return a partial or empty acoustic object.
+- `status=failed`: stored row with `acoustic` null.
+- missing row: 404.
 
 `DELETE` same path — deletes analysis row only.
 
@@ -187,8 +211,11 @@ Error codes (bounded, no filenames):
 | --- | --- |
 | `VOICE_ANALYSIS_DISABLED` | 503 |
 | `XTOX_EPHEMERAL_MODE_NOT_VERIFIED` | 503 |
+| `DSP_CONSENT_REQUIRED` | 400 |
 | `MODEL_PROCESSING_CONSENT_REQUIRED` | 400 |
 | `AFFECT_CONSENT_REQUIRED` | 400 |
+| `UPLOAD_LENGTH_REQUIRED` | 411 |
+| `UPLOAD_TOO_LARGE` | 413 |
 | `MESSAGE_NOT_AUDIO` | 400 |
 | `VIDEO_ANALYSIS_NOT_ENABLED` | 400 |
 | `QUALITY_UNKNOWN` | 201 with `qualityCode` ≠ `ok` (not an error) |

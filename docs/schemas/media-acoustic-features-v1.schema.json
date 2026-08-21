@@ -63,7 +63,7 @@
     },
     "duration_ms": { "type": "integer", "minimum": 0, "maximum": 600000 },
     "metrics": {
-      "type": "object",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "required": ["rms_db", "peak_db", "pause_ratio"],
       "properties": {

@@ -7,8 +7,8 @@ audience:
   - human
 facts:
   - "xtox POST /api/extract-acoustic-features?retain=false&format=json|yaml returns media-acoustic-features.v1. Schema file is docs/schemas/media-acoustic-features-v1.schema.json."
-  - "ConvoLens table is message_media_analyses, unique per message, JSONB acoustic object, cascade delete, excluded from content hashes. Analysis can be deleted without deleting the transcript."
-  - "ConvoLens route is POST/GET/DELETE /api/chat-export/:id/messages/:messageId/media-analysis. Quota VOICE_NOTE_ANALYSES_PER_HOUR default 10, applied before reading the body."
+  - "ConvoLens table is message_media_analyses, unique per message. JSON columns use TypeORM simple-json (text), not PostgreSQL jsonb. acoustic is null until status=complete. Cascade delete; excluded from content hashes. Analysis can be deleted without deleting the transcript."
+  - "ConvoLens route is POST/GET/DELETE /api/chat-export/:id/messages/:messageId/media-analysis. Gate metadata is headers (x-convolens-dsp-consent, x-convolens-features, optional model/affect consent). Upload cap is VOICE_NOTE_MAX_BYTES default 25 MiB, enforced from Content-Length before buffering. Quota VOICE_NOTE_ANALYSES_PER_HOUR default 10, applied before reading the body. GET pending returns 409 ANALYSIS_IN_PROGRESS."
   - "Flags: FEATURE_VOICE_ACOUSTIC, FEATURE_VOICE_INCLINATION, FEATURE_VOICE_AFFECT_CUES (pull-able), FEATURE_VOICE_VIDEO_DEMUX; reuse XTOX_EPHEMERAL_TRANSCRIPTION_VERIFIED before sending audio."
   - "quality.ok=false maps to UI Unknown, never Neutral. Chips use physical words. Affect chips never show angry/sad/happy."
   - "Sluice must not overload convolens-catch-up-v1. Proposed aliases: convolens-stance-v1, convolens-wav2vec2-affect-v1, convolens-cu-audio-v1. Spike both SER aliases; DSP does not wait."
