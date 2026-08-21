@@ -4,6 +4,8 @@ export type LauncherPreset = "upper" | "middle" | "lower";
 export interface LauncherPosition {
   edge: LauncherEdge;
   preset: LauncherPreset;
+  /** Free-drag vertical offset in pixels; overrides `preset` when present. */
+  top?: number;
 }
 
 export const DEFAULT_LAUNCHER_POSITION: LauncherPosition = {
@@ -14,20 +16,24 @@ export const DEFAULT_LAUNCHER_POSITION: LauncherPosition = {
 export function normalizeLauncherPosition(value: unknown): LauncherPosition {
   if (!value || typeof value !== "object") return DEFAULT_LAUNCHER_POSITION;
   const candidate = value as Partial<LauncherPosition>;
+  const top =
+    typeof candidate.top === "number" && Number.isFinite(candidate.top)
+      ? candidate.top
+      : undefined;
   return {
     edge: candidate.edge === "left" ? "left" : "right",
     preset:
       candidate.preset === "upper" || candidate.preset === "lower"
         ? candidate.preset
         : "middle",
+    ...(top === undefined ? {} : { top }),
   };
 }
 
-export function getLauncherTop(
-  preset: LauncherPreset,
+function getLauncherTopBounds(
   viewportHeight: number,
-  launcherSize: number = 44,
-): number {
+  launcherSize: number,
+): { minimum: number; maximum: number } {
   const viewportMargin = 12;
   const preferredTopInset = 72;
   const composerClearance = 104;
@@ -43,10 +49,34 @@ export function getLauncherTop(
       viewportHeight - launcherSize - composerClearance,
     ),
   );
+  return { minimum, maximum };
+}
 
+export function getLauncherTop(
+  preset: LauncherPreset,
+  viewportHeight: number,
+  launcherSize: number = 44,
+): number {
+  const { minimum, maximum } = getLauncherTopBounds(
+    viewportHeight,
+    launcherSize,
+  );
   if (preset === "upper") return minimum;
   if (preset === "lower") return maximum;
   return Math.round(minimum + (maximum - minimum) / 2);
+}
+
+/** Clamps a free-drag pixel offset into the same safe band `getLauncherTop` uses. */
+export function clampLauncherTop(
+  top: number,
+  viewportHeight: number,
+  launcherSize: number = 44,
+): number {
+  const { minimum, maximum } = getLauncherTopBounds(
+    viewportHeight,
+    launcherSize,
+  );
+  return Math.round(Math.min(maximum, Math.max(minimum, top)));
 }
 
 export function resolveLauncherEdge(
