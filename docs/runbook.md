@@ -18,7 +18,8 @@ runtime.
 | Web                    | `https://convolens.neuralliquid.ai`                           |
 | Features               | `https://convolens.neuralliquid.ai/features`                  |
 | Web auth configuration | `https://convolens.neuralliquid.ai/api/runtime/auth-status`   |
-| API health             | Azure Container Apps API hostname + `/health`                 |
+| API health             | `https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io/health` |
+| API ready              | `https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io/ready` |
 | OAuth callback         | `https://convolens.neuralliquid.ai/api/auth/callback/mystira` |
 
 The auth configuration endpoint must return `{"mystiraConfigured":true}`.
@@ -28,11 +29,13 @@ handles the `/api/auth` namespace.
 ## Access prerequisites
 
 - GitHub access to run the `Deploy Production` workflow and approve the
-  `Production` environment.
-- Azure access to the configured production subscription through the
-  repository's OIDC deployment identity.
-- Access to the GitHub repository variables `AZURE_CLIENT_ID`,
-  `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
+  `Production-NeuralLiquid` environment (live). The legacy `Production`
+  environment still targets the stopped pre-migration stack.
+- Azure access to subscription `5a95ddee-dd63-441a-8306-c8b0803dcdd4`
+  (`neuralliquid-sub`) through the repository's OIDC deployment identity.
+- Access to the GitHub environment variables `AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, and `AZURE_OBJECT_ID` on
+  `Production-NeuralLiquid`.
 - Access to the required production secrets. Never print secret values in logs,
   issues, pull requests, or handoffs.
 
@@ -40,8 +43,8 @@ handles the `/api/auth` namespace.
 
 1. Confirm the target commit has passed its normal CI checks.
 2. In GitHub Actions, select `Deploy Production` and run it with
-   `workflow_dispatch`.
-3. Approve the `Production` environment when GitHub requests it.
+   `workflow_dispatch`, `deployment_environment=Production-NeuralLiquid`.
+3. Approve the `Production-NeuralLiquid` environment when GitHub requests it.
 4. Wait for the deployment job to complete. It builds the API and web app,
    applies `infra/terraform/env/prod`, pushes the API image to ACR, deploys the
    web package, restarts App Service, then executes public smoke tests.
@@ -126,10 +129,19 @@ production contract above.
 
 ### Deployment cannot log in to Azure
 
-Confirm the three Azure repository variables target the enabled production
-subscription and that the deployment identity has the GitHub `Production`
-environment federated credential. A disabled or stale subscription credential
-produces `ReadOnlyDisabledSubscription`.
+Confirm the Azure environment variables on `Production-NeuralLiquid` target
+`neuralliquid-sub` and that the deployment identity has the GitHub
+`Production-NeuralLiquid` federated credential. A disabled or stale
+subscription credential produces `ReadOnlyDisabledSubscription`.
+
+### Public hostname points at the old App Service
+
+Live DNS for `convolens.neuralliquid.ai` is Cloudflare (not the Azure DNS
+zone in `nl-global-shared-rg`). The CNAME must stay DNS-only (grey cloud)
+and target `nl-prod-convolens-web-nl.azurewebsites.net`. Rollback is: point
+that CNAME back to `nl-prod-convolens-web.azurewebsites.net` and start the
+legacy web app and Container App in subscription
+`bb4e3882-2079-4bab-8974-611bc0b8bb58`.
 
 ## Recovery boundaries
 
