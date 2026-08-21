@@ -35,7 +35,15 @@ on:
           - apply
 
 concurrency:
-  group: infrastructure-${{ github.event.pull_request.number || github.ref }}
+  # PRs share a group. Dispatches include environment+action so a prod apply
+  # is not replaced by a later dev plan. Pushes use github.sha so each commit
+  # keeps its own run (GitHub is not a FIFO queue).
+  group: >-
+    ${{
+      github.event_name == 'pull_request' && format('infrastructure-pr-{0}', github.event.pull_request.number)
+      || github.event_name == 'workflow_dispatch' && format('infrastructure-{0}-{1}-{2}', github.ref, inputs.environment, inputs.action)
+      || format('infrastructure-{0}', github.sha)
+    }}
 
 permissions:
   id-token: write

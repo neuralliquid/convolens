@@ -19,7 +19,7 @@ on:
         default: '{}'
 
 concurrency:
-  group: mcp-tools-${{ github.ref }}
+  group: mcp-tools-${{ github.ref }}-${{ inputs.tool }}
 
 jobs:
   execute-tool:

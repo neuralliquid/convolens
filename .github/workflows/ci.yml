@@ -9,7 +9,10 @@ on:
       - main
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # PRs share a group so superseded runs cancel. Pushes use github.sha so
+  # concurrent main commits are not collapsed — GitHub keeps only one pending
+  # run per group and would otherwise drop the middle SHA.
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

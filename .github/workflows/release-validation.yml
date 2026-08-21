@@ -23,7 +23,11 @@ on:
         default: false
 
 concurrency:
-  group: release-validation-${{ github.ref }}
+  group: >-
+    ${{
+      github.event_name == 'release' && format('release-validation-{0}', github.sha)
+      || format('release-validation-{0}-{1}', github.ref, inputs.environment)
+    }}
 
 permissions:
   id-token: write
