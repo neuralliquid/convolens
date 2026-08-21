@@ -67,8 +67,13 @@ variable "postgres_admin_login" {
 # schema, and the settings below describe how to reach it.
 variable "sluice_base_url" {
   type        = string
-  description = "Sluice LiteLLM gateway used for governed AI requests."
-  default     = "https://litellm.sluice.phoenixvc.tech"
+  description = <<-EOT
+    Sluice LiteLLM gateway used for governed AI requests.
+    Canonical host is the Celladore stack. The Mystira host
+    https://litellm.sluice.phoenixvc.tech is legacy until pvc-prod-sluice-rg
+    is deleted; do not point new environments there.
+  EOT
+  default     = "https://litellm.sluice.celladoresystems.com"
 
   validation {
     condition     = startswith(var.sluice_base_url, "https://")
