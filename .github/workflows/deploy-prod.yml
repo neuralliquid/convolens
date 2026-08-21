@@ -99,6 +99,7 @@ jobs:
               web_name="nl-prod-convolens-web"
               manage_runtime_secrets="true"
               enable_sluice="false"
+              sluice_api_key_secret_name="sluice-api-key"
               deployment_object_id=""
               ;;
             Production-NeuralLiquid)
@@ -111,6 +112,7 @@ jobs:
               web_name="nl-prod-convolens-web-nl"
               manage_runtime_secrets="false"
               enable_sluice="true"
+              sluice_api_key_secret_name="sluice-api-key-celladore"
               if [ -z "$DEPLOYMENT_PRINCIPAL_OBJECT_ID" ]; then
                 echo "Error: Production-NeuralLiquid requires AZURE_OBJECT_ID for scoped Key Vault secret preload." >&2
                 exit 1
@@ -129,11 +131,13 @@ jobs:
           echo "TF_VAR_global_name_suffix=$suffix" >> "$GITHUB_ENV"
           echo "TF_VAR_manage_runtime_secrets_with_terraform=$manage_runtime_secrets" >> "$GITHUB_ENV"
           echo "TF_VAR_enable_sluice=$enable_sluice" >> "$GITHUB_ENV"
+          echo "TF_VAR_sluice_api_key_secret_name=$sluice_api_key_secret_name" >> "$GITHUB_ENV"
           echo "TF_VAR_deployment_principal_object_id=$deployment_object_id" >> "$GITHUB_ENV"
           echo "backend-config=$backend_config" >> "$GITHUB_OUTPUT"
           echo "tfstate-account=$tfstate_account" >> "$GITHUB_OUTPUT"
           echo "key-vault-name=$key_vault_name" >> "$GITHUB_OUTPUT"
           echo "web-name=$web_name" >> "$GITHUB_OUTPUT"
+          echo "sluice-api-key-secret-name=$sluice_api_key_secret_name" >> "$GITHUB_OUTPUT"
 
       - name: Verify Runtime Authentication Inputs
         env:
@@ -182,7 +186,7 @@ jobs:
         run: |
           set -euo pipefail
           az keyvault show --name "${{ steps.target.outputs.key-vault-name }}" --only-show-errors >/dev/null
-          for secret_name in api-jwt-secret sluice-api-key nextauth-secret mystira-identity-client-secret shared-pg-convolens-password; do
+          for secret_name in api-jwt-secret "${{ steps.target.outputs.sluice-api-key-secret-name }}" nextauth-secret mystira-identity-client-secret shared-pg-convolens-password; do
             secret_enabled=$(az keyvault secret show \
               --vault-name "${{ steps.target.outputs.key-vault-name }}" \
               --name "$secret_name" \
@@ -389,6 +393,11 @@ jobs:
             export TF_VAR_api_jwt_secret="$API_JWT_SECRET"
             export TF_VAR_sluice_api_key="$SLUICE_API_KEY"
           fi
+          # TF_VAR_sluice_api_key_secret_name is resolved once, per target, in the
+          # "Resolve Deployment Target" step above (Production-NeuralLiquid preloads
+          # the Celladore cutover key under its own name rather than rotating the
+          # legacy sluice-api-key in place), and is reused by the readiness check and
+          # both plan steps so they can never point at different secret names.
           terraform -chdir=infra/terraform/env/prod plan \
             -out=base.tfplan \
             -var "container_image_api=${{ steps.base-api.outputs.image }}" \
