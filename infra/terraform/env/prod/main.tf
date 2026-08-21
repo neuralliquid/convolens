@@ -1,30 +1,30 @@
 data "azurerm_client_config" "current" {}
 
 locals {
-  prefix       = "${var.org}-${var.env}-${var.projname}"
-  alphanumeric = lower(replace(local.prefix, "-", ""))
+  prefix                   = "${var.org}-${var.env}-${var.projname}"
+  alphanumeric             = lower(replace(local.prefix, "-", ""))
+  hyphenated_global_suffix = var.global_name_suffix == "" ? "" : "-${var.global_name_suffix}"
+  is_blue_green_target     = var.global_name_suffix != ""
 
   rg_name              = "${local.prefix}-rg"
   law_name             = "${local.prefix}-law"
   ai_name              = "${local.prefix}-appi"
-  storage_name         = substr("${local.alphanumeric}st", 0, 24)
-  kv_name              = substr("${local.prefix}-kv", 0, 24)
+  storage_name         = substr("${local.alphanumeric}${var.global_name_suffix}st", 0, 24)
+  kv_name              = substr("${local.prefix}${local.hyphenated_global_suffix}-kv", 0, 24)
   postgres_name        = "${local.prefix}-pg"
   cae_name             = "${local.prefix}-cae"
   api_name             = "${local.prefix}-api"
   service_plan_name    = "${local.prefix}-asp"
-  frontend_name        = "${local.prefix}-web"
-  acr_name             = substr("${local.alphanumeric}acr", 0, 50)
+  frontend_name        = "${local.prefix}-web${local.hyphenated_global_suffix}"
+  acr_name             = substr("${local.alphanumeric}${var.global_name_suffix}acr", 0, 50)
   redis_name           = "${local.prefix}-redis"
   ingestion_queue_name = "ingestion"
   publish_queue_name   = "baton-publish"
 
-  # Wiring the gateway is opt-in on the key alone. Absent it, no Sluice settings
-  # reach the container app and the application falls through to a direct
-  # provider exactly as it does today — so this stack can be applied before the
-  # key exists without breaking anything, and without pretending to be
-  # configured.
-  sluice_enabled = trimspace(var.sluice_api_key) != ""
+  # Legacy targets infer enablement from the Terraform-supplied key. New targets
+  # explicitly enable Sluice while referencing a value preloaded into Key Vault,
+  # keeping the secret out of Terraform plans and state.
+  sluice_enabled = var.enable_sluice || trimspace(var.sluice_api_key) != ""
 
   tags = merge(
     {
@@ -89,6 +89,14 @@ resource "azurerm_key_vault" "kv" {
   }
 }
 
+resource "azurerm_user_assigned_identity" "api" {
+  count               = local.is_blue_green_target ? 1 : 0
+  name                = "${local.prefix}${local.hyphenated_global_suffix}-api-id"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  tags                = local.tags
+}
+
 resource "azurerm_storage_account" "st" {
   name                            = local.storage_name
   location                        = azurerm_resource_group.rg.location
@@ -147,6 +155,10 @@ resource "azurerm_storage_queue" "baton_publish" {
 }
 
 resource "random_password" "postgres_admin" {
+  # Preserve the already-managed legacy value when the suffix is empty, while
+  # avoiding a new unused credential in blue-green targets that reuse the
+  # shared PostgreSQL server.
+  count            = var.enable_postgres || var.global_name_suffix == "" ? 1 : 0
   length           = 32
   special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
@@ -159,7 +171,7 @@ resource "azurerm_postgresql_flexible_server" "postgres" {
   resource_group_name           = azurerm_resource_group.rg.name
   version                       = "16"
   administrator_login           = var.postgres_admin_login
-  administrator_password        = random_password.postgres_admin.result
+  administrator_password        = random_password.postgres_admin[0].result
   sku_name                      = var.postgres_sku_name
   storage_mb                    = var.postgres_storage_mb
   backup_retention_days         = var.postgres_backup_retention_days
@@ -187,7 +199,7 @@ resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
 resource "azurerm_key_vault_secret" "postgres_password" {
   count        = var.enable_postgres ? 1 : 0
   name         = "postgres-admin-password"
-  value        = random_password.postgres_admin.result
+  value        = random_password.postgres_admin[0].result
   key_vault_id = azurerm_key_vault.kv.id
 }
 
@@ -207,14 +219,40 @@ resource "azurerm_key_vault_secret" "appinsights_connection_string" {
 # three settings below are gated together: a half-configured gateway would leave
 # the app silently on a direct provider while looking configured.
 resource "azurerm_key_vault_secret" "sluice_api_key" {
-  count        = local.sluice_enabled ? 1 : 0
-  name         = "sluice-api-key"
+  count        = var.manage_runtime_secrets_with_terraform && local.sluice_enabled ? 1 : 0
+  name         = var.sluice_api_key_secret_name
   value        = var.sluice_api_key
   key_vault_id = azurerm_key_vault.kv.id
 }
 
+moved {
+  from = random_password.postgres_admin
+  to   = random_password.postgres_admin[0]
+}
+
+moved {
+  from = azurerm_key_vault_secret.api_jwt_secret
+  to   = azurerm_key_vault_secret.api_jwt_secret[0]
+}
+
+moved {
+  from = azurerm_role_assignment.api_blob_contributor
+  to   = azurerm_role_assignment.api_blob_contributor[0]
+}
+
+moved {
+  from = azurerm_role_assignment.api_queue_contributor
+  to   = azurerm_role_assignment.api_queue_contributor[0]
+}
+
+moved {
+  from = azurerm_role_assignment.api_key_vault_secrets_user
+  to   = azurerm_role_assignment.api_key_vault_secrets_user[0]
+}
+
 resource "azurerm_key_vault_secret" "api_jwt_secret" {
-  name         = "api-jwt-secret"
+  count        = var.manage_runtime_secrets_with_terraform ? 1 : 0
+  name         = var.api_jwt_secret_name
   value        = var.api_jwt_secret
   key_vault_id = azurerm_key_vault.kv.id
 }
@@ -225,7 +263,7 @@ resource "azurerm_container_registry" "acr" {
   location                      = azurerm_resource_group.rg.location
   resource_group_name           = azurerm_resource_group.rg.name
   sku                           = "Basic"
-  admin_enabled                 = true
+  admin_enabled                 = !local.is_blue_green_target
   anonymous_pull_enabled        = false
   public_network_access_enabled = true
   tags                          = local.tags
@@ -247,7 +285,8 @@ resource "azurerm_container_app" "api" {
   tags                         = local.tags
 
   identity {
-    type = "SystemAssigned"
+    type         = local.is_blue_green_target ? "UserAssigned" : "SystemAssigned"
+    identity_ids = local.is_blue_green_target ? [terraform_data.api_identity_ready[0].output] : []
   }
 
   # Secrets are Key Vault references, not literals. The vault is the single place
@@ -258,16 +297,16 @@ resource "azurerm_container_app" "api" {
   secret {
     name                = "appinsights-connection-string"
     key_vault_secret_id = azurerm_key_vault_secret.appinsights_connection_string.versionless_id
-    identity            = "System"
+    identity            = local.is_blue_green_target ? terraform_data.api_identity_ready[0].output : "System"
   }
 
   dynamic "secret" {
-    for_each = azurerm_key_vault_secret.sluice_api_key
+    for_each = local.sluice_enabled ? [1] : []
 
     content {
       name                = "sluice-api-key"
-      key_vault_secret_id = secret.value.versionless_id
-      identity            = "System"
+      key_vault_secret_id = var.manage_runtime_secrets_with_terraform ? azurerm_key_vault_secret.sluice_api_key[0].versionless_id : "${azurerm_key_vault.kv.vault_uri}secrets/${var.sluice_api_key_secret_name}"
+      identity            = local.is_blue_green_target ? terraform_data.api_identity_ready[0].output : "System"
     }
   }
 
@@ -277,17 +316,17 @@ resource "azurerm_container_app" "api" {
   secret {
     name                = "db-password"
     key_vault_secret_id = "${azurerm_key_vault.kv.vault_uri}secrets/${var.shared_postgres_password_secret_name}"
-    identity            = "System"
+    identity            = local.is_blue_green_target ? terraform_data.api_identity_ready[0].output : "System"
   }
 
   secret {
     name                = "jwt-secret"
-    key_vault_secret_id = azurerm_key_vault_secret.api_jwt_secret.versionless_id
-    identity            = "System"
+    key_vault_secret_id = var.manage_runtime_secrets_with_terraform ? azurerm_key_vault_secret.api_jwt_secret[0].versionless_id : "${azurerm_key_vault.kv.vault_uri}secrets/${var.api_jwt_secret_name}"
+    identity            = local.is_blue_green_target ? terraform_data.api_identity_ready[0].output : "System"
   }
 
   dynamic "secret" {
-    for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
+    for_each = var.enable_container_registry && !local.is_blue_green_target ? [azurerm_container_registry.acr[0]] : []
 
     content {
       name  = "acr-password"
@@ -296,12 +335,21 @@ resource "azurerm_container_app" "api" {
   }
 
   dynamic "registry" {
-    for_each = var.enable_container_registry ? [azurerm_container_registry.acr[0]] : []
+    for_each = var.enable_container_registry && !local.is_blue_green_target ? [azurerm_container_registry.acr[0]] : []
 
     content {
       server               = registry.value.login_server
       username             = registry.value.admin_username
       password_secret_name = "acr-password"
+    }
+  }
+
+  dynamic "registry" {
+    for_each = var.enable_container_registry && local.is_blue_green_target ? [azurerm_container_registry.acr[0]] : []
+
+    content {
+      server   = registry.value.login_server
+      identity = terraform_data.api_identity_ready[0].output
     }
   }
 
@@ -575,18 +623,21 @@ resource "azurerm_redis_cache" "redis" {
 }
 
 resource "azurerm_role_assignment" "api_blob_contributor" {
+  count                = local.is_blue_green_target ? 0 : 1
   scope                = azurerm_storage_account.st.id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_container_app.api.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "api_queue_contributor" {
+  count                = local.is_blue_green_target ? 0 : 1
   scope                = azurerm_storage_account.st.id
   role_definition_name = "Storage Queue Data Contributor"
   principal_id         = azurerm_container_app.api.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
+  count                = local.is_blue_green_target ? 0 : 1
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_container_app.api.identity[0].principal_id
@@ -596,6 +647,60 @@ resource "azurerm_role_assignment" "frontend_key_vault_secrets_user" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_linux_web_app.frontend.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "blue_green_api_blob_contributor" {
+  count                = local.is_blue_green_target ? 1 : 0
+  scope                = azurerm_storage_account.st.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.api[0].principal_id
+}
+
+resource "azurerm_role_assignment" "blue_green_api_queue_contributor" {
+  count                = local.is_blue_green_target ? 1 : 0
+  scope                = azurerm_storage_account.st.id
+  role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.api[0].principal_id
+}
+
+resource "azurerm_role_assignment" "blue_green_api_key_vault_secrets_user" {
+  count                = local.is_blue_green_target ? 1 : 0
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.api[0].principal_id
+}
+
+resource "azurerm_role_assignment" "blue_green_api_acr_pull" {
+  count                = local.is_blue_green_target && var.enable_container_registry ? 1 : 0
+  scope                = azurerm_container_registry.acr[0].id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.api[0].principal_id
+}
+
+resource "terraform_data" "api_identity_ready" {
+  count = local.is_blue_green_target ? 1 : 0
+  input = azurerm_user_assigned_identity.api[0].id
+
+  depends_on = [
+    azurerm_role_assignment.blue_green_api_blob_contributor,
+    azurerm_role_assignment.blue_green_api_queue_contributor,
+    azurerm_role_assignment.blue_green_api_key_vault_secrets_user,
+    azurerm_role_assignment.blue_green_api_acr_pull,
+  ]
+}
+
+resource "azurerm_role_assignment" "deployment_key_vault_secrets_user" {
+  count                = var.deployment_principal_object_id == "" ? 0 : 1
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = var.deployment_principal_object_id
+}
+
+resource "azurerm_role_assignment" "deployment_key_vault_secrets_officer" {
+  count                = var.deployment_principal_object_id != "" && var.deployment_principal_can_write_secrets ? 1 : 0
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = var.deployment_principal_object_id
 }
 
 resource "azurerm_consumption_budget_resource_group" "budget" {

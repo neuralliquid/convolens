@@ -2,6 +2,15 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
+    inputs:
+      deployment_environment:
+        description: Protected GitHub environment and Azure production target
+        required: true
+        default: Production
+        type: choice
+        options:
+          - Production
+          - Production-NeuralLiquid
 
 permissions:
   contents: read
@@ -16,16 +25,29 @@ env:
   ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  DEPLOYMENT_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_OBJECT_ID }}
 
 jobs:
   deploy:
     name: Deploy Convolens Production
     runs-on: ubuntu-latest
-    environment: Production
+    environment: ${{ inputs.deployment_environment }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Verify Production Ref
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Error: production deployments must be dispatched from refs/heads/main." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "Error: checked-out commit does not match the workflow dispatch SHA." >&2
+            exit 1
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -53,6 +75,74 @@ jobs:
             fi
           done
 
+      - name: Resolve Deployment Target
+        id: target
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.deployment_environment }}
+        run: |
+          set -euo pipefail
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            Production)
+              expected_subscription="bb4e3882-2079-4bab-8974-611bc0b8bb58"
+              expected_tenant="9530cd32-9e33-47f0-9247-ed964730b580"
+              suffix=""
+              backend_config="backend.hcl"
+              tfstate_account="nltfstateconvolens"
+              key_vault_name="nl-prod-convolens-kv"
+              web_name="nl-prod-convolens-web"
+              manage_runtime_secrets="true"
+              enable_sluice="false"
+              deployment_object_id=""
+              ;;
+            Production-NeuralLiquid)
+              expected_subscription="5a95ddee-dd63-441a-8306-c8b0803dcdd4"
+              expected_tenant="5384ef74-e517-4b22-9472-df990f61e8b5"
+              suffix="nl"
+              backend_config="backend.neuralliquid.hcl"
+              tfstate_account="nltfstateconvolensnl"
+              key_vault_name="nl-prod-convolens-nl-kv"
+              web_name="nl-prod-convolens-web-nl"
+              manage_runtime_secrets="false"
+              enable_sluice="true"
+              if [ -z "$DEPLOYMENT_PRINCIPAL_OBJECT_ID" ]; then
+                echo "Error: Production-NeuralLiquid requires AZURE_OBJECT_ID for scoped Key Vault secret preload." >&2
+                exit 1
+              fi
+              deployment_object_id="$DEPLOYMENT_PRINCIPAL_OBJECT_ID"
+              ;;
+            *)
+              echo "Error: unsupported deployment environment '$DEPLOYMENT_ENVIRONMENT'." >&2
+              exit 1
+              ;;
+          esac
+          if [ "$ARM_SUBSCRIPTION_ID" != "$expected_subscription" ] || [ "$ARM_TENANT_ID" != "$expected_tenant" ]; then
+            echo "Error: $DEPLOYMENT_ENVIRONMENT credentials target the wrong Azure tenant or subscription." >&2
+            exit 1
+          fi
+          echo "TF_VAR_global_name_suffix=$suffix" >> "$GITHUB_ENV"
+          echo "TF_VAR_manage_runtime_secrets_with_terraform=$manage_runtime_secrets" >> "$GITHUB_ENV"
+          echo "TF_VAR_enable_sluice=$enable_sluice" >> "$GITHUB_ENV"
+          echo "TF_VAR_deployment_principal_object_id=$deployment_object_id" >> "$GITHUB_ENV"
+          echo "backend-config=$backend_config" >> "$GITHUB_OUTPUT"
+          echo "tfstate-account=$tfstate_account" >> "$GITHUB_OUTPUT"
+          echo "key-vault-name=$key_vault_name" >> "$GITHUB_OUTPUT"
+          echo "web-name=$web_name" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Runtime Authentication Inputs
+        env:
+          MYSTIRA_IDENTITY_CLIENT_ID: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+          API_JWT_SECRET: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ "$MYSTIRA_IDENTITY_CLIENT_ID" != "neuralliquid-convolens-web" ]; then
+            echo "Error: MYSTIRA_IDENTITY_CLIENT_ID must be the seeded neuralliquid-convolens-web client." >&2
+            exit 1
+          fi
+          if [ "$TF_VAR_manage_runtime_secrets_with_terraform" = "true" ] && [ "${#API_JWT_SECRET}" -lt 32 ]; then
+            echo "Error: the legacy Terraform-managed API JWT secret must be at least 32 characters." >&2
+            exit 1
+          fi
+
       # Sluice owns provider credentials, model routing, budgets and telemetry,
       # and is the only path on which this service's model spend is attributable
       # (Sluice ADR 10). The application degrades to a direct provider when the
@@ -62,6 +152,7 @@ jobs:
       # variable: a required variable would break every plan and apply for
       # everyone, while this fails only the thing that should fail, loudly.
       - name: Verify Governed AI Configuration
+        if: inputs.deployment_environment == 'Production'
         env:
           SLUICE_API_KEY: ${{ secrets.SLUICE_API_KEY }}
         run: |
@@ -78,6 +169,39 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify NeuralLiquid Vault Is Ready
+        if: inputs.deployment_environment == 'Production-NeuralLiquid'
+        run: |
+          set -euo pipefail
+          az keyvault show --name "${{ steps.target.outputs.key-vault-name }}" --only-show-errors >/dev/null
+          for secret_name in api-jwt-secret sluice-api-key nextauth-secret mystira-identity-client-secret shared-pg-convolens-password; do
+            secret_enabled=$(az keyvault secret show \
+              --vault-name "${{ steps.target.outputs.key-vault-name }}" \
+              --name "$secret_name" \
+              --query attributes.enabled \
+              --output tsv 2>/dev/null || true)
+            if [ "$secret_enabled" != "true" ]; then
+                echo "Error: required target-vault secret '$secret_name' is missing or disabled; run the separate bootstrap and direct-transfer procedure first." >&2
+                exit 1
+            fi
+          done
+
+      - name: Select Temporary Deployment Principal Vault Access
+        if: inputs.deployment_environment == 'Production-NeuralLiquid'
+        run: |
+          set -euo pipefail
+          appinsights_secret_enabled=$(az keyvault secret show \
+            --vault-name "${{ steps.target.outputs.key-vault-name }}" \
+            --name appinsights-connection-string \
+            --query attributes.enabled \
+            --output tsv 2>/dev/null || true)
+          if [ "$appinsights_secret_enabled" = "true" ]; then
+            can_write_secrets="false"
+          else
+            can_write_secrets="true"
+          fi
+          echo "TF_VAR_deployment_principal_can_write_secrets=$can_write_secrets" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         timeout-minutes: 10
@@ -98,12 +222,8 @@ jobs:
       - name: Smoke Test API Build
         timeout-minutes: 2
         env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+          JWT_SECRET: ci-startup-smoke-only-not-a-production-secret
         run: |
-          if [ -z "$JWT_SECRET" ]; then
-            echo "Error: JWT_SECRET or NEXTAUTH_SECRET repository secret is required for production API startup." >&2
-            exit 1
-          fi
           DB_PATH="${RUNNER_TEMP}/convolens-api-smoke.sqlite"
           NODE_ENV=production \
             JWT_SECRET="$JWT_SECRET" \
@@ -134,6 +254,19 @@ jobs:
       - name: Ensure Terraform Backend
         run: |
           set -euo pipefail
+          if [ "${{ inputs.deployment_environment }}" = "Production-NeuralLiquid" ]; then
+            az group show --name nl-tfstate-rg --only-show-errors >/dev/null
+            az storage account show \
+              --resource-group nl-tfstate-rg \
+              --name "${{ steps.target.outputs.tfstate-account }}" \
+              --only-show-errors >/dev/null
+            az storage container create \
+              --name tfstate \
+              --account-name "${{ steps.target.outputs.tfstate-account }}" \
+              --auth-mode login \
+              --output none
+            exit 0
+          fi
           TFSTATE_RG_LOCATION=$(az group show \
             --name nl-tfstate-rg \
             --query location \
@@ -147,11 +280,11 @@ jobs:
           fi
           if ! az storage account show \
             --resource-group nl-tfstate-rg \
-            --name nltfstateconvolens \
+            --name "${{ steps.target.outputs.tfstate-account }}" \
             --only-show-errors >/dev/null 2>&1; then
             az storage account create \
-            --resource-group nl-tfstate-rg \
-            --name nltfstateconvolens \
+              --resource-group nl-tfstate-rg \
+              --name "${{ steps.target.outputs.tfstate-account }}" \
               --location "$TFSTATE_RG_LOCATION" \
               --sku Standard_LRS \
               --kind StorageV2 \
@@ -162,20 +295,24 @@ jobs:
           fi
           ACCOUNT_KEY=$(az storage account keys list \
             --resource-group nl-tfstate-rg \
-            --account-name nltfstateconvolens \
+            --account-name "${{ steps.target.outputs.tfstate-account }}" \
             --query '[0].value' \
             -o tsv)
           az storage container create \
             --name tfstate \
-            --account-name nltfstateconvolens \
+            --account-name "${{ steps.target.outputs.tfstate-account }}" \
             --account-key "$ACCOUNT_KEY"
 
       - name: Terraform Init
-        run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.hcl
+        run: terraform -chdir=infra/terraform/env/prod init -backend-config="${{ steps.target.outputs.backend-config }}"
 
       - name: Verify PostgreSQL SKU Availability
         run: |
           set -euo pipefail
+          if ! grep -Eq '^enable_postgres[[:space:]]*=[[:space:]]*true([[:space:]]|$)' infra/terraform/env/prod/terraform.tfvars; then
+            echo "PostgreSQL provisioning is disabled; skipping irrelevant SKU capacity check."
+            exit 0
+          fi
           AVAILABLE_SKUS=$(az postgres flexible-server list-skus \
             --location southafricanorth \
             --query '[].supportedServerEditions[].supportedServerSkus[].name' \
@@ -211,12 +348,13 @@ jobs:
           echo "target-port=$CURRENT_PORT" >> "$GITHUB_OUTPUT"
 
       - name: Preload Web Secrets Into Existing Key Vault
+        if: inputs.deployment_environment == 'Production'
         env:
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           MYSTIRA_IDENTITY_CLIENT_SECRET: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-          if ! az keyvault show --name nl-prod-convolens-kv --only-show-errors >/dev/null 2>&1; then
+          if ! az keyvault show --name "${{ steps.target.outputs.key-vault-name }}" --only-show-errors >/dev/null 2>&1; then
             echo "Key Vault is not provisioned yet; the base Terraform apply will create it."
             exit 0
           fi
@@ -225,36 +363,41 @@ jobs:
             exit 1
           fi
           az keyvault secret set \
-            --vault-name nl-prod-convolens-kv \
+            --vault-name "${{ steps.target.outputs.key-vault-name }}" \
             --name nextauth-secret \
             --value "$NEXTAUTH_SECRET" \
             --output none
           az keyvault secret set \
-            --vault-name nl-prod-convolens-kv \
+            --vault-name "${{ steps.target.outputs.key-vault-name }}" \
             --name mystira-identity-client-secret \
             --value "$MYSTIRA_IDENTITY_CLIENT_SECRET" \
             --output none
           if az webapp show \
             --resource-group nl-prod-convolens-rg \
-            --name nl-prod-convolens-web \
+            --name "${{ steps.target.outputs.web-name }}" \
             --only-show-errors >/dev/null 2>&1; then
             az webapp config appsettings set \
               --resource-group nl-prod-convolens-rg \
-              --name nl-prod-convolens-web \
+              --name "${{ steps.target.outputs.web-name }}" \
               --settings \
-                'NEXTAUTH_SECRET=@Microsoft.KeyVault(VaultName=nl-prod-convolens-kv;SecretName=nextauth-secret)' \
-                'MYSTIRA_IDENTITY_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=nl-prod-convolens-kv;SecretName=mystira-identity-client-secret)' \
+                "NEXTAUTH_SECRET=@Microsoft.KeyVault(VaultName=${{ steps.target.outputs.key-vault-name }};SecretName=nextauth-secret)" \
+                "MYSTIRA_IDENTITY_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=${{ steps.target.outputs.key-vault-name }};SecretName=mystira-identity-client-secret)" \
               --output none
           fi
 
       - name: Terraform Plan Base Infrastructure
         env:
-          TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
-          TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
-          TF_VAR_sluice_api_key: ${{ secrets.SLUICE_API_KEY }}
+          MYSTIRA_IDENTITY_CLIENT_ID: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+          API_JWT_SECRET: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+          SLUICE_API_KEY: ${{ secrets.SLUICE_API_KEY }}
           TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
           TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
         run: |
+          export TF_VAR_mystira_identity_client_id="$MYSTIRA_IDENTITY_CLIENT_ID"
+          if [ "$TF_VAR_manage_runtime_secrets_with_terraform" = "true" ]; then
+            export TF_VAR_api_jwt_secret="$API_JWT_SECRET"
+            export TF_VAR_sluice_api_key="$SLUICE_API_KEY"
+          fi
           terraform -chdir=infra/terraform/env/prod plan \
             -out=base.tfplan \
             -var "container_image_api=${{ steps.base-api.outputs.image }}" \
@@ -263,7 +406,36 @@ jobs:
       - name: Terraform Apply Base Infrastructure
         run: terraform -chdir=infra/terraform/env/prod apply base.tfplan
 
+      - name: Remove Temporary Deployment Principal Vault Access
+        if: inputs.deployment_environment == 'Production-NeuralLiquid'
+        env:
+          TF_VAR_deployment_principal_can_write_secrets: "false"
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/terraform/env/prod plan \
+            -out=vault-access.tfplan \
+            -target=azurerm_role_assignment.deployment_key_vault_secrets_officer
+          terraform -chdir=infra/terraform/env/prod apply vault-access.tfplan
+          for attempt in $(seq 1 12); do
+            if az keyvault secret show \
+              --vault-name "${{ steps.target.outputs.key-vault-name }}" \
+              --name api-jwt-secret \
+              --query id \
+              --output tsv \
+              --only-show-errors >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "Error: permanent Key Vault Secrets User access did not become readable after removing temporary write access." >&2
+              echo "Recovery: rerun the reviewed bootstrap workflow before retrying this deployment." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "TF_VAR_deployment_principal_can_write_secrets=false" >> "$GITHUB_ENV"
+
       - name: Ensure Web Secrets In Key Vault
+        if: inputs.deployment_environment == 'Production'
         env:
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
           MYSTIRA_IDENTITY_CLIENT_SECRET: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_SECRET }}
@@ -274,12 +446,12 @@ jobs:
             exit 1
           fi
           az keyvault secret set \
-            --vault-name nl-prod-convolens-kv \
+            --vault-name "${{ steps.target.outputs.key-vault-name }}" \
             --name nextauth-secret \
             --value "$NEXTAUTH_SECRET" \
             --output none
           az keyvault secret set \
-            --vault-name nl-prod-convolens-kv \
+            --vault-name "${{ steps.target.outputs.key-vault-name }}" \
             --name mystira-identity-client-secret \
             --value "$MYSTIRA_IDENTITY_CLIENT_SECRET" \
             --output none
@@ -291,7 +463,7 @@ jobs:
           echo "resource-group=$(jq -r '.resource_group_name.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
           echo "api-url=$(jq -r '.container_app_url.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
           echo "web-url=$(jq -r '.frontend_default_hostname.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
-          echo "web-name=nl-prod-convolens-web" >> "$GITHUB_OUTPUT"
+          echo "web-name=$(jq -r '.frontend_name.value' tf-outputs.json)" >> "$GITHUB_OUTPUT"
           ACR_LOGIN_SERVER=$(jq -r '.container_registry_login_server.value' tf-outputs.json)
           if [ -z "$ACR_LOGIN_SERVER" ]; then
             echo "ACR output is empty; enable_container_registry must be true for production deploy." >&2
@@ -312,17 +484,22 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Terraform Plan API Image
+        env:
+          MYSTIRA_IDENTITY_CLIENT_ID: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
+          API_JWT_SECRET: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
+          SLUICE_API_KEY: ${{ secrets.SLUICE_API_KEY }}
+          TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
+          TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
         run: |
+          export TF_VAR_mystira_identity_client_id="$MYSTIRA_IDENTITY_CLIENT_ID"
+          if [ "$TF_VAR_manage_runtime_secrets_with_terraform" = "true" ]; then
+            export TF_VAR_api_jwt_secret="$API_JWT_SECRET"
+            export TF_VAR_sluice_api_key="$SLUICE_API_KEY"
+          fi
           terraform -chdir=infra/terraform/env/prod plan \
             -out=api-image.tfplan \
             -var "container_image_api=${{ steps.api-image.outputs.image }}" \
             -var "api_target_port=3001"
-        env:
-          TF_VAR_mystira_identity_client_id: ${{ secrets.MYSTIRA_IDENTITY_CLIENT_ID }}
-          TF_VAR_api_jwt_secret: ${{ secrets.JWT_SECRET || secrets.NEXTAUTH_SECRET }}
-          TF_VAR_sluice_api_key: ${{ secrets.SLUICE_API_KEY }}
-          TF_VAR_mystira_admin_emails: ${{ vars.MYSTIRA_ADMIN_EMAILS }}
-          TF_VAR_mystira_admin_subjects: ${{ vars.MYSTIRA_ADMIN_SUBJECTS }}
 
       - name: Terraform Apply API Image
         run: terraform -chdir=infra/terraform/env/prod apply api-image.tfplan

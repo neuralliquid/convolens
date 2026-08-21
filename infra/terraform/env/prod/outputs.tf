@@ -59,6 +59,11 @@ output "frontend_default_hostname" {
   description = "Default App Service URL for the frontend before custom DNS binding."
 }
 
+output "frontend_name" {
+  value       = azurerm_linux_web_app.frontend.name
+  description = "Azure App Service resource name for deployment operations."
+}
+
 output "custom_hostname" {
   value       = var.custom_hostname
   description = "Approved production hostname to bind during go-live."

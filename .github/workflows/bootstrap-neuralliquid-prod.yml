@@ -1,0 +1,141 @@
+name: Bootstrap NeuralLiquid Production Secrets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.14.7"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_global_name_suffix: nl
+  TF_VAR_manage_runtime_secrets_with_terraform: "false"
+  TF_VAR_enable_sluice: "true"
+  TF_VAR_deployment_principal_object_id: ${{ vars.AZURE_OBJECT_ID }}
+  TF_VAR_deployment_principal_can_write_secrets: "true"
+
+jobs:
+  bootstrap:
+    name: Bootstrap state and Key Vault only
+    runs-on: ubuntu-latest
+    environment: Production-NeuralLiquid
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Verify approved ref and target
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "Error: bootstrap must be dispatched from refs/heads/main." >&2
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || {
+            echo "Error: checkout does not match the dispatch SHA." >&2
+            exit 1
+          }
+          test "$ARM_SUBSCRIPTION_ID" = "5a95ddee-dd63-441a-8306-c8b0803dcdd4" || exit 1
+          test "$ARM_TENANT_ID" = "5384ef74-e517-4b22-9472-df990f61e8b5" || exit 1
+          test -n "$TF_VAR_deployment_principal_object_id" || {
+            echo "Error: AZURE_OBJECT_ID is required." >&2
+            exit 1
+          }
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bootstrap AzureAD-only Terraform backend
+        run: |
+          set -euo pipefail
+          az group create \
+            --name nl-tfstate-rg \
+            --location southafricanorth \
+            --tags project=convolens purpose=tfstate environment=prod \
+            --output none
+          if ! az storage account show --resource-group nl-tfstate-rg --name nltfstateconvolensnl --only-show-errors >/dev/null 2>&1; then
+            az storage account create \
+              --resource-group nl-tfstate-rg \
+              --name nltfstateconvolensnl \
+              --location southafricanorth \
+              --sku Standard_LRS \
+              --kind StorageV2 \
+              --min-tls-version TLS1_2 \
+              --allow-blob-public-access false \
+              --https-only true \
+              --output none
+          fi
+          account_id=$(az storage account show --resource-group nl-tfstate-rg --name nltfstateconvolensnl --query id -o tsv)
+          az role assignment create \
+            --assignee-object-id "$TF_VAR_deployment_principal_object_id" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Storage Blob Data Contributor" \
+            --scope "$account_id" \
+            --output none
+          az storage account update \
+            --resource-group nl-tfstate-rg \
+            --name nltfstateconvolensnl \
+            --allow-shared-key-access false \
+            --output none
+          for attempt in {1..12}; do
+            if az storage container create --name tfstate --account-name nltfstateconvolensnl --auth-mode login --output none 2>/dev/null; then
+              exit 0
+            fi
+            [ "$attempt" -lt 12 ] || exit 1
+            sleep 10
+          done
+
+      - name: Terraform Init
+        run: terraform -chdir=infra/terraform/env/prod init -backend-config=backend.neuralliquid.hcl
+
+      - name: Plan Key Vault bootstrap only
+        run: |
+          terraform -chdir=infra/terraform/env/prod plan \
+            -out=secret-bootstrap.tfplan \
+            -target=azurerm_key_vault.kv \
+            -target=azurerm_role_assignment.deployment_key_vault_secrets_user \
+            -target=azurerm_role_assignment.deployment_key_vault_secrets_officer
+
+      - name: Apply Key Vault bootstrap only
+        run: terraform -chdir=infra/terraform/env/prod apply secret-bootstrap.tfplan
+
+      - name: Verify Key Vault data-plane access
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if az keyvault secret list \
+              --vault-name nl-prod-convolens-nl-kv \
+              --maxresults 1 \
+              --only-show-errors \
+              --output none 2>/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "Error: Key Vault data-plane roles did not propagate; rerun this bootstrap before direct secret transfer." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Report required direct transfer
+        run: |
+          echo "Bootstrap complete. No application resources were deployed."
+          echo "Before deployment, directly transfer these secret names into nl-prod-convolens-nl-kv:"
+          echo "api-jwt-secret, sluice-api-key, nextauth-secret, mystira-identity-client-secret, shared-pg-convolens-password"
