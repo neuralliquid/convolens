@@ -7,7 +7,7 @@ audience:
   - human
 facts:
   - "This is a Manifest V3 Chrome extension under apps/chrome-extension that extracts the open WhatsApp Web chat and sends it to ConvoLens for summarization."
-  - "Development load path is npm install, npm run build, then Chrome Load unpacked on apps/chrome-extension. npm run package writes convolens-extension.zip, which must be extracted before Load unpacked."
+  - "Development load path is npm install, npm run build, then Chrome Load unpacked on apps/chrome-extension. npm run package writes convolens-extension.zip, which must be extracted into a new folder before Load unpacked. Remove any previous unpacked ConvoLens card first; Chrome otherwise keeps showing the old manifest version."
   - "Unpacked installs default to production ConvoLens endpoints, not localhost. Settings may override the API URL for local or non-production use."
   - "Default API URL is https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io. Default dashboard is https://convolens.neuralliquid.ai. Local override is http://localhost:3001."
   - "WhatsApp selectors prefer data-testid values (msg-container, msg-text) with class fallbacks; they can break when WhatsApp Web changes."

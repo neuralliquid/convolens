@@ -6,6 +6,10 @@ const popupSource = readFileSync(
   new URL("../popup/popup.js", import.meta.url),
   "utf8",
 );
+const optionsSource = readFileSync(
+  new URL("../options/options.js", import.meta.url),
+  "utf8",
+);
 const popupHtml = readFileSync(
   new URL("../popup/popup.html", import.meta.url),
   "utf8",
@@ -21,10 +25,30 @@ test("renders the runtime manifest version and keeps release versions aligned", 
   assert.match(popupHtml, /id="extensionVersion"/);
   assert.match(
     popupSource,
-    /extensionVersion\.textContent = `v\$\{chrome\.runtime\.getManifest\(\)\.version\}`/,
+    /const PACKAGED_VERSION = "1\.0\.25"/,
+  );
+  assert.match(
+    popupSource,
+    /runtimeVersion === PACKAGED_VERSION/,
+  );
+  assert.match(
+    popupSource,
+    /reload unpacked|reload \$\{PACKAGED_VERSION\}/,
+  );
+  assert.match(
+    optionsSource,
+    /const PACKAGED_VERSION = "1\.0\.25"/,
+  );
+  assert.match(
+    optionsSource,
+    /runtimeVersion === PACKAGED_VERSION/,
+  );
+  assert.match(
+    optionsSource,
+    /reload \$\{PACKAGED_VERSION\}/,
   );
   assert.equal(manifest.version, packageJson.version);
-  assert.equal(manifest.version, "1.0.24");
+  assert.equal(manifest.version, "1.0.25");
 });
 
 test("opens the conversation dashboard from both popup entry points", () => {

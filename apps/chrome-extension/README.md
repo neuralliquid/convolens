@@ -43,8 +43,10 @@ npm run build:prod
 npm run package  # Creates convolens-extension.zip
 ```
 
-To install a packaged release, extract `convolens-extension.zip` first, then
-use Chrome's **Load unpacked** action to select the extracted directory. The ZIP
+To install a packaged release, extract `convolens-extension.zip` into a new
+folder, remove any previous ConvoLens unpacked extension, then use Chrome's
+**Load unpacked** action to select the extracted directory. Confirm
+`chrome://extensions` shows the ZIP version before signing in. The ZIP
 contains the manifest, compiled scripts, popup, settings page, and icons.
 
 ## Usage
