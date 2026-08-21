@@ -10,9 +10,9 @@ export const API_CONFIG = {
   // Production URLs (updated during build)
   production: {
     apiUrl:
-      "https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io",
+      "https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io",
     wsUrl:
-      "wss://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io/ws",
+      "wss://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io/ws",
     dashboardUrl: "https://convolens.neuralliquid.ai",
   },
   // Development URLs

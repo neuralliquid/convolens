@@ -183,7 +183,7 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
       args: [
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
-        "--host-resolver-rules=MAP convolens.neuralliquid.ai ~NOTFOUND, MAP nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io ~NOTFOUND, EXCLUDE localhost",
+        "--host-resolver-rules=MAP convolens.neuralliquid.ai ~NOTFOUND, MAP nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io ~NOTFOUND, MAP nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io ~NOTFOUND, EXCLUDE localhost",
       ],
     });
     await context.route("https://web.whatsapp.com/**", (route) =>

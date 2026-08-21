@@ -1,0 +1,18 @@
+schema: md-agent/v1
+source: apps/chrome-extension/README.md
+title: "ConvoLens Chrome Extension"
+purpose: "Operator and agent guide for the WhatsApp Web Chrome extension: load unpacked or from zip, default production endpoints, DOM extraction, and privacy constraints."
+audience:
+  - agent
+  - human
+facts:
+  - "This is a Manifest V3 Chrome extension under apps/chrome-extension that extracts the open WhatsApp Web chat and sends it to ConvoLens for summarization."
+  - "Development load path is npm install, npm run build, then Chrome Load unpacked on apps/chrome-extension. npm run package writes convolens-extension.zip, which must be extracted before Load unpacked."
+  - "Unpacked installs default to production ConvoLens endpoints, not localhost. Settings may override the API URL for local or non-production use."
+  - "Default API URL is https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io. Default dashboard is https://convolens.neuralliquid.ai. Local override is http://localhost:3001."
+  - "WhatsApp selectors prefer data-testid values (msg-container, msg-text) with class fallbacks; they can break when WhatsApp Web changes."
+  - "API traffic is HTTPS only. Auth tokens live in chrome.storage.local. Chat content is not persisted locally; extraction history is local-only and can be cleared in settings."
+  - "Chat data is sent only after an explicit user action. There is no background collection or third-party tracking."
+  - "Chrome Web Store listing and Firefox/Edge ports are still open. Rate-limit retries wait 60 seconds."
+  - "License is MIT (repo LICENSE)."
+last_synced: "2026-08-21"

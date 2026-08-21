@@ -210,7 +210,7 @@ export const test = base.extend<{ harness: ExtensionHarness }>({
         args: [
           `--disable-extensions-except=${extensionPath}`,
           `--load-extension=${extensionPath}`,
-          "--host-resolver-rules=MAP convolens.neuralliquid.ai ~NOTFOUND, MAP nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io ~NOTFOUND, MAP api.convolens.com ~NOTFOUND, MAP api.convolens.neuralliquid.ai ~NOTFOUND, EXCLUDE localhost",
+          "--host-resolver-rules=MAP convolens.neuralliquid.ai ~NOTFOUND, MAP nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io ~NOTFOUND, MAP nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io ~NOTFOUND, MAP api.convolens.com ~NOTFOUND, MAP api.convolens.neuralliquid.ai ~NOTFOUND, EXCLUDE localhost",
         ],
       });
       await attachConsoleEvidence(context, consoleMessages);

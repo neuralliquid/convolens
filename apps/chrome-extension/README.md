@@ -85,7 +85,7 @@ local or non-production development environment.
 
 | Environment                | API URL                                                                                  | Dashboard URL                        |
 | -------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------ |
-| Default                    | `https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io` | `https://convolens.neuralliquid.ai`  |
+| Default                    | `https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io` | `https://convolens.neuralliquid.ai`  |
 | Local development override | `http://localhost:3001`                                                                  | configured in the local source build |
 
 ## Development

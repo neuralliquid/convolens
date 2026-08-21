@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ConvoLens - WhatsApp Intake",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Send the WhatsApp Web conversation you choose into your ConvoLens workspace.",
 
   "icons": {
@@ -18,7 +18,7 @@
     "https://api.convolens.com/*",
     "https://api.convolens.neuralliquid.ai/*",
     "https://convolens.neuralliquid.ai/*",
-    "https://nl-prod-convolens-api.calmmoss-612abacc.southafricanorth.azurecontainerapps.io/*",
+    "https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io/*",
     "http://localhost:3001/*"
   ],
 
