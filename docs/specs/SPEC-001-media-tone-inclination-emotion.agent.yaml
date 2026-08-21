@@ -1,0 +1,17 @@
+schema: md-agent/v1
+source: docs/specs/SPEC-001-media-tone-inclination-emotion.md
+title: "SPEC-001: Media tone, inclination, and emotion-indicator analysis"
+purpose: "Implementable contract for PRD-001 / ADR-0003. Phase 1 DSP is normative; later phases are sketched. Does not enable production flags."
+audience:
+  - agent
+  - human
+facts:
+  - "xtox POST /api/extract-acoustic-features?retain=false&format=json|yaml returns media-acoustic-features.v1. Schema file is docs/schemas/media-acoustic-features-v1.schema.json."
+  - "ConvoLens table is message_media_analyses, unique per message, JSONB acoustic object, cascade delete, excluded from content hashes. Analysis can be deleted without deleting the transcript."
+  - "ConvoLens route is POST/GET/DELETE /api/chat-export/:id/messages/:messageId/media-analysis. Quota VOICE_NOTE_ANALYSES_PER_HOUR default 10, applied before reading the body."
+  - "Flags: FEATURE_VOICE_ACOUSTIC, FEATURE_VOICE_INCLINATION, FEATURE_VOICE_AFFECT_CUES (pull-able), FEATURE_VOICE_VIDEO_DEMUX; reuse XTOX_EPHEMERAL_TRANSCRIPTION_VERIFIED before sending audio."
+  - "quality.ok=false maps to UI Unknown, never Neutral. Chips use physical words. Affect chips never show angry/sad/happy."
+  - "Sluice must not overload convolens-catch-up-v1. Proposed aliases: convolens-stance-v1, convolens-wav2vec2-affect-v1, convolens-cu-audio-v1. Spike both SER aliases; DSP does not wait."
+  - "Phase 1, video demux, inclination, and affect spikes are separate PRs. Eval fixtures are synthetic under docs/evals/fixtures/media-tone/. No production chat content in the repo."
+  - "Telemetry may include analysis_version, quality_code, processor_set, duration_bucket, latency, error code. No audio, transcripts, feature vectors, or cue labels."
+last_synced: "2026-08-21"

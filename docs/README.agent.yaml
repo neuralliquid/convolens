@@ -1,0 +1,16 @@
+schema: md-agent/v1
+source: docs/README.md
+title: "ConvoLens Documentation Index"
+purpose: "Directory map for ConvoLens docs: architecture, planning, operations, ADRs, and the PRD-001 media-tone draft. Not a product contract."
+audience:
+  - agent
+  - human
+facts:
+  - "This file is an index, not a source of architecture or privacy rules; follow the linked documents."
+  - "Start with docs/architecture.md, Azure setup at docs/AZURE_SETUP.md, and contribution context at docs/IMPLEMENTATION_PLAN.md."
+  - "PRD-001, ADR-0003, and SPEC-001 cover media tone analysis (Baton 3d7873a0). Planning is complete; production flags stay off."
+  - "Voice-note transcription contract lives at docs/VOICE-NOTE-TRANSCRIPTION.md and is gated off in production."
+  - "ADRs live in docs/adr/; ADR-0002 is the Agent Harnessing v1 candidate."
+  - "Brand tagline is See Your Conversations Clearly; ConvoLens colors are Deep Purple #6B46C1, Bright Cyan #06B6D4, Soft Lavender #C4B5FD; WhatsApp colors stay WhatsApp-specific."
+  - "Canonical product name is ConvoLens / convolens."
+last_synced: "2026-08-21"

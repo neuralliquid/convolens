@@ -1,0 +1,17 @@
+schema: md-agent/v1
+source: docs/adr/0003-media-tone-split-and-processors.md
+title: "ADR 0003: Split media tone analysis across ConvoLens, xtox, and Sluice"
+purpose: "Accepted architecture for PRD-001. Records the three-repo split, code-vs-model split, JSON/YAML serialization, and v1 exclusions."
+audience:
+  - agent
+  - human
+facts:
+  - "Status is Accepted. Baton 3d7873a0. Product contract is PRD-001; implementable contract is SPEC-001."
+  - "Keep ConvoLens → xtox → Sluice → Foundry. Do not add a ConvoLens → Foundry path."
+  - "xtox owns DSP and later demux with retain=false; emits physical metrics only. ConvoLens owns consent, storage, UI copy, claims. Sluice owns model routing and cost."
+  - "Phase 1 is code DSP. Phase 2 is schema-constrained LLM stance on transcript plus acoustic object, never raw audio. Phase 3 spikes wav2vec2 and Content Understanding. Azure Speech is STT/timestamps only."
+  - "Acoustic output is one object, two encodings: format=json HTTP default, format=yaml same schema."
+  - "Video v1 is soundtrack-only; demux is a follow-on PR after DSP. No visual models."
+  - "Semantic Kernel, Foundry Agent Service, Cognitive Mesh, Azure Language sentiment, Face, Video Indexer, Speaker Recognition, and audeering CC-BY-NC-SA weights are out of v1."
+  - "D1–D4 on Baton 3d7873a0 are binding. Implementation PRs that fuse DSP with SER or video, or that send raw audio to an LLM, violate this ADR."
+last_synced: "2026-08-21"
