@@ -22,6 +22,7 @@ Welcome to the **ConvoLens** documentation. This directory contains comprehensiv
 
 ### Planning & Strategy
 
+- **[PRD-001: Media tone, inclination, and emotion indicators](prd/PRD-001-media-tone-inclination-emotion.md)** - Draft product contract for acoustic tone on voice notes (and later video soundtracks). Planning only.
 - **[Implementation Plan](IMPLEMENTATION_PLAN.md)** - Roadmap for upcoming features and refactors
 - **[Roadmap](ROADMAP.md)** - Long-term product vision and milestones
 - **[Technical Debt Registry](TECHNICAL_DEBT.md)** - Known issues and tracking
@@ -74,9 +75,16 @@ The ConvoLens brand provides:
 
 - **[API Documentation](api/)** - API endpoints and integration guides
 
+### Product requirements
+
+- **[PRD-001](prd/PRD-001-media-tone-inclination-emotion.md)** - Media tone, inclination, and emotion-indicator analysis (draft). Baton `3d7873a0`.
+- **[ADR-0003](adr/0003-media-tone-split-and-processors.md)** - ConvoLens / xtox / Sluice split; JSON/YAML DSP; SK and Language sentiment excluded.
+- **[SPEC-001](specs/SPEC-001-media-tone-inclination-emotion.md)** - Implementable contract: schema, flags, table, routes, eval, production evidence.
+
 ### Architecture Decision Records (ADRs)
 
 - **[ADR Directory](adr/)** - Architecture decisions and their context
+- **[ADR-0003 media tone split](adr/0003-media-tone-split-and-processors.md)** - Accepted: ConvoLens / xtox / Sluice for acoustic tone
 - **[Agent Harnessing v1 candidate](adr/0002-agent-harnessing-v1-contracts-and-promotion.md)** - Provider-neutral contracts and evidence-gated promotion
 
 ### Agent Harnessing v1 research

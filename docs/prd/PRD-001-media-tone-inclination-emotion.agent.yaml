@@ -1,0 +1,22 @@
+schema: md-agent/v1
+source: docs/prd/PRD-001-media-tone-inclination-emotion.md
+title: "PRD-001: Media tone, inclination, and emotion-indicator analysis"
+purpose: "ConvoLens product contract for acoustic tone, conversational inclination, and optional emotion indicators on WhatsApp audio (and later video soundtrack). Does not enable production flags. Phase 1 DSP may proceed as a follow-on after ADR-0003 and SPEC-001."
+audience:
+  - agent
+  - human
+facts:
+  - "Canonical Baton task is 3d7873a0-8ffb-45ad-a285-9a2af9f7647e; PRD, ADR, and tech spec are required."
+  - "Prerequisite spine is ConvoLens → xtox → Sluice → Foundry Whisper; do not add a direct ConvoLens→Foundry path."
+  - "Acoustic tone is deterministic DSP (energy, pauses, F0 slope). Conversational inclination is a bounded speech-act label from transcript plus features. Emotion indicators are experimental, opt-in, default-off affect cues — never a diagnosis."
+  - "D1 resolved: enable experimental cues for the current private-preview / invite-only alpha; pull-able without a migration; not a public-launch claim."
+  - "D3 resolved: xtox owns generic audio→features with retain=false; serialization is configurable JSON (HTTP default) or YAML (same schema)."
+  - "Do not adopt Azure Language sentiment (retires 2029). Explore wav2vec2 SER (audio-native; license-check; prefer dimensional V/A/D) and Content Understanding custom audio analyzers (schema + future video). Azure Speech is STT/timestamps only."
+  - "audeering wav2vec2 weights are CC-BY-NC-SA / research-only and are not a commercial default."
+  - "Video v1 is soundtrack-only. Facial affect, speaker identification, voiceprints, and relationship/psychological claims are blocked."
+  - "Semantic Kernel, Cognitive Mesh, Foundry Agent Service, Azure Face, and Video Indexer are out of v1."
+  - "D2 resolved: video v1 is soundtrack-only; demux after DSP, not in the same PR; no visual models."
+  - "D4 resolved: spike both wav2vec2 SER and Content Understanding custom audio analyzer; DSP-first; compare fixtures before naming a default alias."
+  - "D1–D4 are resolved. ADR-0003 and SPEC-001 are written. Phase 1 DSP may proceed as a separate PR; SER and video demux must not land in that PR."
+  - "Related tasks: 1e50aef3 (transcription), 0de04c4f (xtox non-retain), bb280705 (xtox features), 802c9807 (Sluice aliases)."
+last_synced: "2026-08-21"

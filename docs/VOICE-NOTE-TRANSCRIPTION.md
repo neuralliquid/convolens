@@ -55,3 +55,12 @@ All gates are required. A merge or healthy endpoint is not sufficient.
 
 Until then, the UI can render stored transcript state in development, but the API returns a
 privacy-safe `503` before transmitting audio.
+
+## Related product planning
+
+Acoustic tone, conversational inclination, and experimental emotion indicators are **not**
+part of this transcription contract. See
+[PRD-001](prd/PRD-001-media-tone-inclination-emotion.md) (Baton `3d7873a0`). That work must
+reuse this processing path and the same consent, non-retention, and production gates; it
+must not open a direct ConvoLens → Foundry channel or attach diagnostic claims to a
+transcript.

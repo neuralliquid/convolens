@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://convolens.dev/schemas/media-acoustic-features-v1.schema.json",
+  "title": "MediaAcousticFeaturesV1",
+  "description": "Physical acoustic metrics emitted by xtox. No ConvoLens product field names.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "quality",
+    "duration_ms",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "media-acoustic-features.v1"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["media_kind", "codec", "sample_rate_hz"],
+      "properties": {
+        "media_kind": {
+          "type": "string",
+          "enum": ["audio", "video_soundtrack"]
+        },
+        "codec": { "type": ["string", "null"], "minLength": 1, "maxLength": 32 },
+        "sample_rate_hz": { "type": ["integer", "null"], "minimum": 8000, "maximum": 48000 },
+        "channels": { "type": "integer", "minimum": 1, "maximum": 2 }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "code"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "code": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "too_short",
+            "too_silent",
+            "clipped",
+            "not_audio",
+            "music_like",
+            "overlapping_speech",
+            "unsupported_codec"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+          "then": { "properties": { "code": { "const": "ok" } }, "required": ["code"] }
+        },
+        {
+          "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+          "then": { "properties": { "code": { "not": { "const": "ok" } } }, "required": ["code"] }
+        }
+      ]
+    },
+    "duration_ms": { "type": "integer", "minimum": 0, "maximum": 600000 },
+    "metrics": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["rms_db", "peak_db", "pause_ratio"],
+      "properties": {
+        "rms_db": { "type": ["number", "null"] },
+        "peak_db": { "type": ["number", "null"] },
+        "dynamic_range_db": { "type": ["number", "null"] },
+        "pause_ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "speaking_ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "f0_mean_hz": { "type": ["number", "null"], "minimum": 0 },
+        "f0_range_hz": { "type": ["number", "null"], "minimum": 0 },
+        "f0_slope_hz_per_s": { "type": ["number", "null"] },
+        "spectral_centroid_hz": { "type": ["number", "null"] },
+        "speaking_rate_wpm": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "word_timing_source": {
+      "type": ["string", "null"],
+      "enum": ["transcript_timestamps", null]
+    }
+  }
+}
