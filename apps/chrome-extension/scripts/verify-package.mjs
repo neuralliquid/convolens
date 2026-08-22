@@ -11,6 +11,7 @@ const EXPECTED_ENTRIES = [
   "dist/background.js",
   "dist/content.css",
   "dist/content.js",
+  "dist/session-bridge.js",
   "dist/whatsapp-page-identity.js",
   "icons/icon-128.png",
   "icons/icon-16.png",
