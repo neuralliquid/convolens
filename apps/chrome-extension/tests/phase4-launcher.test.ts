@@ -1,334 +1,395 @@
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import test from "node:test";
+/// <reference types="jest" />
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fireEvent, screen, within } from "@testing-library/dom";
 import {
+  clampLauncherTop,
   getLauncherTop,
   normalizeLauncherPosition,
   resolveLauncherEdge,
+  resolveLauncherPanelAnchor,
   resolveLauncherPreset,
 } from "../src/launcher-position";
+import { STORAGE_KEYS } from "../src/config";
 
-const contentSource = await readFile(
-  new URL("../src/content.ts", import.meta.url),
-  "utf8",
-);
-const styles = await readFile(
-  new URL("../src/content.css", import.meta.url),
-  "utf8",
-);
-const backgroundSource = await readFile(
-  new URL("../src/background.ts", import.meta.url),
-  "utf8",
-);
-const optionsSource = await readFile(
-  new URL("../options/options.js", import.meta.url),
+// content.ts has no exports and self-invokes `init()` on import based on
+// `document.readyState`; the only way to exercise its launcher behavior is
+// to drive that real bootstrap (pre-seeded DOM + a mocked `chrome`) rather
+// than importing individual functions.
+
+// jsdom 20 (bundled with jest-environment-jsdom 29) ships no PointerEvent
+// constructor at all, and no setPointerCapture/hasPointerCapture/
+// releasePointerCapture on Element — content.ts's drag handling calls all
+// of these, so polyfill just enough to dispatch and read real pointer
+// events without throwing.
+class PointerEventPolyfill extends MouseEvent {
+  readonly pointerId: number;
+  readonly pointerType: string;
+  constructor(type: string, init: MouseEventInit & { pointerId?: number; pointerType?: string } = {}) {
+    super(type, init);
+    this.pointerId = init.pointerId ?? 0;
+    this.pointerType = init.pointerType ?? "mouse";
+  }
+}
+(window as unknown as { PointerEvent: unknown }).PointerEvent = PointerEventPolyfill;
+Element.prototype.setPointerCapture = jest.fn();
+Element.prototype.releasePointerCapture = jest.fn();
+Element.prototype.hasPointerCapture = jest.fn(() => false);
+
+// content.ts's chatObserver is module-scoped: each `jest.resetModules()` +
+// require() creates a fresh instance that has no reference to a prior
+// instance's observer, so it never gets disconnected. Left alone, a stale
+// observer from a previous test fires on the next test's
+// `document.body.innerHTML = ...` and drives content.ts's WhatsApp
+// chat-identity refresh against a DOM it no longer matches. Track every
+// MutationObserver created during a test and disconnect it afterwards.
+const liveMutationObservers: MutationObserver[] = [];
+const RealMutationObserver = window.MutationObserver;
+class TrackedMutationObserver extends RealMutationObserver {
+  constructor(callback: MutationCallback) {
+    super(callback);
+    liveMutationObservers.push(this);
+  }
+}
+window.MutationObserver = TrackedMutationObserver as unknown as typeof MutationObserver;
+
+afterEach(() => {
+  liveMutationObservers.forEach((observer) => observer.disconnect());
+  liveMutationObservers.length = 0;
+});
+
+const stylesheet = readFileSync(
+  path.join(__dirname, "../src/content.css"),
   "utf8",
 );
 
-test("normalizes persisted launcher placement without trusting arbitrary data", () => {
-  assert.deepEqual(normalizeLauncherPosition(null), {
-    edge: "right",
-    preset: "middle",
+interface ChromeMock {
+  runtime: {
+    onMessage: { addListener: jest.Mock; removeListener: jest.Mock };
+    sendMessage: jest.Mock;
+    openOptionsPage: jest.Mock;
+    lastError: undefined;
+    getManifest: jest.Mock;
+  };
+  storage: {
+    local: { get: jest.Mock; set: jest.Mock };
+  };
+}
+
+function installChromeMock(stored: Record<string, unknown> = {}): ChromeMock {
+  const chromeMock: ChromeMock = {
+    runtime: {
+      onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
+      sendMessage: jest.fn(() => Promise.resolve({})),
+      openOptionsPage: jest.fn((callback?: () => void) => callback?.()),
+      lastError: undefined,
+      getManifest: jest.fn(() => ({ version: "0.0.0-test" })),
+    },
+    storage: {
+      local: {
+        get: jest.fn(() => Promise.resolve({ ...stored })),
+        set: jest.fn(() => Promise.resolve()),
+      },
+    },
+  };
+  (global as unknown as { chrome: ChromeMock }).chrome = chromeMock;
+  return chromeMock;
+}
+
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function renderLauncher(
+  options: {
+    storedPosition?: Record<string, unknown>;
+    innerWidth?: number;
+    innerHeight?: number;
+  } = {},
+) {
+  window.innerWidth = options.innerWidth ?? 1200;
+  window.innerHeight = options.innerHeight ?? 900;
+  document.body.innerHTML = '<div data-testid="chat-list"></div>';
+  const chromeMock = installChromeMock(
+    options.storedPosition
+      ? { [STORAGE_KEYS.launcherPosition]: options.storedPosition }
+      : {},
+  );
+
+  jest.resetModules();
+  require("../src/content");
+  await flush();
+  await flush();
+
+  const fab = document.getElementById("convolens-fab") as HTMLElement;
+  const toggle = document.getElementById(
+    "ws-launcher-toggle",
+  ) as HTMLButtonElement;
+  const panel = document.getElementById("ws-launcher-panel") as HTMLElement;
+
+  // jsdom performs no layout, so getBoundingClientRect() is always zero.
+  // The drag math reads rect.top to seed and re-read the launcher's
+  // position, so make it track the inline style real layout would produce.
+  fab.getBoundingClientRect = jest.fn(() => {
+    const top = parseFloat(fab.style.top) || 0;
+    return {
+      top,
+      bottom: top + 44,
+      left: 0,
+      right: 44,
+      width: 44,
+      height: 44,
+      x: 0,
+      y: top,
+      toJSON() {
+        return {};
+      },
+    } as DOMRect;
   });
-  assert.deepEqual(
-    normalizeLauncherPosition({ edge: "left", preset: "lower" }),
-    { edge: "left", preset: "lower" },
+
+  return { fab, toggle, panel, chromeMock };
+}
+
+function firePointer(
+  target: HTMLElement,
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  init: { pointerId: number; clientX: number; clientY: number; button?: number },
+) {
+  fireEvent(
+    target,
+    new PointerEventPolyfill(type, { bubbles: true, cancelable: true, ...init }),
   );
-  assert.deepEqual(
-    normalizeLauncherPosition({ edge: "center", preset: "anywhere" }),
-    { edge: "right", preset: "middle" },
-  );
+}
+
+function drag(
+  toggle: HTMLElement,
+  points: Array<{ clientX: number; clientY: number }>,
+  pointerId = 1,
+) {
+  firePointer(toggle, "pointerdown", { pointerId, button: 0, ...points[0] });
+  for (const point of points.slice(1)) {
+    firePointer(toggle, "pointermove", { pointerId, ...point });
+  }
+  firePointer(toggle, "pointerup", { pointerId, ...points[points.length - 1] });
+}
+
+beforeAll(() => {
+  const style = document.createElement("style");
+  style.textContent = stylesheet;
+  document.head.appendChild(style);
 });
 
-test("keeps all three presets inside the viewport and above the composer", () => {
-  const upper = getLauncherTop("upper", 900);
-  const middle = getLauncherTop("middle", 900);
-  const lower = getLauncherTop("lower", 900);
-  assert.ok(upper < middle);
-  assert.ok(middle < lower);
-  assert.ok(lower + 44 <= 900 - 104);
-  assert.ok(getLauncherTop("lower", 120) >= 12);
-  assert.ok(getLauncherTop("lower", 120) + 44 <= 120 - 12);
+describe("launcher position math", () => {
+  test("normalizes persisted launcher placement without trusting arbitrary data", () => {
+    expect(normalizeLauncherPosition(null)).toEqual({
+      edge: "right",
+      preset: "middle",
+    });
+    expect(normalizeLauncherPosition({ edge: "left", preset: "lower" })).toEqual(
+      { edge: "left", preset: "lower" },
+    );
+    expect(
+      normalizeLauncherPosition({ edge: "center", preset: "anywhere" }),
+    ).toEqual({ edge: "right", preset: "middle" });
+  });
+
+  test("keeps all three presets inside the viewport and above the composer", () => {
+    const upper = getLauncherTop("upper", 900);
+    const middle = getLauncherTop("middle", 900);
+    const lower = getLauncherTop("lower", 900);
+    expect(upper).toBeLessThan(middle);
+    expect(middle).toBeLessThan(lower);
+    expect(lower + 44).toBeLessThanOrEqual(900 - 104);
+    expect(getLauncherTop("lower", 120)).toBeGreaterThanOrEqual(12);
+    expect(getLauncherTop("lower", 120) + 44).toBeLessThanOrEqual(120 - 12);
+  });
+
+  test("snaps pointer placement to an edge and vertical preset", () => {
+    expect(resolveLauncherEdge(100, 1000)).toBe("left");
+    expect(resolveLauncherEdge(900, 1000)).toBe("right");
+    expect(resolveLauncherPreset(100, 900)).toBe("upper");
+    expect(resolveLauncherPreset(450, 900)).toBe("middle");
+    expect(resolveLauncherPreset(800, 900)).toBe("lower");
+  });
 });
 
-test("snaps pointer placement to an edge and vertical preset", () => {
-  assert.equal(resolveLauncherEdge(100, 1000), "left");
-  assert.equal(resolveLauncherEdge(900, 1000), "right");
-  assert.equal(resolveLauncherPreset(100, 900), "upper");
-  assert.equal(resolveLauncherPreset(450, 900), "middle");
-  assert.equal(resolveLauncherPreset(800, 900), "lower");
+describe("launcher rendering", () => {
+  test("renders a compact inward-opening launcher with explicit position controls", async () => {
+    const { fab, toggle, panel } = await renderLauncher();
+
+    expect(fab.className).toContain("ws-launcher");
+    expect(fab.contains(toggle)).toBe(true);
+    expect(fab.contains(panel)).toBe(true);
+    expect(panel.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    // The position controls live inside the collapsed panel, so they're
+    // excluded from the accessibility tree until it's opened.
+    fireEvent.click(toggle);
+    expect(panel.hidden).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+    const presetButtons = within(fab).getAllByRole("button", {
+      name: /^(Top|Middle|Bottom)$/,
+    });
+    expect(
+      presetButtons.map((button) => button.getAttribute("data-launcher-preset")),
+    ).toEqual(expect.arrayContaining(["upper", "middle", "lower"]));
+
+    const edgeButtons = within(fab).getAllByRole("button", {
+      name: /^(Left|Right)$/,
+    });
+    expect(
+      edgeButtons.map((button) => button.getAttribute("data-launcher-edge")),
+    ).toEqual(expect.arrayContaining(["left", "right"]));
+
+    fireEvent.click(toggle);
+    expect(panel.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
 });
 
-test("renders a compact inward-opening launcher with explicit position controls", () => {
-  assert.match(contentSource, /id="ws-launcher-toggle"/);
-  assert.match(contentSource, /id="ws-launcher-panel"/);
-  assert.match(contentSource, /data-launcher-preset="upper"/);
-  assert.match(contentSource, /data-launcher-preset="middle"/);
-  assert.match(contentSource, /data-launcher-preset="lower"/);
-  assert.match(contentSource, /data-launcher-edge="left"/);
-  assert.match(contentSource, /data-launcher-edge="right"/);
-  assert.match(contentSource, /aria-labelledby="ws-position-height-label"/);
-  assert.match(contentSource, /aria-labelledby="ws-position-side-label"/);
-  assert.doesNotMatch(contentSource, /Move to .* edge/);
-  assert.match(contentSource, /setPointerCapture/);
-  assert.match(contentSource, /resolveLauncherEdge/);
-  assert.match(contentSource, /clampLauncherTop/);
-  assert.match(contentSource, /STORAGE_KEYS\.launcherPosition/);
-  assert.match(styles, /width: 44px/);
-  assert.match(
-    styles,
-    /\.ws-edge-left \.ws-launcher-panel \{[\s\S]*left: calc\(100% \+ 10px\)/,
-  );
-  assert.match(
-    styles,
-    /\.ws-edge-right \.ws-launcher-panel \{[\s\S]*right: calc\(100% \+ 10px\)/,
-  );
-  assert.match(styles, /position: absolute/);
-  assert.match(styles, /data-preset="lower"[\s\S]*bottom: 0/);
-  assert.match(styles, /\.ws-position-options \{/);
-  assert.match(styles, /\.ws-position-side-options \{/);
+describe("drag affordance", () => {
+  test("shows a clickable pointer, not a permanent drag hand, until a drag is confirmed", async () => {
+    const { toggle } = await renderLauncher();
+
+    expect(toggle.classList.contains("ws-dragging")).toBe(false);
+    expect(getComputedStyle(toggle).cursor).toBe("pointer");
+
+    firePointer(toggle, "pointerdown", { pointerId: 1, button: 0, clientX: 500, clientY: 500 });
+    expect(toggle.classList.contains("ws-dragging")).toBe(false);
+    expect(getComputedStyle(toggle).cursor).toBe("pointer");
+
+    firePointer(toggle, "pointermove", { pointerId: 1, clientX: 500, clientY: 520 });
+    expect(toggle.classList.contains("ws-dragging")).toBe(true);
+    expect(getComputedStyle(toggle).cursor).toBe("grabbing");
+
+    firePointer(toggle, "pointerup", { pointerId: 1, clientX: 500, clientY: 520 });
+    expect(toggle.classList.contains("ws-dragging")).toBe(false);
+    expect(getComputedStyle(toggle).cursor).toBe("pointer");
+  });
+
+  test("never carries drag-suppression state into the next pointer gesture", async () => {
+    const { toggle, panel } = await renderLauncher();
+
+    // A real drag with no trailing `click` (e.g. the pointer left the
+    // element before a click could fire) leaves suppression state set.
+    drag(toggle, [
+      { clientX: 500, clientY: 500 },
+      { clientX: 500, clientY: 540 },
+    ]);
+    expect(panel.hidden).toBe(true);
+
+    // A later, wholly separate gesture (no movement, so this is just a
+    // click) must still register — the new pointerdown resets the stale
+    // suppression before this gesture's own click fires.
+    firePointer(toggle, "pointerdown", { pointerId: 2, button: 0, clientX: 500, clientY: 540 });
+    firePointer(toggle, "pointerup", { pointerId: 2, clientX: 500, clientY: 540 });
+    fireEvent.click(toggle);
+
+    expect(panel.hidden).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
 });
 
-test("shows a clickable pointer, not a permanent drag hand, until a drag is confirmed", () => {
-  assert.match(styles, /\.ws-launcher-toggle \{[\s\S]*cursor: pointer;/);
-  assert.doesNotMatch(styles, /\.ws-launcher-toggle:active \{[\s\S]*cursor: grabbing;/);
-  assert.match(styles, /\.ws-launcher-toggle\.ws-dragging \{[\s\S]*cursor: grabbing;/);
-  assert.match(contentSource, /toggle\.classList\.add\("ws-dragging"\)/);
-  assert.match(contentSource, /toggle\.classList\.remove\("ws-dragging"\)/);
+describe("free-drag placement", () => {
+  test("persists free-drag placement as a clamped pixel offset instead of snapping to a preset", async () => {
+    const { fab, toggle, chromeMock } = await renderLauncher({ innerHeight: 900 });
+    chromeMock.storage.local.set.mockClear();
+
+    const startTop = parseFloat(fab.style.top);
+    drag(toggle, [
+      { clientX: 900, clientY: 300 },
+      { clientX: 900, clientY: 340 }, // +40px, past the 5px click/drag threshold
+    ]);
+    await flush();
+
+    const expectedTop = clampLauncherTop(startTop + 40, 900);
+    expect(parseFloat(fab.style.top)).toBe(expectedTop);
+    expect(fab.classList.contains("ws-edge-right")).toBe(true);
+
+    expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(1);
+    const [savedArg] = chromeMock.storage.local.set.mock.calls[0];
+    const saved = savedArg[STORAGE_KEYS.launcherPosition];
+    expect(typeof saved.top).toBe("number");
+    expect(saved.top).toBe(expectedTop);
+    expect(saved.edge).toBe("right");
+  });
+
+  test("preset buttons still work and clear any custom drag position", async () => {
+    const { fab, toggle, chromeMock } = await renderLauncher({
+      innerHeight: 900,
+      storedPosition: { edge: "right", preset: "middle", top: 400 },
+    });
+    chromeMock.storage.local.set.mockClear();
+
+    fireEvent.click(toggle); // open the panel to reach the position controls
+    const topButton = within(fab).getByRole("button", { name: "Top" });
+    fireEvent.click(topButton);
+    await flush();
+
+    const expectedTop = getLauncherTop("upper", 900);
+    expect(parseFloat(fab.style.top)).toBe(expectedTop);
+    expect(topButton.getAttribute("aria-pressed")).toBe("true");
+
+    expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(1);
+    const [savedArg] = chromeMock.storage.local.set.mock.calls[0];
+    const saved = savedArg[STORAGE_KEYS.launcherPosition];
+    expect(saved.preset).toBe("upper");
+    expect(saved.top).toBeUndefined();
+  });
 });
 
-test("never carries drag-suppression state into the next pointer gesture", () => {
-  const pointerdown = contentSource.slice(
-    contentSource.indexOf('toggle.addEventListener("pointerdown"'),
-    contentSource.indexOf('toggle.addEventListener("pointermove"'),
-  );
-  assert.match(pointerdown, /launcherSuppressClick = false;/);
+describe("settings-panel anchor tracks real position", () => {
+  test("derives the panel anchor from the launcher's actual position, both dragged to the safe band's edges and at rest", async () => {
+    const { fab, toggle } = await renderLauncher({ innerHeight: 900 });
+
+    const restTop = parseFloat(fab.style.top);
+    expect(fab.dataset.preset).toBe(resolveLauncherPanelAnchor(restTop, 900));
+    expect(fab.dataset.preset).toBe("middle");
+
+    // Drag far past the top of the safe band; clamping guarantees it lands
+    // on the minimum regardless of exactly how far this pushes.
+    drag(toggle, [
+      { clientX: 900, clientY: 500 },
+      { clientX: 900, clientY: -5000 },
+    ]);
+    const topDragTop = parseFloat(fab.style.top);
+    expect(fab.dataset.preset).toBe(resolveLauncherPanelAnchor(topDragTop, 900));
+    expect(fab.dataset.preset).toBe("upper");
+
+    // Drag far past the bottom of the safe band.
+    drag(toggle, [
+      { clientX: 900, clientY: topDragTop },
+      { clientX: 900, clientY: topDragTop + 5000 },
+    ]);
+    const bottomDragTop = parseFloat(fab.style.top);
+    expect(fab.dataset.preset).toBe(
+      resolveLauncherPanelAnchor(bottomDragTop, 900),
+    );
+    expect(fab.dataset.preset).toBe("lower");
+  });
 });
 
-test("persists free-drag placement as a clamped pixel offset instead of snapping to a preset", () => {
-  const finishDrag = contentSource.slice(
-    contentSource.indexOf("const finishDrag = "),
-    contentSource.indexOf("toggle.addEventListener(\"pointerup\""),
-  );
-  assert.match(
-    finishDrag,
-    /void setLauncherPosition\(\{[\s\S]*top: clampLauncherTop\(rect\.top, window\.innerHeight\)/,
-  );
-  assert.doesNotMatch(finishDrag, /resolveLauncherPreset/);
-  assert.match(
-    contentSource,
-    /const top =[\s\S]*typeof launcherPosition\.top === "number"[\s\S]*clampLauncherTop\(launcherPosition\.top, window\.innerHeight\)[\s\S]*getLauncherTop\(launcherPosition\.preset, window\.innerHeight\)/,
-  );
-});
+describe("duplicate injection guard", () => {
+  test("keeps exactly one launcher in the DOM when injection runs concurrently", async () => {
+    window.innerWidth = 1200;
+    window.innerHeight = 900;
+    document.body.innerHTML = '<div data-testid="chat-list"></div>';
+    installChromeMock();
 
-test("re-checks for a duplicate fab immediately before inserting a new one", () => {
-  const injection = contentSource.slice(
-    contentSource.indexOf("async function injectUI"),
-    contentSource.indexOf("function setupLauncherInteraction"),
-  );
-  const firstRemove = injection.indexOf(
-    'document.getElementById("convolens-fab")?.remove();',
-  );
-  const secondRemove = injection.indexOf(
-    'document.getElementById("convolens-fab")?.remove();',
-    firstRemove + 1,
-  );
-  const append = injection.indexOf("document.body.appendChild(fab);");
-  assert.ok(firstRemove !== -1 && secondRemove !== -1);
-  assert.ok(firstRemove < secondRemove);
-  assert.ok(secondRemove < append);
-});
+    // Two independent module instances sharing the same live document,
+    // reproducing two racing content-script injections (e.g. the popup's
+    // self-heal re-injection landing while the original is still settling).
+    jest.resetModules();
+    require("../src/content");
+    jest.resetModules();
+    require("../src/content");
 
-test("keeps operation, migration, and accessibility state inside the panel", () => {
-  assert.match(contentSource, /id="ws-launcher-badge"/);
-  assert.match(contentSource, /ready-for-review/);
-  assert.match(contentSource, /retry-required/);
-  assert.match(contentSource, /Legacy local captures need review/);
-  assert.match(contentSource, /Export or confirmed deletion only/);
-  assert.match(contentSource, /aria-live="polite"/);
-  assert.match(contentSource, /aria-expanded="false"/);
-  assert.match(contentSource, /event\.key === "Escape"/);
-  assert.match(styles, /prefers-reduced-motion: reduce/);
-  assert.match(styles, /forced-colors: active/);
-  assert.match(styles, /max-width: 420px/);
-});
+    await flush();
+    await flush();
+    await flush();
 
-test("gets only a safe legacy count from the background", () => {
-  const injection = contentSource.slice(
-    contentSource.indexOf("async function injectUI"),
-    contentSource.indexOf("function setupLauncherInteraction"),
-  );
-  const authenticationRefresh = contentSource.slice(
-    contentSource.indexOf("async function refreshLauncherAuthenticationState"),
-    contentSource.indexOf("function updateStatus"),
-  );
-  assert.doesNotMatch(injection, /STORAGE_KEYS\.authToken/);
-  assert.match(authenticationRefresh, /GET_LEGACY_QUEUE_SUMMARY/);
-  assert.doesNotMatch(injection, /STORAGE_KEYS\.pendingUploads/);
-  assert.doesNotMatch(contentSource, /chrome\.storage\.onChanged/);
-  assert.match(backgroundSource, /async function getLegacyQueueSummary/);
-  assert.match(backgroundSource, /typeof authenticatedOwnerId === "string"/);
-  assert.match(backgroundSource, /Array\.isArray\(pending\)/);
-});
-
-test("refreshes account-scoped launcher state on authentication messages", () => {
-  assert.match(
-    contentSource,
-    /function normalizeAuthToken[\s\S]*typeof value === "string" && value\.trim\(\)\.length > 0/,
-  );
-  assert.match(
-    contentSource,
-    /async function refreshLauncherFromValidatedAuthentication[\s\S]*GET_AUTH_STATUS[\s\S]*isAuthenticated[\s\S]*normalizeAuthToken/,
-  );
-  assert.match(
-    contentSource,
-    /async function refreshLauncherFromValidatedAuthentication[\s\S]*const refreshGeneration = \+\+launcherAuthRefreshGeneration[\s\S]*resetLauncherAccountState\(false\)/,
-  );
-  assert.match(
-    contentSource,
-    /await refreshLauncherFromValidatedAuthentication\(\)\.catch\(\(\) => undefined\)/,
-  );
-  assert.match(
-    contentSource,
-    /async function refreshLauncherAuthenticationState/,
-  );
-  assert.match(
-    contentSource,
-    /resetLauncherAccountState\(token !== null\)[\s\S]*if \(token === null\) return/,
-  );
-  assert.match(
-    contentSource,
-    /GET_CAPTURE_OPERATION[\s\S]*GET_LEGACY_QUEUE_SUMMARY/,
-  );
-  assert.match(
-    contentSource,
-    /const refreshGeneration = \+\+launcherAuthRefreshGeneration/,
-  );
-  assert.match(
-    contentSource,
-    /refreshLauncherFromValidatedAuthentication[\s\S]*const refreshGeneration = \+\+launcherAuthRefreshGeneration[\s\S]*GET_AUTH_STATUS[\s\S]*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;[\s\S]*chrome\.storage\.local\.get[\s\S]*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;[\s\S]*refreshLauncherAuthenticationState/,
-  );
-  assert.match(
-    contentSource,
-    /const operationRenderGeneration = launcherOperationRenderGeneration[\s\S]*operationRenderGeneration === launcherOperationRenderGeneration[\s\S]*renderCaptureOperation\(operationResponse\.data\)/,
-  );
-  assert.match(
-    contentSource,
-    /function renderCaptureOperation[\s\S]*launcherOperationRenderGeneration \+= 1/,
-  );
-  assert.match(
-    contentSource,
-    /catch \(error\) \{\s*if \(refreshGeneration !== launcherAuthRefreshGeneration\) return;/,
-  );
-  assert.match(
-    contentSource,
-    /catch \(error\)[\s\S]*operationRenderGeneration !== launcherOperationRenderGeneration[\s\S]*resetLauncherAccountState/,
-  );
-  assert.match(
-    contentSource,
-    /case "SET_AUTH_TOKEN"[\s\S]*authToken = normalizeAuthToken\(typedMessage\.token\)[\s\S]*refreshLauncherAuthenticationState\(authToken\)/,
-  );
-  assert.match(contentSource, /launcherOperation = null/);
-  assert.match(
-    backgroundSource,
-    /SET_AUTH_TOKEN[\s\S]*authGeneration: captureLifecycleEpoch/,
-  );
-  assert.match(
-    contentSource,
-    /operation\.authGeneration !== launcherCaptureAuthGeneration[\s\S]*return false/,
-  );
-  assert.match(
-    contentSource,
-    /launcherCaptureAuthGeneration = typedMessage\.authGeneration/,
-  );
-  assert.match(
-    backgroundSource,
-    /async function getAuthStatus[\s\S]*await loadCaptureOperations\(\)[\s\S]*authGeneration: captureLifecycleEpoch/,
-  );
-  assert.match(
-    backgroundSource,
-    /syncMystiraSession\(\s*authenticationIntent: number[\s\S]*replaceAuthenticatedUser\([\s\S]*authenticationIntent[\s\S]*if \(!replaced\)/,
-  );
-  assert.match(
-    backgroundSource,
-    /clearCaptureStateAndAuthentication[\s\S]*const clearAuthenticationIntent = \+\+authenticationIntentGeneration[\s\S]*Promise\.allSettled\(\[\.\.\.captureUploadPromises\.values\(\)\]\)[\s\S]*const previousWrite = authenticationWriteTail[\s\S]*await previousWrite[\s\S]*committedAuthenticationIntentGeneration > clearAuthenticationIntent[\s\S]*clearAuthenticationState\(\)[\s\S]*releaseWrite\(\)/,
-  );
-  assert.match(
-    backgroundSource,
-    /case "SYNC_MYSTIRA_AUTH":[\s\S]*syncMystiraSession\(\+\+authenticationIntentGeneration\)/,
-  );
-  assert.match(
-    backgroundSource,
-    /committedAuthenticationIntentGeneration > expectedAuthenticationIntent[\s\S]*activeAuthenticationClearIntents[\s\S]*clearIntent > expectedAuthenticationIntent[\s\S]*return false/,
-  );
-  assert.match(
-    backgroundSource,
-    /notifyContentScripts\(token\)[\s\S]*committedAuthenticationIntentGeneration = Math\.max/,
-  );
-  assert.match(
-    backgroundSource,
-    /uploadCaptureOperation[\s\S]*const uploadAuthenticationIntent = committedAuthenticationIntentGeneration[\s\S]*sendChatData\([\s\S]*uploadAuthenticationIntent/,
-  );
-  assert.match(
-    backgroundSource,
-    /sendChatData\([\s\S]*uploadAuthenticationIntent: number[\s\S]*syncMystiraSession\(uploadAuthenticationIntent\)/,
-  );
-  assert.match(
-    backgroundSource,
-    /activeAuthenticationClearIntents\.add\(clearAuthenticationIntent\)[\s\S]*activeAuthenticationClearIntents\.delete\(clearAuthenticationIntent\)/,
-  );
-});
-
-test("moves focus into the panel and clears cancelled-drag suppression", () => {
-  assert.match(
-    contentSource,
-    /if \(expanded\) \{\s*panel\.querySelector<HTMLButtonElement>\("button:not\(\[disabled\]\)"\)\?\.focus\(\)/,
-  );
-  assert.match(contentSource, /pointercancel[\s\S]*finishDrag\(event, true\)/);
-  assert.match(
-    contentSource,
-    /if \(cancelled\) \{\s*drag = undefined;\s*launcherSuppressClick = false;\s*applyLauncherPosition\(\);\s*return;/,
-  );
-});
-
-test("exposes collapsed badge state through the launcher accessible name", () => {
-  assert.match(
-    contentSource,
-    /function updateLauncherBadge[\s\S]*updateLauncherToggleLabel\(\)/,
-  );
-  assert.match(
-    contentSource,
-    /getLauncherAccessibleStatus\(\)[\s\S]*loaded message[\s\S]*ready for review/,
-  );
-  assert.match(contentSource, /Capture needs attention/);
-  assert.match(contentSource, /legacy local capture/);
-  assert.match(
-    contentSource,
-    /\["received", "duplicate"\][\s\S]*operation\.reconciliationRequired \|\| legacyQueueCount > 0[\s\S]*value = "!"/,
-  );
-  assert.match(contentSource, /Reconciliation review required/);
-  assert.match(
-    contentSource,
-    /const terminalAttention =[\s\S]*operation\.reconciliationRequired \|\| legacyQueueCount > 0[\s\S]*\? "attention"/,
-  );
-});
-
-test("revalidates authentication and safe legacy state after options changes", () => {
-  assert.match(
-    backgroundSource,
-    /case "REFRESH_LAUNCHER_STATE"[\s\S]*notifyLauncherStateRefresh/,
-  );
-  assert.match(
-    backgroundSource,
-    /const syncResponse = await syncMystiraSession\([\s\S]*authenticationIntentGeneration[\s\S]*if \(!syncResponse\.success\)[\s\S]*isAuthenticated: false/,
-  );
-  assert.match(
-    optionsSource,
-    /remove\(STORAGE_KEYS\.pendingUploads\)[\s\S]*notifyLauncherStateRefresh\(\)/,
-  );
-  assert.match(
-    optionsSource,
-    /chrome\.storage\.local\.clear\(\)[\s\S]*notifyLauncherStateRefresh\(\)/,
-  );
-  assert.doesNotMatch(contentSource, /chrome\.storage\.onChanged/);
+    expect(document.querySelectorAll("#convolens-fab")).toHaveLength(1);
+  });
 });
