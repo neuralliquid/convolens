@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fireEvent, screen, within } from "@testing-library/dom";
+import { fireEvent, waitFor, within } from "@testing-library/dom";
 import {
   clampLauncherTop,
   getLauncherTop,
@@ -118,10 +118,18 @@ async function renderLauncher(
 
   jest.resetModules();
   require("../src/content");
-  await flush();
-  await flush();
 
-  const fab = document.getElementById("convolens-fab") as HTMLElement;
+  const fab = await waitFor(
+    () => {
+      const element = document.getElementById("convolens-fab");
+      if (!element) {
+        throw new Error("#convolens-fab not found in DOM after content.ts init");
+      }
+      return element;
+    },
+    { timeout: 3000 },
+  );
+
   const toggle = document.getElementById(
     "ws-launcher-toggle",
   ) as HTMLButtonElement;
@@ -298,6 +306,8 @@ describe("free-drag placement", () => {
     chromeMock.storage.local.set.mockClear();
 
     const startTop = parseFloat(fab.style.top);
+    expect(Number.isFinite(startTop)).toBe(true);
+
     drag(toggle, [
       { clientX: 900, clientY: 300 },
       { clientX: 900, clientY: 340 }, // +40px, past the 5px click/drag threshold
@@ -305,7 +315,9 @@ describe("free-drag placement", () => {
     await flush();
 
     const expectedTop = clampLauncherTop(startTop + 40, 900);
-    expect(parseFloat(fab.style.top)).toBe(expectedTop);
+    const afterDragTop = parseFloat(fab.style.top);
+    expect(Number.isFinite(afterDragTop)).toBe(true);
+    expect(afterDragTop).toBe(expectedTop);
     expect(fab.classList.contains("ws-edge-right")).toBe(true);
 
     expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(1);
@@ -329,7 +341,9 @@ describe("free-drag placement", () => {
     await flush();
 
     const expectedTop = getLauncherTop("upper", 900);
-    expect(parseFloat(fab.style.top)).toBe(expectedTop);
+    const afterClickTop = parseFloat(fab.style.top);
+    expect(Number.isFinite(afterClickTop)).toBe(true);
+    expect(afterClickTop).toBe(expectedTop);
     expect(topButton.getAttribute("aria-pressed")).toBe("true");
 
     expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(1);
@@ -345,6 +359,7 @@ describe("settings-panel anchor tracks real position", () => {
     const { fab, toggle } = await renderLauncher({ innerHeight: 900 });
 
     const restTop = parseFloat(fab.style.top);
+    expect(Number.isFinite(restTop)).toBe(true);
     expect(fab.dataset.preset).toBe(resolveLauncherPanelAnchor(restTop, 900));
     expect(fab.dataset.preset).toBe("middle");
 
@@ -355,6 +370,7 @@ describe("settings-panel anchor tracks real position", () => {
       { clientX: 900, clientY: -5000 },
     ]);
     const topDragTop = parseFloat(fab.style.top);
+    expect(Number.isFinite(topDragTop)).toBe(true);
     expect(fab.dataset.preset).toBe(resolveLauncherPanelAnchor(topDragTop, 900));
     expect(fab.dataset.preset).toBe("upper");
 
@@ -364,6 +380,7 @@ describe("settings-panel anchor tracks real position", () => {
       { clientX: 900, clientY: topDragTop + 5000 },
     ]);
     const bottomDragTop = parseFloat(fab.style.top);
+    expect(Number.isFinite(bottomDragTop)).toBe(true);
     expect(fab.dataset.preset).toBe(
       resolveLauncherPanelAnchor(bottomDragTop, 900),
     );

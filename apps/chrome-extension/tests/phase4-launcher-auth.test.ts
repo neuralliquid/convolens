@@ -34,13 +34,23 @@ test("keeps operation, migration, and accessibility state inside the panel", () 
 });
 
 test("gets only a safe legacy count from the background", () => {
+  const injectUIStart = contentSource.indexOf("async function injectUI");
+  const setupLauncherInteractionStart = contentSource.indexOf("function setupLauncherInteraction");
+  const refreshLauncherAuthenticationStateStart = contentSource.indexOf("async function refreshLauncherAuthenticationState");
+  const updateStatusStart = contentSource.indexOf("function updateStatus");
+
+  assert.ok(injectUIStart >= 0, "injectUI function marker not found");
+  assert.ok(setupLauncherInteractionStart >= 0, "setupLauncherInteraction function marker not found");
+  assert.ok(refreshLauncherAuthenticationStateStart >= 0, "refreshLauncherAuthenticationState function marker not found");
+  assert.ok(updateStatusStart >= 0, "updateStatus function marker not found");
+
   const injection = contentSource.slice(
-    contentSource.indexOf("async function injectUI"),
-    contentSource.indexOf("function setupLauncherInteraction"),
+    injectUIStart,
+    setupLauncherInteractionStart,
   );
   const authenticationRefresh = contentSource.slice(
-    contentSource.indexOf("async function refreshLauncherAuthenticationState"),
-    contentSource.indexOf("function updateStatus"),
+    refreshLauncherAuthenticationStateStart,
+    updateStatusStart,
   );
   assert.doesNotMatch(injection, /STORAGE_KEYS\.authToken/);
   assert.match(authenticationRefresh, /GET_LEGACY_QUEUE_SUMMARY/);
