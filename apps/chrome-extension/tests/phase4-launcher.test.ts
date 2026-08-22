@@ -119,16 +119,23 @@ async function renderLauncher(
   jest.resetModules();
   require("../src/content");
 
-  const fab = await waitFor(
-    () => {
-      const element = document.getElementById("convolens-fab");
-      if (!element) {
-        throw new Error("#convolens-fab not found in DOM after content.ts init");
-      }
-      return element;
-    },
-    { timeout: 3000 },
-  );
+  let fab: HTMLElement;
+  try {
+    fab = await waitFor(
+      () => {
+        const element = document.getElementById("convolens-fab");
+        if (!element) {
+          throw new Error("#convolens-fab not found in DOM after content.ts init");
+        }
+        return element;
+      },
+      { timeout: 3000 },
+    );
+  } catch (error) {
+    throw new Error("renderLauncher: timed out waiting for #convolens-fab", {
+      cause: error,
+    });
+  }
 
   const toggle = document.getElementById(
     "ws-launcher-toggle",
