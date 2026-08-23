@@ -21,6 +21,17 @@ import { Request, Response, NextFunction } from 'express';
 // Types
 // =============================================================================
 
+declare global {
+  // Express request augmentation follows the framework's namespace contract.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      correlationId?: string;
+      requestId?: string;
+    }
+  }
+}
+
 export interface CorrelationContext {
   correlationId: string;
   requestId: string;
@@ -81,7 +92,7 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
   const requestId = generateId('req');
 
   // Extract user ID if available (set by auth middleware)
-  const userId = (req as any).user?.id;
+  const userId = req.user?.id;
 
   // Determine source (e.g., chrome-extension, web, api)
   const source = (req.headers['x-source'] as string) || 'unknown';
@@ -100,8 +111,8 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
   res.setHeader('x-request-id', requestId);
 
   // Augment request with correlation data
-  (req as any).correlationId = correlationId;
-  (req as any).requestId = requestId;
+  req.correlationId = correlationId;
+  req.requestId = requestId;
 
   // Run the rest of the request in the correlation context
   asyncLocalStorage.run(context, () => {
@@ -109,11 +120,24 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
     logRequestStart(req);
 
     // Capture response finish for logging
+    // res.end has multiple overloads, we handle them all
     const originalEnd = res.end.bind(res);
-    res.end = function (this: Response, ...args: any[]) {
+    res.end = function (
+      this: Response,
+      chunkOrCb?: Buffer | string | (() => void),
+      encodingOrCb?: BufferEncoding | (() => void),
+      cb?: () => void
+    ): Response {
       logRequestEnd(req, res);
-      return originalEnd(...args);
-    } as typeof res.end;
+      if (typeof chunkOrCb === 'function') {
+        return originalEnd(chunkOrCb);
+      } else if (typeof encodingOrCb === 'function') {
+        return originalEnd(chunkOrCb as Buffer | string | undefined, encodingOrCb);
+      } else if (encodingOrCb !== undefined) {
+        return originalEnd(chunkOrCb as Buffer | string | undefined, encodingOrCb, cb);
+      }
+      return originalEnd(chunkOrCb as Buffer | string | undefined, cb);
+    };
 
     next();
   });

@@ -1,16 +1,12 @@
 import { AppDataSource } from '../config/database';
-import { Group } from '../db/entities/Group';
+import { Group, type GroupMetadata } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
 
 export class GroupService {
   private groupRepository = AppDataSource.getRepository(Group);
   private messageRepository = AppDataSource.getRepository(Message);
 
-  async createGroup(
-    name: string,
-    description?: string,
-    metadata?: Record<string, any>
-  ): Promise<Group> {
+  async createGroup(name: string, description?: string, metadata?: GroupMetadata): Promise<Group> {
     const group = new Group();
     group.name = name;
     group.description = description;

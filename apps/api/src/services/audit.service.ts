@@ -20,6 +20,8 @@
  * });
  */
 
+import { Request, Response, NextFunction } from 'express';
+
 import { getCorrelationContext } from '../middleware/correlation.js';
 import { logger } from '../utils/logger.js';
 
@@ -382,26 +384,35 @@ class AuditService {
     return AuditSeverity.INFO;
   }
 
+  private static readonly SENSITIVE_KEY_PATTERN =
+    /password|token|secret|apikey|api_key|authorization|cookie/i;
+  private static readonly MAX_SANITIZE_DEPTH = 6;
+
   private sanitizeDetails(details?: Record<string, unknown>): Record<string, unknown> | undefined {
     if (!details) return undefined;
 
-    const sanitized = { ...details };
+    return this.sanitizeValue(details, 0) as Record<string, unknown>;
+  }
 
-    // Remove sensitive fields
-    const sensitiveFields = [
-      'password',
-      'token',
-      'secret',
-      'apiKey',
-      'accessToken',
-      'refreshToken',
-    ];
-    for (const field of sensitiveFields) {
-      if (field in sanitized) {
-        sanitized[field] = '[REDACTED]';
-      }
+  /**
+   * Recursively redacts sensitive keys at every nesting level so nested
+   * request data (e.g. req.query) can't leak tokens/secrets into audit logs.
+   */
+  private sanitizeValue(value: unknown, depth: number): unknown {
+    if (depth >= AuditService.MAX_SANITIZE_DEPTH || value === null || typeof value !== 'object') {
+      return value;
     }
 
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeValue(item, depth + 1));
+    }
+
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      sanitized[key] = AuditService.SENSITIVE_KEY_PATTERN.test(key)
+        ? '[REDACTED]'
+        : this.sanitizeValue(val, depth + 1);
+    }
     return sanitized;
   }
 
@@ -499,8 +510,6 @@ export const auditService = new AuditService();
 // Express Middleware
 // =============================================================================
 
-import { Request, Response, NextFunction } from 'express';
-
 /**
  * Middleware to audit all API requests
  */
@@ -520,7 +529,7 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
     res.end = originalEnd;
 
     // Log the request (non-blocking)
-    const { user } = req as any;
+    const { user } = req;
     auditService
       .log({
         action: AuditAction.ADMIN_ACCESS, // Would be more specific in real implementation
