@@ -399,8 +399,12 @@ class AuditService {
    * request data (e.g. req.query) can't leak tokens/secrets into audit logs.
    */
   private sanitizeValue(value: unknown, depth: number): unknown {
-    if (depth >= AuditService.MAX_SANITIZE_DEPTH || value === null || typeof value !== 'object') {
+    if (value === null || typeof value !== 'object') {
       return value;
+    }
+
+    if (depth >= AuditService.MAX_SANITIZE_DEPTH) {
+      return '[REDACTED:MAX_DEPTH]';
     }
 
     if (Array.isArray(value)) {

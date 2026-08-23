@@ -1,6 +1,7 @@
 import { AppDataSource } from '../config/database';
 import { Group, type GroupMetadata } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
+import { logger } from '../utils/logger';
 
 export class GroupService {
   private groupRepository = AppDataSource.getRepository(Group);
@@ -13,7 +14,12 @@ export class GroupService {
     group.metadata = metadata;
     group.isActive = true;
 
-    return this.groupRepository.save(group);
+    try {
+      return await this.groupRepository.save(group);
+    } catch (error) {
+      logger.error('[GroupService] Failed to create group:', error);
+      throw new Error('Failed to create group');
+    }
   }
 
   async getGroupById(id: string): Promise<Group | null> {
