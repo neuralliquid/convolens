@@ -1,6 +1,7 @@
 import { Browser, Page, launch } from 'puppeteer';
 import * as qrcode from 'qrcode-terminal';
 import { Server as SocketIOServer } from 'socket.io';
+
 import { logger } from '../utils/logger';
 
 export interface WhatsAppClient {
@@ -42,8 +43,10 @@ export function createWhatsAppClient(io: SocketIOServer): WhatsAppClient {
       });
 
       if (qrData) {
-        qrcode.generate(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}`, { small: true });
-        
+        qrcode.generate(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}`, {
+          small: true,
+        });
+
         // Notify frontend about QR code
         io.emit('qr', { qr: qrData });
       }
@@ -53,7 +56,6 @@ export function createWhatsAppClient(io: SocketIOServer): WhatsAppClient {
       isAuthenticated = true;
       io.emit('authenticated');
       logger.info('Successfully authenticated with WhatsApp Web');
-
     } catch (error) {
       logger.error('Error initializing WhatsApp client:', error);
       throw error;
@@ -73,13 +75,13 @@ export function createWhatsAppClient(io: SocketIOServer): WhatsAppClient {
     try {
       // Navigate to the group chat
       await page.goto(`https://web.whatsapp.com/accept?code=${encodeURIComponent(groupName)}`);
-      
+
       // Wait for the chat to load
       await page.waitForSelector('div[data-testid="conversation-panel-wrapper"]');
-      
+
       logger.info(`Now monitoring group: ${groupName}`);
       monitoredGroups.add(groupName);
-      
+
       // Set up message listener
       await page.exposeFunction('onNewMessage', (message: any) => {
         io.emit('newMessage', { groupName, message });
@@ -92,7 +94,7 @@ export function createWhatsAppClient(io: SocketIOServer): WhatsAppClient {
           const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
               if (mutation.addedNodes.length) {
-                // @ts-ignore - onNewMessage is exposed via exposeFunction
+                // @ts-expect-error - onNewMessage is exposed via exposeFunction
                 window.onNewMessage({
                   timestamp: new Date().toISOString(),
                   content: mutation.addedNodes[0].textContent,
@@ -108,7 +110,6 @@ export function createWhatsAppClient(io: SocketIOServer): WhatsAppClient {
           });
         }
       });
-
     } catch (error) {
       logger.error(`Error monitoring group ${groupName}:`, error);
       throw error;

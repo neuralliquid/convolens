@@ -12,13 +12,25 @@
  * app.use(correlationMiddleware);
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { randomUUID } from 'crypto';
 import { AsyncLocalStorage } from 'async_hooks';
+import { randomUUID } from 'crypto';
+
+import { Request, Response, NextFunction } from 'express';
 
 // =============================================================================
 // Types
 // =============================================================================
+
+declare global {
+  // Express request augmentation follows the framework's namespace contract.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      correlationId?: string;
+      requestId?: string;
+    }
+  }
+}
 
 export interface CorrelationContext {
   correlationId: string;
@@ -72,18 +84,18 @@ export function runWithCorrelation<T>(context: CorrelationContext, fn: () => T):
 export function correlationMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Get or generate correlation ID
   const correlationId =
-    req.headers['x-correlation-id'] as string ||
-    req.headers['x-request-id'] as string ||
+    (req.headers['x-correlation-id'] as string) ||
+    (req.headers['x-request-id'] as string) ||
     generateId('corr');
 
   // Always generate a new request ID for this specific request
   const requestId = generateId('req');
 
   // Extract user ID if available (set by auth middleware)
-  const userId = (req as any).user?.id;
+  const userId = req.user?.id;
 
   // Determine source (e.g., chrome-extension, web, api)
-  const source = req.headers['x-source'] as string || 'unknown';
+  const source = (req.headers['x-source'] as string) || 'unknown';
 
   // Create correlation context
   const context: CorrelationContext = {
@@ -99,8 +111,8 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
   res.setHeader('x-request-id', requestId);
 
   // Augment request with correlation data
-  (req as any).correlationId = correlationId;
-  (req as any).requestId = requestId;
+  req.correlationId = correlationId;
+  req.requestId = requestId;
 
   // Run the rest of the request in the correlation context
   asyncLocalStorage.run(context, () => {
@@ -108,11 +120,24 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
     logRequestStart(req);
 
     // Capture response finish for logging
+    // res.end has multiple overloads, we handle them all
     const originalEnd = res.end.bind(res);
-    res.end = function(this: Response, ...args: any[]) {
+    res.end = function (
+      this: Response,
+      chunkOrCb?: Buffer | string | (() => void),
+      encodingOrCb?: BufferEncoding | (() => void),
+      cb?: () => void
+    ): Response {
       logRequestEnd(req, res);
-      return originalEnd(...args);
-    } as typeof res.end;
+      if (typeof chunkOrCb === 'function') {
+        return originalEnd(chunkOrCb);
+      } else if (typeof encodingOrCb === 'function') {
+        return originalEnd(chunkOrCb as Buffer | string | undefined, encodingOrCb);
+      } else if (encodingOrCb !== undefined) {
+        return originalEnd(chunkOrCb as Buffer | string | undefined, encodingOrCb, cb);
+      }
+      return originalEnd(chunkOrCb as Buffer | string | undefined, cb);
+    };
 
     next();
   });
@@ -203,11 +228,17 @@ export function getAzureTraceHeaders(): Record<string, string> {
 
   // Azure uses traceparent format for distributed tracing
   // Format: version-traceId-spanId-flags
-  const traceId = context.correlationId.replace(/[^a-f0-9]/gi, '').substring(0, 32).padEnd(32, '0');
-  const spanId = context.requestId.replace(/[^a-f0-9]/gi, '').substring(0, 16).padEnd(16, '0');
+  const traceId = context.correlationId
+    .replace(/[^a-f0-9]/gi, '')
+    .substring(0, 32)
+    .padEnd(32, '0');
+  const spanId = context.requestId
+    .replace(/[^a-f0-9]/gi, '')
+    .substring(0, 16)
+    .padEnd(16, '0');
 
   return {
-    'traceparent': `00-${traceId}-${spanId}-01`,
+    traceparent: `00-${traceId}-${spanId}-01`,
     'x-ms-client-request-id': context.requestId,
   };
 }

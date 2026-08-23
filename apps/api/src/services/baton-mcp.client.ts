@@ -114,11 +114,9 @@ export class BatonMcpClient {
         'connect',
         timeoutAt
       );
-      return (await client.callTool(
-        { name, arguments: args },
-        undefined,
-        { timeout: this.timeoutMs }
-      )) as McpToolResult;
+      return (await client.callTool({ name, arguments: args }, undefined, {
+        timeout: this.timeoutMs,
+      })) as McpToolResult;
     } finally {
       try {
         await client.close();

@@ -58,21 +58,30 @@ export class CreateConversationIntake1753400000000 implements MigrationInterface
       true
     );
 
-    await queryRunner.createIndices('conversation_intakes', [
+    // Sequential (not createIndices/Promise.all) — TypeORM's SQLite driver mutates a
+    // shared in-memory Table object per index, which is not safe under concurrency.
+    await queryRunner.createIndex(
+      'conversation_intakes',
       new TableIndex({
         name: 'IDX_conversation_intakes_user_received',
         columnNames: ['userId', 'receivedAt'],
-      }),
+      })
+    );
+    await queryRunner.createIndex(
+      'conversation_intakes',
       new TableIndex({
         name: 'UQ_conversation_intakes_user_content_hash',
         columnNames: ['userId', 'contentHash'],
         isUnique: true,
-      }),
+      })
+    );
+    await queryRunner.createIndex(
+      'conversation_intakes',
       new TableIndex({
         name: 'IDX_conversation_intakes_status',
         columnNames: ['status'],
-      }),
-    ]);
+      })
+    );
 
     await queryRunner.createTable(
       new Table({
@@ -115,17 +124,21 @@ export class CreateConversationIntake1753400000000 implements MigrationInterface
       true
     );
 
-    await queryRunner.createIndices('conversation_messages', [
+    await queryRunner.createIndex(
+      'conversation_messages',
       new TableIndex({
         name: 'UQ_conversation_messages_intake_position',
         columnNames: ['intakeId', 'position'],
         isUnique: true,
-      }),
+      })
+    );
+    await queryRunner.createIndex(
+      'conversation_messages',
       new TableIndex({
         name: 'IDX_conversation_messages_intake_sent',
         columnNames: ['intakeId', 'sentAt'],
-      }),
-    ]);
+      })
+    );
 
     await queryRunner.createForeignKey(
       'conversation_messages',

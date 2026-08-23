@@ -53,17 +53,23 @@ export class AddMessageTranscripts1754400000000 implements MigrationInterface {
       true
     );
 
-    await queryRunner.createIndices('message_transcripts', [
+    // Sequential (not createIndices/Promise.all) — TypeORM's SQLite driver mutates a
+    // shared in-memory Table object per index, which is not safe under concurrency.
+    await queryRunner.createIndex(
+      'message_transcripts',
       new TableIndex({
         name: 'UQ_message_transcripts_message',
         columnNames: ['messageId'],
         isUnique: true,
-      }),
+      })
+    );
+    await queryRunner.createIndex(
+      'message_transcripts',
       new TableIndex({
         name: 'IDX_message_transcripts_user_intake',
         columnNames: ['userId', 'intakeId'],
-      }),
-    ]);
+      })
+    );
 
     await queryRunner.createForeignKeys('message_transcripts', [
       new TableForeignKey({

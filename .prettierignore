@@ -1,0 +1,3 @@
+# Generated/machine-owned files — formatting is owned by their respective tools,
+# not hand-authored, so Prettier should not reformat them.
+pnpm-lock.yaml

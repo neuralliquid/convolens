@@ -1,19 +1,20 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import bodyParser from 'body-parser';
 import cors from 'cors';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import bodyParser from 'body-parser';
+
+import { AppDataSource } from './config/database.js';
+import { correlationMiddleware } from './middleware/correlation.js';
 import authRoutes from './routes/auth.routes.js';
-import groupRoutes from './routes/group.routes.js';
 import chatExportRoutes from './routes/chat-export.routes.js';
 import extensionRoutes from './routes/extension.routes.js';
+import groupRoutes from './routes/group.routes.js';
 import ticketCandidateRoutes from './routes/ticket-candidate.routes.js';
-import { logger } from './utils/logger.js';
-import { correlationMiddleware } from './middleware/correlation.js';
-import { metricsMiddleware, metrics } from './services/metrics.service.js';
-import { idempotencyMiddleware, deduplicationService } from './services/deduplication.service.js';
 import { getAllCircuitBreakerStats } from './services/circuit-breaker.service.js';
-import { AppDataSource } from './config/database.js';
+import { idempotencyMiddleware, deduplicationService } from './services/deduplication.service.js';
+import { metricsMiddleware, metrics } from './services/metrics.service.js';
+import { logger } from './utils/logger.js';
 
 const { json, urlencoded } = bodyParser;
 

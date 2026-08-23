@@ -157,8 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [groups, setGroups] = useState<Group[]>(mockGroups);
   const [activeGroup, setActiveGroup] = useState<Group | null>(null);
   const [summaries, setSummaries] = useState<Summary[]>(mockSummaries);
-  // @ts-ignore - setPersonalSummaries is unused for now
-  const [personalSummaries, setPersonalSummaries] = useState<PersonalSummary[]>(mockPersonalSummaries);
+  const [personalSummaries] = useState<PersonalSummary[]>(mockPersonalSummaries);
   const [isLoading, setIsLoading] = useState(false);
 
   const refreshData = useCallback(async () => {

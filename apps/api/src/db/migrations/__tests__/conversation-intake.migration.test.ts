@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { DataSource } from 'typeorm';
+
+import { CONVERSATION_MIGRATIONS } from '../../../config/migrations';
 import { CreateConversationIntake1753400000000 } from '../1753400000000-CreateConversationIntake';
 import { AddConversationFidelity1753660000000 } from '../1753660000000-AddConversationFidelity';
 import { AddIntakeArtifactsAndSelectorReports1754000000000 } from '../1754000000000-AddIntakeArtifactsAndSelectorReports';
@@ -7,7 +9,6 @@ import { AddRawArtifactCleanupKeys1754100000000 } from '../1754100000000-AddRawA
 import { AddTicketCandidatesAndBatonAttempts1754200000000 } from '../1754200000000-AddTicketCandidatesAndBatonAttempts';
 import { AddConversationSummaries1754300000000 } from '../1754300000000-AddConversationSummaries';
 import { AddMessageTranscripts1754400000000 } from '../1754400000000-AddMessageTranscripts';
-import { CONVERSATION_MIGRATIONS } from '../../../config/migrations';
 
 describe('CreateConversationIntake migration', () => {
   let dataSource: DataSource;

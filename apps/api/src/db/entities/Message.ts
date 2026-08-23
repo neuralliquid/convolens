@@ -9,9 +9,11 @@ import {
   Index,
 } from 'typeorm';
 import type { Relation } from 'typeorm';
+
+import { dateColumnType } from '../column-types';
+
 import { Group } from './Group';
 import { User } from './User';
-import { dateColumnType } from '../column-types';
 
 export interface MessageMetadata {
   whatsappMessageId?: string;

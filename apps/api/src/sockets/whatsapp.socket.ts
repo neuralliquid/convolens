@@ -1,4 +1,5 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
+
 import { GroupService } from '../services/group.service';
 import { createWhatsAppClient, WhatsAppClient } from '../whatsapp/client';
 
@@ -44,14 +45,13 @@ export class WhatsAppSocket {
             socket.emit('error', 'Group not found');
             return;
           }
-          
+
           // Start monitoring the group in WhatsApp
           await this.whatsappClient.monitorGroup(group.name);
-          
+
           // Send initial messages
           const { messages } = await this.groupService.getGroupMessages(groupId, 1, 50);
           socket.emit('initial_messages', { groupId, messages });
-          
         } catch (error: any) {
           console.error('Error monitoring group:', error);
           socket.emit('error', error.message);
@@ -72,8 +72,8 @@ export class WhatsAppSocket {
       try {
         // Find the group by name
         const group = await this.groupService.getAllGroups();
-        const targetGroup = group.find(g => g.name === data.groupName);
-        
+        const targetGroup = group.find((g) => g.name === data.groupName);
+
         if (targetGroup) {
           // Save the message to the database
           const message = await this.groupService.addMessage(
@@ -87,7 +87,7 @@ export class WhatsAppSocket {
           // Emit to all clients monitoring this group
           this.io.emit('new_message', {
             groupId: targetGroup.id,
-            message
+            message,
           });
         }
       } catch (error) {
@@ -100,10 +100,10 @@ export class WhatsAppSocket {
   private sendToUser(userId: string, event: string, data: any) {
     // Find all sockets for this user
     const userSockets = Array.from(this.clientSockets.values()).filter(
-      socket => socket.data.userId === userId
+      (socket) => socket.data.userId === userId
     );
-    
-    userSockets.forEach(socket => {
+
+    userSockets.forEach((socket) => {
       socket.emit(event, data);
     });
   }

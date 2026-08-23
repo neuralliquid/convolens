@@ -9,9 +9,11 @@ import {
   type Relation,
   UpdateDateColumn,
 } from 'typeorm';
+
+import { dateColumnType } from '../column-types';
+
 import { ConversationIntake } from './ConversationIntake';
 import { ConversationMessage } from './ConversationMessage';
-import { dateColumnType } from '../column-types';
 
 @Entity({ name: 'message_transcripts' })
 @Index('UQ_message_transcripts_message', ['messageId'], { unique: true })

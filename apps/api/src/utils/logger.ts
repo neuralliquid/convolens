@@ -1,4 +1,5 @@
 import winston, { format } from 'winston';
+
 import 'winston-daily-rotate-file';
 import { getCorrelationContext } from '../middleware/correlation';
 
@@ -73,7 +74,7 @@ export const logger = winston.createLogger({
   format: combine(
     errors({ stack: true }),
     timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
-    addCorrelation(),
+    addCorrelation()
   ),
   defaultMeta: {
     service: 'convolens-api',
@@ -82,9 +83,7 @@ export const logger = winston.createLogger({
   transports: [
     // Console transport - colored for dev, JSON for prod
     new winston.transports.Console({
-      format: isProduction
-        ? prodFormat
-        : combine(colorize(), devFormat)
+      format: isProduction ? prodFormat : combine(colorize(), devFormat),
     }),
     // Error log file
     new winston.transports.DailyRotateFile({

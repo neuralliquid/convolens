@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+
 import {
   In,
   IsNull,
@@ -7,7 +8,9 @@ import {
   type EntityManager,
   type Repository,
 } from 'typeorm';
+
 import { AppDataSource } from '../config/database';
+import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import {
   ConversationIntake,
   type ConversationParticipantEvidence,
@@ -15,8 +18,8 @@ import {
   type ConversationSourceKind,
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
-import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { TicketCandidate } from '../db/entities/TicketCandidate';
+
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from './storage/storage.service';
 import { BATON_AMBIGUOUS_HOLD_MS, BATON_PUBLISH_LEASE_MS } from './ticket-candidate.service';
 
@@ -307,8 +310,8 @@ function hasConflictingStableEvidence(
     const incomingKeys = stableParticipantKeys(incomingParticipant);
     return Boolean(
       existingKeys.length > 0 &&
-        incomingKeys.length > 0 &&
-        !participantsShareStableEvidence(existingParticipant, incomingParticipant)
+      incomingKeys.length > 0 &&
+      !participantsShareStableEvidence(existingParticipant, incomingParticipant)
     );
   });
 }
@@ -420,9 +423,9 @@ function shouldRequireReconciliation(
   if (!candidate.sourceConversationIdentityStable) return true;
   return Boolean(
     candidate.sourceConversationId &&
-      sourceConversationId &&
-      normalizeStableSourceConversationId(candidate.sourceConversationId) ===
-        normalizeStableSourceConversationId(sourceConversationId)
+    sourceConversationId &&
+    normalizeStableSourceConversationId(candidate.sourceConversationId) ===
+      normalizeStableSourceConversationId(sourceConversationId)
   );
 }
 
@@ -493,9 +496,9 @@ function isContentHashUniqueConstraintError(error: unknown): boolean {
   }
   return Boolean(
     driverError.code === 'SQLITE_CONSTRAINT' &&
-      /conversation_intakes\.userId.*conversation_intakes\.contentHash/i.test(
-        driverError.message || error.message
-      )
+    /conversation_intakes\.userId.*conversation_intakes\.contentHash/i.test(
+      driverError.message || error.message
+    )
   );
 }
 
@@ -1121,7 +1124,7 @@ export class ConversationIntakeService {
       if (!candidate) return false;
       // Bound to a const so the truthy check still narrows inside the transaction
       // callback, where narrowing of a property read would otherwise be lost.
-      const batonPublishClaimId = candidate.batonPublishClaimId;
+      const { batonPublishClaimId } = candidate;
       if (batonPublishClaimId) {
         const claimActive =
           candidate.batonPublishClaimedAt &&

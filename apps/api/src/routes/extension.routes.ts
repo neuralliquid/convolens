@@ -6,13 +6,14 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { logger } from '../utils/logger.js';
-import { cacheService } from '../services/cache.service.js';
+
 import { CACHE_TTL } from '../config/constants.js';
-import { extensionRateLimit, selectorReportRateLimit } from '../middleware/rate-limit.js';
-import { authenticateToken } from '../middleware/auth.middleware.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { authenticateToken } from '../middleware/auth.middleware.js';
+import { extensionRateLimit, selectorReportRateLimit } from '../middleware/rate-limit.js';
+import { cacheService } from '../services/cache.service.js';
 import { selectorReportService } from '../services/selector-report.service.js';
+import { logger } from '../utils/logger.js';
 
 // =============================================================================
 // Input Validation
@@ -147,7 +148,7 @@ interface SelectorReportPayload {
 
 // In-memory selector configuration
 // In production, this would be stored in a database
-let selectorConfig: SelectorConfig = {
+const selectorConfig: SelectorConfig = {
   version: '1.0.0',
   updatedAt: new Date().toISOString(),
   primary: {
@@ -219,7 +220,7 @@ router.post(
     try {
       const report: SelectorReportPayload = {
         discovered: req.body.discovered || {},
-        userAgent: (req.body.userAgent || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim(),
+        userAgent: (req.body.userAgent || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim(), // eslint-disable-line no-control-regex -- deliberately strips control chars from untrusted input
         timestamp: req.body.timestamp || new Date().toISOString(),
         extensionVersion: req.headers['x-extension-version'] as string,
       };

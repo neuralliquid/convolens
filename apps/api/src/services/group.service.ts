@@ -1,32 +1,38 @@
 import { AppDataSource } from '../config/database';
-import { Group } from '../db/entities/Group';
+import { Group, type GroupMetadata } from '../db/entities/Group';
 import { Message } from '../db/entities/Message';
+import { logger } from '../utils/logger';
 
 export class GroupService {
   private groupRepository = AppDataSource.getRepository(Group);
   private messageRepository = AppDataSource.getRepository(Message);
 
-  async createGroup(name: string, description?: string, metadata?: Record<string, any>): Promise<Group> {
+  async createGroup(name: string, description?: string, metadata?: GroupMetadata): Promise<Group> {
     const group = new Group();
     group.name = name;
     group.description = description;
     group.metadata = metadata;
     group.isActive = true;
-    
-    return this.groupRepository.save(group);
+
+    try {
+      return await this.groupRepository.save(group);
+    } catch (error) {
+      logger.error('[GroupService] Failed to create group:', error);
+      throw new Error('Failed to create group');
+    }
   }
 
   async getGroupById(id: string): Promise<Group | null> {
-    return this.groupRepository.findOne({ 
+    return this.groupRepository.findOne({
       where: { id },
-      relations: ['messages']
+      relations: ['messages'],
     });
   }
 
   async getAllGroups(): Promise<Group[]> {
-    return this.groupRepository.find({ 
+    return this.groupRepository.find({
       relations: ['messages'],
-      order: { createdAt: 'DESC' }
+      order: { createdAt: 'DESC' },
     });
   }
 
@@ -43,7 +49,13 @@ export class GroupService {
     return result.affected ? result.affected > 0 : false;
   }
 
-  async addMessage(groupId: string, content: string, sender?: string, isMedia = false, mediaUrl?: string): Promise<Message> {
+  async addMessage(
+    groupId: string,
+    content: string,
+    sender?: string,
+    isMedia = false,
+    mediaUrl?: string
+  ): Promise<Message> {
     const group = await this.groupRepository.findOneBy({ id: groupId });
     if (!group) {
       throw new Error('Group not found');
@@ -62,7 +74,11 @@ export class GroupService {
     return this.messageRepository.save(message);
   }
 
-  async getGroupMessages(groupId: string, page = 1, limit = 50): Promise<{ messages: Message[]; total: number }> {
+  async getGroupMessages(
+    groupId: string,
+    page = 1,
+    limit = 50
+  ): Promise<{ messages: Message[]; total: number }> {
     const [messages, total] = await this.messageRepository.findAndCount({
       where: { group: { id: groupId } },
       order: { createdAt: 'DESC' },

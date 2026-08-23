@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+
 import { JWT_SECRET } from '../../config/constants';
 import { UserRole } from '../../db/entities/User';
 import { issueApiToken } from '../auth.service';

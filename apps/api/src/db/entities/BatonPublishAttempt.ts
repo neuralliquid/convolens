@@ -6,8 +6,10 @@ import {
   PrimaryGeneratedColumn,
   type Relation,
 } from 'typeorm';
-import { TicketCandidate } from './TicketCandidate';
+
 import { dateColumnType } from '../column-types';
+
+import { TicketCandidate } from './TicketCandidate';
 
 @Entity({ name: 'baton_publish_attempts' })
 export class BatonPublishAttempt {

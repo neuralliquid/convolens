@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+
 import {
   CircuitBreaker,
   CircuitState,
@@ -81,7 +82,9 @@ describe('CircuitBreaker', () => {
         await breaker.execute(async () => {
           throw new Error('Test error');
         });
-      } catch {}
+      } catch {
+        // expected
+      }
 
       const stats = breaker.getStats();
       expect(stats.failures).toBe(1);
@@ -94,7 +97,9 @@ describe('CircuitBreaker', () => {
           await breaker.execute(async () => {
             throw new Error('Test error');
           });
-        } catch {}
+        } catch {
+          // expected
+        }
       }
 
       const stats = breaker.getStats();
@@ -108,16 +113,16 @@ describe('CircuitBreaker', () => {
           await breaker.execute(async () => {
             throw new Error('Test error');
           });
-        } catch {}
+        } catch {
+          // expected
+        }
       }
 
       // Verify circuit is open
       expect(breaker.getStats().state).toBe(CircuitState.OPEN);
 
       // Next request should throw CircuitOpenError
-      await expect(
-        breaker.execute(async () => 'should not run')
-      ).rejects.toThrow(CircuitOpenError);
+      await expect(breaker.execute(async () => 'should not run')).rejects.toThrow(CircuitOpenError);
     });
 
     it('should not count 4xx errors as failures by default', async () => {
@@ -125,7 +130,9 @@ describe('CircuitBreaker', () => {
         await breaker.execute(async () => {
           throw new Error('Request failed with 404');
         });
-      } catch {}
+      } catch {
+        // expected
+      }
 
       const stats = breaker.getStats();
       expect(stats.failures).toBe(0);
@@ -140,13 +147,15 @@ describe('CircuitBreaker', () => {
           await breaker.execute(async () => {
             throw new Error('Test error');
           });
-        } catch {}
+        } catch {
+          // expected
+        }
       }
 
       expect(breaker.getStats().state).toBe(CircuitState.OPEN);
 
       // Wait for reset timeout
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Next check should allow request (transition to HALF_OPEN)
       expect(breaker.isAllowed()).toBe(true);
@@ -159,11 +168,13 @@ describe('CircuitBreaker', () => {
           await breaker.execute(async () => {
             throw new Error('Test error');
           });
-        } catch {}
+        } catch {
+          // expected
+        }
       }
 
       // Wait for reset timeout
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Execute successful requests
       await breaker.execute(async () => 'success');
@@ -180,18 +191,22 @@ describe('CircuitBreaker', () => {
           await breaker.execute(async () => {
             throw new Error('Test error');
           });
-        } catch {}
+        } catch {
+          // expected
+        }
       }
 
       // Wait for reset timeout
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise((resolve) => setTimeout(resolve, 1100));
 
       // Execute a failing request
       try {
         await breaker.execute(async () => {
           throw new Error('Still failing');
         });
-      } catch {}
+      } catch {
+        // expected
+      }
 
       const stats = breaker.getStats();
       expect(stats.state).toBe(CircuitState.OPEN);
@@ -206,7 +221,9 @@ describe('CircuitBreaker', () => {
           await breaker.execute(async () => {
             throw new Error('Test error');
           });
-        } catch {}
+        } catch {
+          // expected
+        }
       }
 
       expect(breaker.getStats().state).toBe(CircuitState.OPEN);
@@ -231,7 +248,9 @@ describe('CircuitBreaker', () => {
         await customBreaker.execute(async () => {
           throw new Error('minor issue');
         });
-      } catch {}
+      } catch {
+        // expected
+      }
 
       expect(customBreaker.getStats().failures).toBe(0);
 
@@ -240,7 +259,9 @@ describe('CircuitBreaker', () => {
         await customBreaker.execute(async () => {
           throw new Error('critical failure');
         });
-      } catch {}
+      } catch {
+        // expected
+      }
 
       expect(customBreaker.getStats().failures).toBe(1);
     });
@@ -284,8 +305,8 @@ describe('Circuit Breaker Registry', () => {
     const stats = getAllCircuitBreakerStats();
 
     expect(stats).toHaveLength(2);
-    expect(stats.map(s => s.name)).toContain('service-a');
-    expect(stats.map(s => s.name)).toContain('service-b');
+    expect(stats.map((s) => s.name)).toContain('service-a');
+    expect(stats.map((s) => s.name)).toContain('service-b');
   });
 
   it('should reset all circuit breakers', async () => {
@@ -296,7 +317,9 @@ describe('Circuit Breaker Registry', () => {
       await breaker.execute(async () => {
         throw new Error('Test error');
       });
-    } catch {}
+    } catch {
+      // expected
+    }
 
     expect(breaker.getStats().state).toBe(CircuitState.OPEN);
 

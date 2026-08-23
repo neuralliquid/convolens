@@ -1,4 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
+
 import { BatonMcpClient } from '../baton-mcp.client';
 
 describe('BatonMcpClient', () => {
@@ -49,9 +50,7 @@ describe('BatonMcpClient', () => {
       client.searchTasks('project-1', 'Reviewed candidate', 'secret-token')
     ).resolves.toEqual([{ id: 'task-1' }]);
 
-    const methods = fetcher.mock.calls.map(([, init]) =>
-      JSON.parse(String(init?.body)).method
-    );
+    const methods = fetcher.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).method);
     expect(methods).toEqual(['initialize', 'notifications/initialized', 'tools/call']);
     for (const [input, init] of fetcher.mock.calls) {
       expect(input.toString()).toBe('https://baton.example/mcp');
@@ -86,7 +85,11 @@ describe('BatonMcpClient', () => {
     });
 
     await expect(
-      new BatonMcpClient('https://baton.example/mcp', fetcher).searchTasks('project-1', 'candidate', 'token')
+      new BatonMcpClient('https://baton.example/mcp', fetcher).searchTasks(
+        'project-1',
+        'candidate',
+        'token'
+      )
     ).rejects.toThrow('Baton MCP search_tasks returned invalid task list payload');
   });
 

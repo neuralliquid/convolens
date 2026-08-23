@@ -8,8 +8,10 @@ import {
   type Relation,
   UpdateDateColumn,
 } from 'typeorm';
-import { ConversationMessage } from './ConversationMessage';
+
 import { dateColumnType } from '../column-types';
+
+import { ConversationMessage } from './ConversationMessage';
 
 export type ConversationSourceKind = 'extension' | 'upload';
 export type ConversationStatus = 'received' | 'failed';

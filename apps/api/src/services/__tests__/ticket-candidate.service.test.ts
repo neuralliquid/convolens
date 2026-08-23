@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource } from 'typeorm';
+
 import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
@@ -339,9 +340,9 @@ describe('TicketCandidateService', () => {
     );
     expect(JSON.stringify(createRequest)).not.toContain('Delivery chat');
     expect(JSON.stringify(createRequest)).not.toContain('mystira-token');
-    expect(
-      new Headers(mcpCalls(fetcher, 'create_task')[0][1]?.headers).get('authorization')
-    ).toBe('Bearer mystira-token');
+    expect(new Headers(mcpCalls(fetcher, 'create_task')[0][1]?.headers).get('authorization')).toBe(
+      'Bearer mystira-token'
+    );
     expect(first.candidate.publishAttempts[0].status).toBe('succeeded');
   });
 

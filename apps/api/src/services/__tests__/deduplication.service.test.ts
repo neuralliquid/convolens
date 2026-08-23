@@ -47,7 +47,7 @@ describe('DeduplicationService', () => {
       expect(deduplicationService.isDuplicate(hash)).toBe(true);
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(deduplicationService.isDuplicate(hash)).toBe(false);
     });
@@ -76,7 +76,7 @@ describe('DeduplicationService', () => {
 
       expect(deduplicationService.isDuplicate(hash)).toBe(true);
 
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       expect(deduplicationService.isDuplicate(hash)).toBe(false);
     });
@@ -101,7 +101,7 @@ describe('DeduplicationService', () => {
       const hash = 'expiring-cache';
       deduplicationService.markProcessed(hash, { data: 'test' }, 50);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const result = deduplicationService.getCachedResult(hash);
       expect(result).toBeUndefined();
@@ -129,7 +129,7 @@ describe('DeduplicationService', () => {
       const key = 'expiring-key';
       deduplicationService.storeIdempotencyResult(key, { data: 'test' }, 50);
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const result = deduplicationService.checkIdempotency(key);
       expect(result.isDuplicate).toBe(false);
@@ -207,7 +207,7 @@ describe('DeduplicationService', () => {
       expect(deduplicationService.getStats().entries).toBe(2);
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Trigger cleanup
       deduplicationService.cleanup();

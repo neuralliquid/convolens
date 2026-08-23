@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+
 import { logger } from '../utils/logger';
 
 export interface ChatMessage {

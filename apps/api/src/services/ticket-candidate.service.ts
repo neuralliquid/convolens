@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
+
 import { In, IsNull, type DataSource } from 'typeorm';
+
 import { AppDataSource } from '../config/database';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { TicketCandidate, type TicketCandidateConfidence } from '../db/entities/TicketCandidate';
+
 import { BatonMcpClient, type BatonMcpTask } from './baton-mcp.client';
 
 const HIGH_SIGNAL = /^(?:todo|action(?: item)?|follow[- ]?up)\s*[:-]\s*(.+)$/i;
@@ -50,7 +53,8 @@ export class TicketCandidateService {
       ? process.env.BATON_MCP_RESOURCE || BATON_MCP_RESOURCE
       : '',
     private readonly fetcher: typeof fetch = fetch,
-    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID || CONVOLENS_BATON_PROJECT_ID,
+    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID ||
+      CONVOLENS_BATON_PROJECT_ID,
     private readonly batonWebBaseUrl = process.env.BATON_WEB_BASE_URL || ''
   ) {}
 

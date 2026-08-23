@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+
 import { postgresNativeUuidOptions } from '../postgres-uuid';
 
 describe('PostgreSQL UUID configuration', () => {

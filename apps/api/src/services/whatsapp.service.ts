@@ -1,7 +1,9 @@
+import { EventEmitter } from 'events';
+
 import { Browser, Page, launch } from 'puppeteer';
 import * as qrcode from 'qrcode-terminal';
 import { Server as SocketIOServer } from 'socket.io';
-import { EventEmitter } from 'events';
+
 import { WhatsAppClient, WhatsAppMessage } from '../types/whatsapp.types';
 import { logger } from '../utils/logger';
 
@@ -43,7 +45,9 @@ class WhatsAppServiceImpl extends EventEmitter implements WhatsAppClient {
       });
 
       if (qrData) {
-        qrcode.generate(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}`, { small: true });
+        qrcode.generate(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}`, {
+          small: true,
+        });
         this.io.emit('qr', { qr: qrData });
       }
 
@@ -55,7 +59,6 @@ class WhatsAppServiceImpl extends EventEmitter implements WhatsAppClient {
 
       // Listen for new messages
       await this.setupMessageListener();
-
     } catch (error) {
       logger.error('Error initializing WhatsApp client:', error);
       throw error;
@@ -75,13 +78,12 @@ class WhatsAppServiceImpl extends EventEmitter implements WhatsAppClient {
     try {
       // Navigate to the group chat
       await this.page.goto(`https://web.whatsapp.com/accept?code=${encodeURIComponent(groupName)}`);
-      
+
       // Wait for the chat to load
       await this.page.waitForSelector('div[data-testid="conversation-panel-wrapper"]');
-      
+
       logger.info(`Now monitoring group: ${groupName}`);
       this.monitoredGroups.add(groupName);
-      
     } catch (error) {
       logger.error(`Error monitoring group ${groupName}:`, error);
       throw error;
@@ -107,15 +109,15 @@ class WhatsAppServiceImpl extends EventEmitter implements WhatsAppClient {
           if (mutation.addedNodes.length) {
             const messageNode = mutation.addedNodes[0] as HTMLElement;
             const messageText = messageNode.textContent || '';
-            
-            // @ts-ignore - onNewMessage is exposed via exposeFunction
+
+            // @ts-expect-error - onNewMessage is exposed via exposeFunction
             window.onNewMessage({
               id: messageNode.getAttribute('data-id') || Date.now().toString(),
               content: messageText,
               sender: messageNode.getAttribute('data-sender') || 'Unknown',
               timestamp: new Date(),
               isMedia: messageNode.querySelector('img, video') !== null,
-              mediaUrl: messageNode.querySelector('img, video')?.getAttribute('src') || undefined
+              mediaUrl: messageNode.querySelector('img, video')?.getAttribute('src') || undefined,
             });
           }
         });
@@ -123,7 +125,7 @@ class WhatsAppServiceImpl extends EventEmitter implements WhatsAppClient {
 
       observer.observe(targetNode, {
         childList: true,
-        subtree: true
+        subtree: true,
       });
     });
   }

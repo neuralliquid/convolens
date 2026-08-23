@@ -1,20 +1,22 @@
+import dotenv from 'dotenv';
 import { DataSource, type DataSourceOptions } from 'typeorm';
-import { User } from '../db/entities/User';
-import { Group } from '../db/entities/Group';
-import { Message } from '../db/entities/Message';
+
+import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
+import { ConversationSummary } from '../db/entities/ConversationSummary';
+import { Group } from '../db/entities/Group';
+import { Message } from '../db/entities/Message';
+import { MessageTranscript } from '../db/entities/MessageTranscript';
 import { SelectorReport } from '../db/entities/SelectorReport';
 import { TicketCandidate } from '../db/entities/TicketCandidate';
-import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
-import { ConversationSummary } from '../db/entities/ConversationSummary';
-import { MessageTranscript } from '../db/entities/MessageTranscript';
-import { postgresNativeUuidOptions } from './postgres-uuid';
-import { CONVERSATION_MIGRATIONS } from './migrations';
+import { User } from '../db/entities/User';
 import { logger } from '../utils/logger';
 
+import { CONVERSATION_MIGRATIONS } from './migrations';
+import { postgresNativeUuidOptions } from './postgres-uuid';
+
 // Load environment variables
-import dotenv from 'dotenv';
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === 'production';
