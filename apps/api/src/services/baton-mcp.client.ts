@@ -13,6 +13,10 @@ interface McpToolResult {
   isError?: boolean;
 }
 
+interface McpResultRecord {
+  [key: string]: unknown;
+}
+
 export interface BatonMcpTask {
   id: string;
   trace_id?: string | null;
@@ -27,10 +31,43 @@ function resultText(result: McpToolResult, tool: string): string {
   return text;
 }
 
+function isRecord(value: unknown): value is McpResultRecord {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseBatonTask(value: unknown, tool: string): BatonMcpTask {
+  if (!isRecord(value) || typeof value.id !== 'string' || value.id.length === 0) {
+    throw new Error(`Baton MCP ${tool} returned invalid task payload`);
+  }
+
+  const task: BatonMcpTask = { id: value.id };
+  if (typeof value.trace_id === 'string' || value.trace_id === null) {
+    task.trace_id = value.trace_id;
+  }
+  if (typeof value.traceId === 'string' || value.traceId === null) {
+    task.traceId = value.traceId;
+  }
+  return task;
+}
+
+function parseTaskPayload(text: string, tool: string): BatonMcpTask[] {
+  const payload = JSON.parse(text);
+  if (!Array.isArray(payload)) {
+    throw new Error(`Baton MCP ${tool} returned invalid task list payload`);
+  }
+  return payload.map((item) => parseBatonTask(item, tool));
+}
+
+function parseCreatePayload(text: string, tool: string): BatonMcpTask {
+  const payload = JSON.parse(text);
+  return parseBatonTask(payload, tool);
+}
+
 export class BatonMcpClient {
   constructor(
     private readonly resourceUrl: string,
-    private readonly fetcher: typeof fetch = fetch
+    private readonly fetcher: typeof fetch = fetch,
+    private readonly timeoutMs: number = BATON_TIMEOUT_MS
   ) {}
 
   async searchTasks(
@@ -39,7 +76,7 @@ export class BatonMcpClient {
     accessToken: string
   ): Promise<BatonMcpTask[]> {
     const result = await this.callTool('search_tasks', { projectId, query }, accessToken);
-    return JSON.parse(resultText(result, 'search_tasks')) as BatonMcpTask[];
+    return parseTaskPayload(resultText(result, 'search_tasks'), 'search_tasks');
   }
 
   async createTask(
@@ -54,7 +91,7 @@ export class BatonMcpClient {
     accessToken: string
   ): Promise<BatonMcpTask> {
     const result = await this.callTool('create_task', input, accessToken);
-    return JSON.parse(resultText(result, 'create_task')) as BatonMcpTask;
+    return parseCreatePayload(resultText(result, 'create_task'), 'create_task');
   }
 
   private async callTool(
@@ -62,20 +99,51 @@ export class BatonMcpClient {
     args: Record<string, unknown>,
     accessToken: string
   ): Promise<McpToolResult> {
+    const timeoutAt = Date.now() + this.timeoutMs;
     const transport = new StreamableHTTPClientTransport(new URL(this.resourceUrl), {
       fetch: this.fetcher,
       requestInit: { headers: { Authorization: `Bearer ${accessToken}` } },
     });
     const client = new Client({ name: 'convolens', version: '1.0.0' });
+
     try {
-      await client.connect(transport);
+      await this.callWithTimeout(
+        async () => {
+          await client.connect(transport);
+        },
+        'connect',
+        timeoutAt
+      );
       return (await client.callTool(
         { name, arguments: args },
         undefined,
-        { timeout: BATON_TIMEOUT_MS }
+        { timeout: this.timeoutMs }
       )) as McpToolResult;
     } finally {
-      await client.close();
+      try {
+        await client.close();
+      } catch {
+        // ignore cleanup failures when transport initialization did not complete
+      }
+    }
+  }
+
+  private async callWithTimeout<T>(
+    action: () => Promise<T>,
+    label: string,
+    timeoutAt: number
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        action(),
+        new Promise<never>((_, reject) => {
+          const delay = Math.max(0, timeoutAt - Date.now());
+          timer = setTimeout(() => reject(new Error(`Baton MCP ${label} timed out`)), delay);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 }

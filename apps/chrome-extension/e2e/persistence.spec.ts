@@ -74,7 +74,7 @@ async function startApi(
       UPLOAD_DIR: artifactRoot,
       FRONTEND_URL: "https://convolens.neuralliquid.ai",
       BATON_BASE_URL: "http://127.0.0.1:3002",
-      BATON_DEFAULT_PROJECT_ID: "11111111-1111-4111-8111-111111111111",
+      BATON_DEFAULT_PROJECT_ID: "d20d739a-89b0-4a48-8f9b-dcb0724c149d",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -297,7 +297,7 @@ test("persists a reviewed extension capture across duplicate, restart, isolation
         data: {
           expectedRevision: 1,
           decision: "accepted",
-          projectId: "11111111-1111-4111-8111-111111111111",
+          projectId: "d20d739a-89b0-4a48-8f9b-dcb0724c149d",
         },
       },
     );
