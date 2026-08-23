@@ -47,10 +47,10 @@ export class TicketCandidateService {
   constructor(
     private readonly dataSource: DataSource = AppDataSource,
     private readonly batonResource = process.env.BATON_OAUTH_MCP_ENABLED === 'true'
-      ? BATON_MCP_RESOURCE
+      ? process.env.BATON_MCP_RESOURCE || BATON_MCP_RESOURCE
       : '',
     private readonly fetcher: typeof fetch = fetch,
-    private readonly defaultProjectId = CONVOLENS_BATON_PROJECT_ID,
+    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID || CONVOLENS_BATON_PROJECT_ID,
     private readonly batonWebBaseUrl = process.env.BATON_WEB_BASE_URL || ''
   ) {}
 
@@ -102,6 +102,9 @@ export class TicketCandidateService {
               sentAt: message.sentAt.toISOString(),
             },
           ],
+          status: 'pending',
+          revision: 1,
+          publishStatus: 'not_requested',
         })
         .orIgnore()
         .execute();

@@ -79,4 +79,23 @@ describe('BatonMcpClient', () => {
       )
     ).rejects.toThrow('Baton MCP create_task failed');
   });
+
+  it('rejects search responses that do not match the expected contract', async () => {
+    const fetcher = initializedFetcher({
+      content: [{ type: 'text', text: '{"id":"task-1"}' }],
+    });
+
+    await expect(
+      new BatonMcpClient('https://baton.example/mcp', fetcher).searchTasks('project-1', 'candidate', 'token')
+    ).rejects.toThrow('Baton MCP search_tasks returned invalid task list payload');
+  });
+
+  it('rejects connect timeouts and closes the client', async () => {
+    const fetcher = jest.fn<typeof fetch>(async () => new Promise(() => {}));
+    const client = new BatonMcpClient('https://baton.example/mcp', fetcher, 5);
+
+    await expect(client.searchTasks('project-1', 'candidate', 'token')).rejects.toThrow(
+      'Baton MCP connect timed out'
+    );
+  });
 });
