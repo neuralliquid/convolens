@@ -37,7 +37,7 @@
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
     "pg": "^8.16.3",
-    "puppeteer": "^21.0.0",
+    "puppeteer": "^25.8.0",
     "qrcode-terminal": "^0.12.0",
     "reflect-metadata": "^0.2.2",
     "socket.io": "^4.7.2",
