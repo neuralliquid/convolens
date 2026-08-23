@@ -5,7 +5,7 @@
   "description": "Backend service for WhatsApp group monitoring",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean",
+    "build": "tsup src/index.ts --format esm --clean --external @modelcontextprotocol/sdk",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -25,6 +25,7 @@
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.3.0",
     "class-transformer": "^0.5.1",
