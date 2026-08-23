@@ -85,8 +85,23 @@ export async function getConvolensPublishTokens(): Promise<{
   apiToken: string;
   batonToken: string;
 }> {
-  const { apiToken, accessToken } = await getConvolensForwardedTokens();
-  return { apiToken, batonToken: accessToken };
+  if (process.env.BATON_OAUTH_MCP_ENABLED !== "true") {
+    throw new ConvolensApiAuthError(
+      "Baton OAuth publishing is not enabled",
+      503,
+    );
+  }
+  const session = await getServerSession(authOptions);
+  if (!session?.batonAccessToken) {
+    throw new ConvolensApiAuthError(
+      "A distinct Baton OAuth session is required",
+      401,
+    );
+  }
+  return {
+    apiToken: await exchangeConvolensApiToken(session),
+    batonToken: session.batonAccessToken,
+  };
 }
 
 export async function getConvolensTranscriptionTokens(): Promise<{

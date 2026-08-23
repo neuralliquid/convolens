@@ -1,17 +1,20 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { In, IsNull, type DataSource, type Repository } from 'typeorm';
+import { In, IsNull, type DataSource } from 'typeorm';
 
 import { AppDataSource } from '../config/database';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { TicketCandidate, type TicketCandidateConfidence } from '../db/entities/TicketCandidate';
 
+import { BatonMcpClient, type BatonMcpTask } from './baton-mcp.client';
+
 const HIGH_SIGNAL = /^(?:todo|action(?: item)?|follow[- ]?up)\s*[:-]\s*(.+)$/i;
 const MEDIUM_SIGNAL = /^(?:please|can you|could you|we need to|i will|i'll|let's)\b[\s,:-]*(.+)$/i;
-const BATON_TIMEOUT_MS = 15_000;
 export const BATON_PUBLISH_LEASE_MS = 90_000;
 export const BATON_AMBIGUOUS_HOLD_MS = 60_000;
+export const CONVOLENS_BATON_PROJECT_ID = 'd20d739a-89b0-4a48-8f9b-dcb0724c149d';
+export const BATON_MCP_RESOURCE = 'https://mcp.baton.celladoresystems.com/mcp';
 
 export class TicketCandidateConflict extends Error {}
 export class TicketCandidateValidation extends Error {}
@@ -27,11 +30,6 @@ function normalizeBatonProjectId(projectId?: string): string | null {
     throw new TicketCandidateValidation('Baton project ID must be a valid UUID');
   }
   return normalized;
-}
-
-interface BatonTask {
-  id: string;
-  context?: string | null;
 }
 
 interface PublishResult {
@@ -51,11 +49,22 @@ export type PersonalTodoCandidate = Omit<TicketCandidate, 'intake'> & {
 export class TicketCandidateService {
   constructor(
     private readonly dataSource: DataSource = AppDataSource,
-    private readonly batonBaseUrl = process.env.BATON_BASE_URL || '',
+    private readonly batonResource = process.env.BATON_OAUTH_MCP_ENABLED === 'true'
+      ? process.env.BATON_MCP_RESOURCE || BATON_MCP_RESOURCE
+      : '',
     private readonly fetcher: typeof fetch = fetch,
-    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID || '',
+    private readonly defaultProjectId = process.env.BATON_DEFAULT_PROJECT_ID ||
+      CONVOLENS_BATON_PROJECT_ID,
     private readonly batonWebBaseUrl = process.env.BATON_WEB_BASE_URL || ''
   ) {}
+
+  private normalizePinnedProjectId(projectId?: string): string | null {
+    const normalized = normalizeBatonProjectId(projectId);
+    if (normalized && normalized !== this.defaultProjectId) {
+      throw new TicketCandidateValidation('Only the configured ConvoLens Baton project is allowed');
+    }
+    return normalized;
+  }
 
   async generate(userId: string, intakeId: string): Promise<TicketCandidate[]> {
     const intake = await this.dataSource.getRepository(ConversationIntake).findOne({
@@ -87,8 +96,8 @@ export class TicketCandidateService {
           title,
           confidence,
           idempotencyKey,
-          projectId: normalizeBatonProjectId(this.defaultProjectId),
-          description: `Evidence from ${intake.displayName}, stored message ${message.position + 1}.`,
+          projectId: this.normalizePinnedProjectId(this.defaultProjectId),
+          description: `Evidence retained in ConvoLens at stored message ${message.position + 1}.`,
           evidence: [
             {
               messageId: message.id,
@@ -97,6 +106,9 @@ export class TicketCandidateService {
               sentAt: message.sentAt.toISOString(),
             },
           ],
+          status: 'pending',
+          revision: 1,
+          publishStatus: 'not_requested',
         })
         .orIgnore()
         .execute();
@@ -153,7 +165,7 @@ export class TicketCandidateService {
     if (title !== undefined) partial.title = title;
     if (changes.description !== undefined) partial.description = changes.description.trim();
     if (changes.projectId !== undefined) {
-      partial.projectId = normalizeBatonProjectId(changes.projectId);
+      partial.projectId = this.normalizePinnedProjectId(changes.projectId);
     }
     const result = await this.dataSource
       .getRepository(TicketCandidate)
@@ -170,7 +182,7 @@ export class TicketCandidateService {
     decision: 'accepted' | 'rejected',
     projectId?: string
   ): Promise<TicketCandidate> {
-    const normalizedProjectId = normalizeBatonProjectId(projectId);
+    const normalizedProjectId = this.normalizePinnedProjectId(projectId);
     if (decision === 'accepted' && !normalizedProjectId) {
       throw new TicketCandidateValidation('Choose a Baton project before accepting');
     }
@@ -220,7 +232,7 @@ export class TicketCandidateService {
   }
 
   async publish(userId: string, id: string, batonToken: string): Promise<PublishResult> {
-    if (!this.batonBaseUrl)
+    if (!this.batonResource)
       throw new TicketCandidateValidation('Baton publishing is not configured');
     if (!batonToken)
       throw new TicketCandidateValidation('A current Mystira session is required for Baton');
@@ -264,7 +276,6 @@ export class TicketCandidateService {
       const attempt = await attemptRepository.save(
         attemptRepository.create({ candidateId: id, userId, attemptNumber, status: 'pending' })
       );
-      const marker = `[convolens:${claimedCurrent.idempotencyKey}]`;
       let createStarted = false;
       let reconcilingAmbiguousCreate = false;
       try {
@@ -286,15 +297,15 @@ export class TicketCandidateService {
             }
           );
         }
-        reconcilingAmbiguousCreate = Boolean(
-          ambiguousCreateStartedAt &&
-          Date.now() - ambiguousCreateStartedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
-        );
-        let duplicate: BatonTask | null;
+        reconcilingAmbiguousCreate = ambiguousCreateStartedAt
+          ? Date.now() - ambiguousCreateStartedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
+          : false;
+        let duplicate: BatonMcpTask | null;
         if (reconcilingAmbiguousCreate) {
           duplicate = await this.reconcileAmbiguousCreate(
             claimedCurrent.projectId!,
-            marker,
+            claimedCurrent.title,
+            claimedCurrent.idempotencyKey,
             batonToken
           );
           if (!duplicate) {
@@ -303,7 +314,12 @@ export class TicketCandidateService {
             );
           }
         } else {
-          duplicate = await this.findDuplicate(claimedCurrent.projectId!, marker, batonToken);
+          duplicate = await this.findDuplicate(
+            claimedCurrent.projectId!,
+            claimedCurrent.title,
+            claimedCurrent.idempotencyKey,
+            batonToken
+          );
         }
         createStarted = !duplicate;
         if (createStarted) {
@@ -315,7 +331,7 @@ export class TicketCandidateService {
             attempt.id
           );
         }
-        const task = duplicate || (await this.createBatonTask(claimedCurrent, marker, batonToken));
+        const task = duplicate || (await this.createBatonTask(claimedCurrent, batonToken));
         const completedAt = new Date();
         await this.finalizePublish(
           userId,
@@ -551,11 +567,12 @@ export class TicketCandidateService {
 
   private async reconcileAmbiguousCreate(
     projectId: string,
-    marker: string,
+    query: string,
+    idempotencyKey: string,
     token: string
-  ): Promise<BatonTask | null> {
+  ): Promise<BatonMcpTask | null> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const duplicate = await this.findDuplicate(projectId, marker, token);
+      const duplicate = await this.findDuplicate(projectId, query, idempotencyKey, token);
       if (duplicate) return duplicate;
       if (attempt < 2) await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
     }
@@ -570,64 +587,35 @@ export class TicketCandidateService {
 
   private async findDuplicate(
     projectId: string,
-    marker: string,
+    query: string,
+    idempotencyKey: string,
     token: string
-  ): Promise<BatonTask | null> {
-    const url = new URL(`${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks`);
-    url.searchParams.set('projectId', projectId);
-    url.searchParams.set('search', marker);
-    const response = await this.batonFetch(url, token);
-    if (!response.ok) throw new Error(`Baton duplicate check failed (${response.status})`);
-    const tasks = (await response.json()) as BatonTask[];
-    return tasks.find((task) => task.context?.includes(marker)) || null;
+  ): Promise<BatonMcpTask | null> {
+    const client = new BatonMcpClient(this.batonResource, this.fetcher);
+    const tasks = await client.searchTasks(projectId, query, token);
+    return tasks.find((task) => (task.trace_id ?? task.traceId) === idempotencyKey) || null;
   }
 
-  private async createBatonTask(
-    candidate: TicketCandidate,
-    marker: string,
-    token: string
-  ): Promise<BatonTask> {
+  private async createBatonTask(candidate: TicketCandidate, token: string): Promise<BatonMcpTask> {
     const evidence = candidate.evidence
       .map((span) => `message ${span.position + 1} at ${span.sentAt}`)
       .join(', ');
-    const response = await this.batonFetch(
-      `${this.batonBaseUrl.replace(/\/$/, '')}/api/tasks`,
-      token,
+    const description = [
+      candidate.description?.trim(),
+      `ConvoLens intake ${candidate.intakeId}; redacted evidence ${evidence}.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    return new BatonMcpClient(this.batonResource, this.fetcher).createTask(
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: candidate.projectId,
-          title: candidate.title,
-          description: candidate.description || null,
-          priority: 'medium',
-          status: 'todo',
-          ownerType: 'unassigned',
-          workType: 'feature',
-          outcomeType: 'follow_up',
-          confidence: 'well_defined',
-          executionMode: 'human_agent',
-          triggeredBy: 'convolens',
-          traceId: candidate.idempotencyKey,
-          context: `${marker}\nConvoLens intake ${candidate.intakeId}; evidence ${evidence}.`,
-        }),
-      }
+        projectId: candidate.projectId!,
+        idempotencyKey: candidate.idempotencyKey,
+        title: candidate.title,
+        description,
+        priority: 'medium',
+        traceId: candidate.idempotencyKey,
+      },
+      token
     );
-    if (!response.ok) throw new Error(`Baton task creation failed (${response.status})`);
-    return (await response.json()) as BatonTask;
-  }
-
-  private batonFetch(
-    input: string | URL,
-    token: string,
-    init: RequestInit = {}
-  ): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), BATON_TIMEOUT_MS);
-    return this.fetcher(input, {
-      ...init,
-      signal: controller.signal,
-      headers: { ...init.headers, Authorization: `Bearer ${token}` },
-    }).finally(() => clearTimeout(timeout));
   }
 }

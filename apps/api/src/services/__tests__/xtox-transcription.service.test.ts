@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+
 import { XtoxTranscriptionError, XtoxTranscriptionService } from '../xtox-transcription.service';
 
 const originalEnvironment = {

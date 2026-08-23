@@ -1,5 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
+
 import jwt from 'jsonwebtoken';
+
 import { JWT_SECRET } from '../../config/constants';
 import { exchangeMystiraIdToken, resetMystiraDiscoveryCache } from '../mystira-auth.service';
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import type { NextFunction, Request, Response } from 'express';
+
 import { requireAdmin } from '../../middleware/admin';
 
 function responseDouble() {

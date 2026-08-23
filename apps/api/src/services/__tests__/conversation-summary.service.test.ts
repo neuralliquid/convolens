@@ -1,17 +1,18 @@
 import { DataSource } from 'typeorm';
+
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
-import { MessageTranscript } from '../../db/entities/MessageTranscript';
 import { ConversationSummary } from '../../db/entities/ConversationSummary';
-import {
-  ConversationSummaryService,
-  ConversationSummaryError,
-} from '../conversation-summary.service';
+import { MessageTranscript } from '../../db/entities/MessageTranscript';
 import type {
   CatchUpGenerationResult,
   CatchUpGenerator,
   CatchUpSourceMessage,
 } from '../ai/catch-up-generator.service';
+import {
+  ConversationSummaryService,
+  ConversationSummaryError,
+} from '../conversation-summary.service';
 
 class FakeGenerator implements CatchUpGenerator {
   calls = 0;

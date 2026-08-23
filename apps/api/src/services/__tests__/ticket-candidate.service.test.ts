@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource } from 'typeorm';
+
 import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
@@ -8,12 +9,74 @@ import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import { ConversationIntakeService } from '../conversation-intake.service';
 import {
   BATON_PUBLISH_LEASE_MS,
+  CONVOLENS_BATON_PROJECT_ID,
   TicketCandidateConflict,
   TicketCandidateService,
   TicketCandidateValidation,
 } from '../ticket-candidate.service';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
+
+function mcpResponse(value: unknown): Response {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { content: [{ type: 'text', text: JSON.stringify(value) }] },
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+function mcpTool(init?: RequestInit): string | undefined {
+  if (typeof init?.body !== 'string') return undefined;
+  return (JSON.parse(init.body) as { params?: { name?: string } }).params?.name;
+}
+
+function mcpMethod(init?: RequestInit): string | undefined {
+  if (typeof init?.body !== 'string') return undefined;
+  return (JSON.parse(init.body) as { method?: string }).method;
+}
+
+function mcpFetcher(
+  toolFetcher: jest.MockedFunction<typeof fetch>
+): jest.MockedFunction<typeof fetch> {
+  return jest.fn<typeof fetch>(async (input, init) => {
+    const method = mcpMethod(init);
+    const request = JSON.parse(String(init?.body)) as { id?: string | number };
+    if (method === 'initialize') {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: {
+            protocolVersion: '2025-06-18',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'baton-test', version: '1.0.0' },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    if (method === 'notifications/initialized') {
+      return new Response('{}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const response = await toolFetcher(input, init);
+    if (!response.headers.get('content-type')?.includes('application/json')) return response;
+    const payload = (await response.json()) as Record<string, unknown>;
+    return new Response(JSON.stringify({ ...payload, id: request.id }), {
+      status: response.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+}
+
+function mcpCalls(fetcher: jest.MockedFunction<typeof fetch>, tool: string) {
+  return fetcher.mock.calls.filter((call) => mcpTool(call[1]) === tool);
+}
 
 describe('TicketCandidateService', () => {
   let dataSource: DataSource;
@@ -179,6 +242,23 @@ describe('TicketCandidateService', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it('does not let another authenticated user publish an owner-scoped candidate', async () => {
+    const fetcher = jest.fn<typeof fetch>();
+    const service = new TicketCandidateService(
+      dataSource,
+      'https://baton.example',
+      fetcher,
+      PROJECT_ID
+    );
+    const [candidate] = await service.generate('user-1', intakeId);
+    await service.decide('user-1', candidate.id, 1, 'accepted', PROJECT_ID);
+
+    await expect(service.publish('user-2', candidate.id, 'other-user-token')).rejects.toThrow(
+      'Candidate not found'
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('requires a fresh acceptance after editing', async () => {
     const service = new TicketCandidateService(dataSource, '', fetch, PROJECT_ID);
     const [candidate] = await service.generate('user-1', intakeId);
@@ -199,20 +279,24 @@ describe('TicketCandidateService', () => {
     await expect(
       service.decide('user-1', candidate.id, 1, 'accepted', 'x'.repeat(37))
     ).rejects.toBeInstanceOf(TicketCandidateValidation);
+    await expect(
+      service.decide('user-1', candidate.id, 1, 'accepted', '22222222-2222-4222-8222-222222222222')
+    ).rejects.toThrow('Only the configured ConvoLens Baton project is allowed');
 
     const stored = await dataSource.getRepository(TicketCandidate).findOneByOrFail({
       id: candidate.id,
     });
-    expect(stored.projectId).toBeNull();
+    expect(stored.projectId).toBe(CONVOLENS_BATON_PROJECT_ID);
     expect(stored.status).toBe('pending');
     expect(stored.revision).toBe(1);
   });
 
   it('publishes one accepted candidate once and returns the persisted result on replay', async () => {
-    const fetcher = jest
+    const toolFetcher = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-1' }), { status: 201 }));
+      .mockResolvedValueOnce(mcpResponse([]))
+      .mockResolvedValueOnce(mcpResponse({ id: 'task-1' }));
+    const fetcher = mcpFetcher(toolFetcher);
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -228,12 +312,43 @@ describe('TicketCandidateService', () => {
     expect(first.candidate.batonTaskUrl).toBe('https://baton-ui.example/tasks/task-1');
     expect(first.duplicate).toBe(false);
     expect(replay.duplicate).toBe(true);
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(mcpCalls(fetcher, 'search_tasks')).toHaveLength(1);
+    expect(mcpCalls(fetcher, 'create_task')).toHaveLength(1);
+    const searchRequest = JSON.parse(mcpCalls(fetcher, 'search_tasks')[0][1]?.body as string);
+    const createRequest = JSON.parse(mcpCalls(fetcher, 'create_task')[0][1]?.body as string);
+    expect(searchRequest.params).toEqual({
+      name: 'search_tasks',
+      arguments: { projectId: PROJECT_ID, query: candidate.title },
+    });
+    expect(createRequest.params).toEqual({
+      name: 'create_task',
+      arguments: expect.objectContaining({
+        projectId: PROJECT_ID,
+        idempotencyKey: candidate.idempotencyKey,
+        title: candidate.title,
+        priority: 'medium',
+        traceId: candidate.idempotencyKey,
+      }),
+    });
+    expect(createRequest.params.arguments).not.toEqual(
+      expect.objectContaining({
+        assigneeName: expect.anything(),
+        accessToken: expect.anything(),
+        rawMessages: expect.anything(),
+        participants: expect.anything(),
+      })
+    );
+    expect(JSON.stringify(createRequest)).not.toContain('Delivery chat');
+    expect(JSON.stringify(createRequest)).not.toContain('mystira-token');
+    expect(new Headers(mcpCalls(fetcher, 'create_task')[0][1]?.headers).get('authorization')).toBe(
+      'Bearer mystira-token'
+    );
     expect(first.candidate.publishAttempts[0].status).toBe('succeeded');
   });
 
   it('persists a retryable outage and reconciles an ambiguous duplicate on retry', async () => {
-    const fetcher = jest.fn<typeof fetch>().mockRejectedValueOnce(new Error('network down'));
+    const toolFetcher = jest.fn<typeof fetch>().mockRejectedValueOnce(new Error('network down'));
+    const fetcher = mcpFetcher(toolFetcher);
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -247,9 +362,8 @@ describe('TicketCandidateService', () => {
       .getRepository(TicketCandidate)
       .findOneByOrFail({ id: candidate.id });
     expect(stored.publishStatus).toBe('failed');
-    const marker = `[convolens:${stored.idempotencyKey}]`;
-    fetcher.mockResolvedValueOnce(
-      new Response(JSON.stringify([{ id: 'task-existing', context: marker }]), { status: 200 })
+    toolFetcher.mockResolvedValueOnce(
+      mcpResponse([{ id: 'task-existing', trace_id: stored.idempotencyKey }])
     );
     const recovered = await service.publish('user-1', candidate.id, 'token');
     expect(recovered.duplicate).toBe(true);
@@ -261,12 +375,11 @@ describe('TicketCandidateService', () => {
   });
 
   it('reclaims stale candidate and intake publication leases', async () => {
-    const fetcher = jest
+    const toolFetcher = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: 'task-reclaimed' }), { status: 201 })
-      );
+      .mockResolvedValueOnce(mcpResponse([]))
+      .mockResolvedValueOnce(mcpResponse({ id: 'task-reclaimed' }));
+    const fetcher = mcpFetcher(toolFetcher);
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -356,17 +469,18 @@ describe('TicketCandidateService', () => {
       releaseOriginalLookup = resolve;
     });
     let lookupCount = 0;
-    const fetcher = jest.fn<typeof fetch>().mockImplementation(async (_input, init) => {
-      if (init?.method === 'POST') {
-        return new Response(JSON.stringify({ id: 'task-fenced' }), { status: 201 });
+    const toolFetcher = jest.fn<typeof fetch>().mockImplementation(async (_input, init) => {
+      if (mcpTool(init) === 'create_task') {
+        return mcpResponse({ id: 'task-fenced' });
       }
       lookupCount += 1;
       if (lookupCount === 1) {
         markOriginalLookupStarted();
         return originalLookup;
       }
-      return new Response(JSON.stringify([]), { status: 200 });
+      return mcpResponse([]);
     });
+    const fetcher = mcpFetcher(toolFetcher);
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -387,11 +501,11 @@ describe('TicketCandidateService', () => {
     });
 
     const recovered = await service.publish('user-1', candidate.id, 'token');
-    releaseOriginalLookup(new Response(JSON.stringify([]), { status: 200 }));
+    releaseOriginalLookup(mcpResponse([]));
 
     await expect(originalPublish).rejects.toBeInstanceOf(TicketCandidateConflict);
     expect(recovered.candidate.batonTaskId).toBe('task-fenced');
-    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+    expect(mcpCalls(fetcher, 'create_task')).toHaveLength(1);
   });
 
   it('finalizes a recorded Baton success before any remote retry', async () => {
@@ -434,15 +548,16 @@ describe('TicketCandidateService', () => {
 
   it('holds an ambiguous create for reconciliation instead of issuing a second POST', async () => {
     let allowCreateSuccess = false;
-    const fetcher = jest
+    const toolFetcher = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(mcpResponse([]))
       .mockRejectedValueOnce(new Error('connection lost after POST'))
       .mockImplementation(async (_input, init) =>
-        init?.method === 'POST' && allowCreateSuccess
-          ? new Response(JSON.stringify({ id: 'task-after-window' }), { status: 201 })
-          : new Response(JSON.stringify([]), { status: 200 })
+        mcpTool(init) === 'create_task' && allowCreateSuccess
+          ? mcpResponse({ id: 'task-after-window' })
+          : mcpResponse([])
       );
+    const fetcher = mcpFetcher(toolFetcher);
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -459,7 +574,7 @@ describe('TicketCandidateService', () => {
       'still reconciling'
     );
 
-    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+    expect(mcpCalls(fetcher, 'create_task')).toHaveLength(1);
     const stored = await dataSource
       .getRepository(TicketCandidate)
       .findOneByOrFail({ id: candidate.id });
@@ -478,13 +593,13 @@ describe('TicketCandidateService', () => {
     allowCreateSuccess = true;
     const afterWindow = await service.publish('user-1', candidate.id, 'token');
     expect(afterWindow.candidate.batonTaskId).toBe('task-after-window');
-    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(2);
+    expect(mcpCalls(fetcher, 'create_task')).toHaveLength(2);
   }, 15_000);
 
   it('reconciles a durable create boundary after a crash before issuing another POST', async () => {
-    const fetcher = jest
-      .fn<typeof fetch>()
-      .mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
+    const fetcher = mcpFetcher(
+      jest.fn<typeof fetch>().mockImplementation(async () => mcpResponse([]))
+    );
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -516,8 +631,8 @@ describe('TicketCandidateService', () => {
       'still reconciling'
     );
 
-    expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls.every((call) => call[1]?.method !== 'POST')).toBe(true);
+    expect(mcpCalls(fetcher, 'search_tasks')).toHaveLength(3);
+    expect(mcpCalls(fetcher, 'create_task')).toHaveLength(0);
     const stored = await dataSource
       .getRepository(TicketCandidate)
       .findOneByOrFail({ id: candidate.id });
@@ -531,12 +646,13 @@ describe('TicketCandidateService', () => {
   }, 10_000);
 
   it('preserves the ambiguous window when reconciliation lookup fails', async () => {
-    const fetcher = jest
+    const toolFetcher = jest
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(mcpResponse([]))
       .mockRejectedValueOnce(new Error('connection lost after POST'))
       .mockRejectedValueOnce(new Error('duplicate lookup unavailable'))
-      .mockImplementation(async () => new Response(JSON.stringify([]), { status: 200 }));
+      .mockImplementation(async () => mcpResponse([]));
+    const fetcher = mcpFetcher(toolFetcher);
     const service = new TicketCandidateService(
       dataSource,
       'https://baton.example',
@@ -559,6 +675,6 @@ describe('TicketCandidateService', () => {
     await expect(service.publish('user-1', candidate.id, 'token')).rejects.toThrow(
       'still reconciling'
     );
-    expect(fetcher.mock.calls.filter((call) => call[1]?.method === 'POST')).toHaveLength(1);
+    expect(mcpCalls(fetcher, 'create_task')).toHaveLength(1);
   }, 15_000);
 });
