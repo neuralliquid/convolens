@@ -73,6 +73,8 @@ async function startApi(
       STORAGE_PROVIDER: "local",
       UPLOAD_DIR: artifactRoot,
       FRONTEND_URL: "https://convolens.neuralliquid.ai",
+      BATON_OAUTH_MCP_ENABLED: "true",
+      BATON_MCP_RESOURCE: "http://127.0.0.1:3002/mcp",
       BATON_BASE_URL: "http://127.0.0.1:3002",
       BATON_DEFAULT_PROJECT_ID: "d20d739a-89b0-4a48-8f9b-dcb0724c149d",
     },
@@ -91,13 +93,113 @@ async function startBatonStub(): Promise<{
   server: Server;
   created: () => number;
 }> {
-  const tasks: Array<{ id: string; context: string }> = [];
+  const tasks: Array<{ id: string; context: string; traceId?: string }> = [];
   const server = createServer((request, response) => {
     if (request.headers.authorization !== "Bearer fixture-mystira-token") {
       response.writeHead(401, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ error: "Unauthorized" }));
       return;
     }
+
+    if (request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        try {
+          const payload = JSON.parse(body);
+
+          // MCP JSON-RPC handler
+          if (payload.jsonrpc === "2.0") {
+            if (payload.method === "initialize") {
+              response.writeHead(200, { "Content-Type": "application/json" });
+              response.end(
+                JSON.stringify({
+                  jsonrpc: "2.0",
+                  id: payload.id,
+                  result: {
+                    protocolVersion: "2025-06-18",
+                    capabilities: { tools: {} },
+                    serverInfo: { name: "baton-stub", version: "1.0.0" },
+                  },
+                }),
+              );
+              return;
+            }
+            if (payload.method === "notifications/initialized") {
+              response.writeHead(200, { "Content-Type": "application/json" });
+              response.end("{}");
+              return;
+            }
+            if (payload.method === "tools/call") {
+              const toolName = payload.params?.name;
+              const toolArgs = payload.params?.arguments || {};
+              if (toolName === "search_tasks") {
+                const query = String(toolArgs.query || "");
+                const matched = tasks.filter(
+                  (t) =>
+                    t.context.includes(query) ||
+                    (t.traceId && t.traceId.includes(query)),
+                );
+                response.writeHead(200, { "Content-Type": "application/json" });
+                response.end(
+                  JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: payload.id,
+                    result: {
+                      content: [
+                        { type: "text", text: JSON.stringify(matched) },
+                      ],
+                    },
+                  }),
+                );
+                return;
+              }
+              if (toolName === "create_task") {
+                const newTask = {
+                  id: `fixture-task-${tasks.length + 1}`,
+                  context: String(toolArgs.title || toolArgs.context || ""),
+                  traceId: toolArgs.traceId,
+                };
+                tasks.push(newTask);
+                response.writeHead(200, { "Content-Type": "application/json" });
+                response.end(
+                  JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: payload.id,
+                    result: {
+                      content: [
+                        { type: "text", text: JSON.stringify(newTask) },
+                      ],
+                    },
+                  }),
+                );
+                return;
+              }
+            }
+          }
+
+          // Legacy REST fallback
+          if (request.url === "/api/tasks") {
+            const task = {
+              id: `fixture-task-${tasks.length + 1}`,
+              context: payload.context,
+            };
+            tasks.push(task);
+            response.writeHead(201, { "Content-Type": "application/json" });
+            response.end(JSON.stringify(task));
+            return;
+          }
+        } catch {
+          // ignore parsing errors
+        }
+
+        response.writeHead(404).end();
+      });
+      return;
+    }
+
     if (request.method === "GET" && request.url?.startsWith("/api/tasks")) {
       const search =
         new URL(request.url, "http://127.0.0.1").searchParams.get("search") ||
@@ -106,23 +208,6 @@ async function startBatonStub(): Promise<{
       response.end(
         JSON.stringify(tasks.filter((task) => task.context.includes(search))),
       );
-      return;
-    }
-    if (request.method === "POST" && request.url === "/api/tasks") {
-      let body = "";
-      request.on("data", (chunk) => {
-        body += chunk;
-      });
-      request.on("end", () => {
-        const payload = JSON.parse(body) as { context: string };
-        const task = {
-          id: `fixture-task-${tasks.length + 1}`,
-          context: payload.context,
-        };
-        tasks.push(task);
-        response.writeHead(201, { "Content-Type": "application/json" });
-        response.end(JSON.stringify(task));
-      });
       return;
     }
     response.writeHead(404).end();
