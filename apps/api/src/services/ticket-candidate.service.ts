@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
+
 import { In, IsNull, type DataSource, type Repository } from 'typeorm';
+
 import { AppDataSource } from '../config/database';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { TicketCandidate, type TicketCandidateConfidence } from '../db/entities/TicketCandidate';
 
-const HIGH_SIGNAL = /^(?:todo|action(?: item)?|follow[- ]?up)\s*[:\-]\s*(.+)$/i;
+const HIGH_SIGNAL = /^(?:todo|action(?: item)?|follow[- ]?up)\s*[:-]\s*(.+)$/i;
 const MEDIUM_SIGNAL = /^(?:please|can you|could you|we need to|i will|i'll|let's)\b[\s,:-]*(.+)$/i;
 const BATON_TIMEOUT_MS = 15_000;
 export const BATON_PUBLISH_LEASE_MS = 90_000;
@@ -286,7 +288,7 @@ export class TicketCandidateService {
         }
         reconcilingAmbiguousCreate = Boolean(
           ambiguousCreateStartedAt &&
-            Date.now() - ambiguousCreateStartedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
+          Date.now() - ambiguousCreateStartedAt.getTime() < BATON_AMBIGUOUS_HOLD_MS
         );
         let duplicate: BatonTask | null;
         if (reconcilingAmbiguousCreate) {

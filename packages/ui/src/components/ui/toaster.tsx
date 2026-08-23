@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Check, X, AlertCircle, Info } from 'lucide-react';
+import { Check, X, Info } from 'lucide-react';
 import {
   Toast,
   ToastAction,
@@ -106,7 +106,7 @@ export const reducer = (state: State, action: Action): State => {
         ),
       };
 
-    case 'DISMISS_TOAST':
+    case 'DISMISS_TOAST': {
       const { toastId } = action;
       if (toastId) {
         addToRemoveQueue(toastId);
@@ -127,6 +127,7 @@ export const reducer = (state: State, action: Action): State => {
             : t
         ),
       };
+    }
 
     case 'REMOVE_TOAST':
       if (action.toastId === undefined) {
@@ -152,8 +153,6 @@ function dispatch(action: Action) {
     listener(memoryState);
   });
 }
-
-type ToastWithId = Toast & { id: string };
 
 function toast({ ...props }: Toast) {
   const id = genId();
