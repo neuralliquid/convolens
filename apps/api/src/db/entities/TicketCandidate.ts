@@ -9,9 +9,11 @@ import {
   UpdateDateColumn,
   type Relation,
 } from 'typeorm';
-import { ConversationIntake } from './ConversationIntake';
-import { BatonPublishAttempt } from './BatonPublishAttempt';
+
 import { dateColumnType } from '../column-types';
+
+import { BatonPublishAttempt } from './BatonPublishAttempt';
+import { ConversationIntake } from './ConversationIntake';
 
 export type TicketCandidateStatus = 'pending' | 'accepted' | 'rejected' | 'published';
 export type TicketCandidateConfidence = 'high' | 'medium';

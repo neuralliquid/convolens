@@ -20,9 +20,10 @@
  * }
  */
 
-import { logger } from '../utils/logger.js';
-import { getCorrelationContext } from '../middleware/correlation.js';
 import { CACHE_TTL } from '../config/constants.js';
+import { getCorrelationContext } from '../middleware/correlation.js';
+import { logger } from '../utils/logger.js';
+
 import { CircuitBreaker, getCircuitBreaker } from './circuit-breaker.service.js';
 import { metrics } from './metrics.service.js';
 
@@ -109,7 +110,7 @@ class MemoryCache {
   }
 
   deletePattern(pattern: string): number {
-    const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+    const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
     let deleted = 0;
 
     for (const key of this.cache.keys()) {
@@ -265,7 +266,7 @@ class CacheService {
       if (this.isRedisConnected && this.redisClient) {
         value = await this.circuitBreaker.execute(async () => {
           const data = await this.redisClient!.get(fullKey);
-          return data ? JSON.parse(data) as T : null;
+          return data ? (JSON.parse(data) as T) : null;
         });
       } else {
         value = this.memoryCache.get<T>(fullKey) ?? null;
@@ -298,7 +299,12 @@ class CacheService {
   /**
    * Set a value in cache
    */
-  async set<T>(key: string, value: T, ttlSeconds?: number, options: CacheOptions = {}): Promise<void> {
+  async set<T>(
+    key: string,
+    value: T,
+    ttlSeconds?: number,
+    options: CacheOptions = {}
+  ): Promise<void> {
     const fullKey = this.buildKey(key, options.namespace);
     const ttl = ttlSeconds ?? options.ttl ?? this.defaultTtl;
 
@@ -519,18 +525,12 @@ export function Cached(options: {
   keyPrefix?: string;
   keyGenerator?: (...args: unknown[]) => string;
 }) {
-  return function (
-    _target: unknown,
-    propertyKey: string,
-    descriptor: PropertyDescriptor
-  ) {
+  return function (_target: unknown, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
     descriptor.value = async function (...args: unknown[]) {
       const keyBase = options.keyPrefix ?? propertyKey;
-      const keyArgs = options.keyGenerator
-        ? options.keyGenerator(...args)
-        : JSON.stringify(args);
+      const keyArgs = options.keyGenerator ? options.keyGenerator(...args) : JSON.stringify(args);
       const cacheKey = `${keyBase}:${keyArgs}`;
 
       return cacheService.getOrSet(

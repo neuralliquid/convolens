@@ -1,10 +1,11 @@
-import { logger } from '../../utils/logger';
-import { SLUICE_APP } from './summary.service';
 import type {
   ConversationSummaryContent,
   SummaryActionItem,
   SummaryEvidenceItem,
 } from '../../db/entities/ConversationSummary';
+import { logger } from '../../utils/logger';
+
+import { SLUICE_APP } from './summary.service';
 
 export interface CatchUpSourceMessage {
   position: number;

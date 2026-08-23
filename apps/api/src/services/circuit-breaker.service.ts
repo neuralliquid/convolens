@@ -15,6 +15,7 @@
  */
 
 import { logger } from '../utils/logger.js';
+
 import { metrics } from './metrics.service.js';
 
 // =============================================================================
@@ -225,7 +226,7 @@ export class CircuitBreaker {
 
   private pruneOldFailures(): void {
     const cutoff = Date.now() - this.windowDuration;
-    this.failureTimestamps = this.failureTimestamps.filter(ts => ts > cutoff);
+    this.failureTimestamps = this.failureTimestamps.filter((ts) => ts > cutoff);
   }
 
   private getRecentFailures(): number {
@@ -247,7 +248,9 @@ export class CircuitOpenError extends Error {
   public readonly retryAfterMs: number;
 
   constructor(serviceName: string, retryAfterMs: number) {
-    super(`Service ${serviceName} is unavailable (circuit breaker open). Retry after ${Math.ceil(retryAfterMs / 1000)}s`);
+    super(
+      `Service ${serviceName} is unavailable (circuit breaker open). Retry after ${Math.ceil(retryAfterMs / 1000)}s`
+    );
     this.name = 'CircuitOpenError';
     this.serviceName = serviceName;
     this.retryAfterMs = retryAfterMs;
@@ -261,11 +264,13 @@ export class CircuitOpenError extends Error {
 function defaultIsFailure(error: Error): boolean {
   // Don't count client errors (4xx) as circuit breaker failures
   // except for rate limiting (429)
-  if (error.message.includes('400') ||
-      error.message.includes('401') ||
-      error.message.includes('403') ||
-      error.message.includes('404') ||
-      error.message.includes('422')) {
+  if (
+    error.message.includes('400') ||
+    error.message.includes('401') ||
+    error.message.includes('403') ||
+    error.message.includes('404') ||
+    error.message.includes('422')
+  ) {
     return false;
   }
   return true;
@@ -273,9 +278,12 @@ function defaultIsFailure(error: Error): boolean {
 
 function stateToNumber(state: CircuitState): number {
   switch (state) {
-    case CircuitState.CLOSED: return 0;
-    case CircuitState.HALF_OPEN: return 1;
-    case CircuitState.OPEN: return 2;
+    case CircuitState.CLOSED:
+      return 0;
+    case CircuitState.HALF_OPEN:
+      return 1;
+    case CircuitState.OPEN:
+      return 2;
   }
 }
 
@@ -301,14 +309,14 @@ export function getCircuitBreaker(name: string, options?: CircuitBreakerOptions)
  * Get all circuit breaker statistics
  */
 export function getAllCircuitBreakerStats(): CircuitBreakerStats[] {
-  return Array.from(circuitBreakers.values()).map(breaker => breaker.getStats());
+  return Array.from(circuitBreakers.values()).map((breaker) => breaker.getStats());
 }
 
 /**
  * Reset all circuit breakers
  */
 export function resetAllCircuitBreakers(): void {
-  circuitBreakers.forEach(breaker => breaker.reset());
+  circuitBreakers.forEach((breaker) => breaker.reset());
 }
 
 export default CircuitBreaker;

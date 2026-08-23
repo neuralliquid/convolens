@@ -1,3 +1,5 @@
+import bcrypt from 'bcryptjs';
+import { Exclude } from 'class-transformer';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -9,11 +11,11 @@ import {
   OneToMany,
 } from 'typeorm';
 import type { Relation } from 'typeorm';
-import bcrypt from 'bcryptjs';
+
+import { dateColumnType } from '../column-types';
+
 import { Group } from './Group';
 import { Message } from './Message';
-import { Exclude } from 'class-transformer';
-import { dateColumnType } from '../column-types';
 
 export enum UserRole {
   ADMIN = 'admin',

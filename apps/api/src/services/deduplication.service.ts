@@ -15,8 +15,9 @@
  */
 
 import { createHash } from 'crypto';
-import { logger } from '../utils/logger.js';
+
 import { getCorrelationContext } from '../middleware/correlation.js';
+import { logger } from '../utils/logger.js';
 
 // =============================================================================
 // Types
@@ -74,7 +75,10 @@ class DeduplicationService {
       return false;
     }
 
-    logger.debug('Duplicate content detected', { hash, correlationId: getCorrelationContext()?.correlationId });
+    logger.debug('Duplicate content detected', {
+      hash,
+      correlationId: getCorrelationContext()?.correlationId,
+    });
     return true;
   }
 
@@ -300,7 +304,7 @@ export function idempotencyMiddleware(req: Request, res: Response, next: NextFun
 
   // Override res.json to capture the response
   const originalJson = res.json.bind(res);
-  res.json = function(body: unknown) {
+  res.json = function (body: unknown) {
     // Store the result for future idempotent requests
     if (res.statusCode >= 200 && res.statusCode < 300) {
       deduplicationService.storeIdempotencyResult(idempotencyKey, body);

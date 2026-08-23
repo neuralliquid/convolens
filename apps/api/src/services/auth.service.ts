@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+
 import { JWT_SECRET } from '../config/constants';
 import { AppDataSource } from '../config/database';
 import { User } from '../db/entities/User';

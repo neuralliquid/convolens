@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+
 import { dateColumnType } from '../column-types';
 
 @Entity({ name: 'extension_selector_reports' })

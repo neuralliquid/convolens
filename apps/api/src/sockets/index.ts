@@ -1,9 +1,11 @@
 import { Server as HttpServer } from 'http';
-import { Server, Socket } from 'socket.io';
+
 import { verify } from 'jsonwebtoken';
+import { Server, Socket } from 'socket.io';
+
 import { JWT_SECRET } from '../config/constants';
-import { User } from '../db/entities/User';
 import { AppDataSource } from '../config/database';
+import { User } from '../db/entities/User';
 import { logger } from '../utils/logger';
 
 declare module 'socket.io' {
@@ -24,8 +26,9 @@ export const initWebSocket = (server: HttpServer) => {
   // Authentication middleware
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
-      
+      const token =
+        socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
+
       if (!token) {
         return next(new Error('Authentication error: No token provided'));
       }

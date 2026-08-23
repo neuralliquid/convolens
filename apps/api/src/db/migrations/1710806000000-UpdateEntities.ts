@@ -62,7 +62,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
         ],
       }),
-      true,
+      true
     );
 
     // Create groups table
@@ -143,7 +143,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
         ],
       }),
-      true,
+      true
     );
 
     // Create messages table
@@ -209,7 +209,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
         ],
       }),
-      true,
+      true
     );
 
     // Create group_members join table
@@ -234,7 +234,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
           },
         ],
       }),
-      true,
+      true
     );
 
     // Add foreign keys
@@ -260,7 +260,7 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
         referencedColumnNames: ['id'],
         referencedTableName: 'users',
         onDelete: 'SET NULL',
-      }),
+      })
     );
 
     await queryRunner.createForeignKeys('group_members', [
@@ -287,31 +287,31 @@ export class UpdateEntities1710806000000 implements MigrationInterface {
 
     if (messagesTable) {
       const senderFk = messagesTable.foreignKeys.find(
-        (fk) => fk.columnNames.indexOf('senderId') !== -1,
+        (fk) => fk.columnNames.indexOf('senderId') !== -1
       );
       const groupFk = messagesTable.foreignKeys.find(
-        (fk) => fk.columnNames.indexOf('groupId') !== -1,
+        (fk) => fk.columnNames.indexOf('groupId') !== -1
       );
-      
+
       if (senderFk) await queryRunner.dropForeignKey('messages', senderFk);
       if (groupFk) await queryRunner.dropForeignKey('messages', groupFk);
     }
 
     if (groupsTable) {
       const ownerFk = groupsTable.foreignKeys.find(
-        (fk) => fk.columnNames.indexOf('ownerId') !== -1,
+        (fk) => fk.columnNames.indexOf('ownerId') !== -1
       );
       if (ownerFk) await queryRunner.dropForeignKey('groups', ownerFk);
     }
 
     if (groupMembersTable) {
       const groupFk = groupMembersTable.foreignKeys.find(
-        (fk) => fk.columnNames.indexOf('groupId') !== -1,
+        (fk) => fk.columnNames.indexOf('groupId') !== -1
       );
       const userFk = groupMembersTable.foreignKeys.find(
-        (fk) => fk.columnNames.indexOf('userId') !== -1,
+        (fk) => fk.columnNames.indexOf('userId') !== -1
       );
-      
+
       if (groupFk) await queryRunner.dropForeignKey('group_members', groupFk);
       if (userFk) await queryRunner.dropForeignKey('group_members', userFk);
     }

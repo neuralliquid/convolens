@@ -8,8 +8,10 @@ import {
   type Relation,
   UpdateDateColumn,
 } from 'typeorm';
-import { ConversationIntake } from './ConversationIntake';
+
 import { dateColumnType } from '../column-types';
+
+import { ConversationIntake } from './ConversationIntake';
 
 export interface SummaryEvidenceItem {
   text: string;

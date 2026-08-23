@@ -159,7 +159,11 @@ async function withRetry<T>(
   fn: () => Promise<T>,
   options: { maxRetries?: number; baseDelayMs?: number; maxDelayMs?: number } = {}
 ): Promise<T> {
-  const { maxRetries = RETRY_CONFIG.maxRetries, baseDelayMs = RETRY_CONFIG.baseDelayMs, maxDelayMs = RETRY_CONFIG.maxDelayMs } = options;
+  const {
+    maxRetries = RETRY_CONFIG.maxRetries,
+    baseDelayMs = RETRY_CONFIG.baseDelayMs,
+    maxDelayMs = RETRY_CONFIG.maxDelayMs,
+  } = options;
 
   let lastError: Error | undefined;
 
@@ -350,10 +354,10 @@ export class SummaryService {
         result.participantStats = this.calculateParticipantStats(filteredMessages);
       }
 
-      logger.info(
-        `[SummaryService] Summary generated in ${Date.now() - startTime}ms`,
-        { messageCount: filteredMessages.length, provider: this.provider }
-      );
+      logger.info(`[SummaryService] Summary generated in ${Date.now() - startTime}ms`, {
+        messageCount: filteredMessages.length,
+        provider: this.provider,
+      });
 
       return result;
     } catch (error) {
@@ -377,7 +381,7 @@ export class SummaryService {
       // Simulate streaming by sending tokens
       const words = result.summary.split(' ');
       for (const word of words) {
-        callbacks.onToken?.(word + ' ');
+        callbacks.onToken?.(`${word} `);
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
@@ -409,8 +413,8 @@ export class SummaryService {
     const chatContent = formatMessagesForAI(messages);
 
     const endpoint = AI_CONFIG.azure.endpoint!;
-    const deploymentName = AI_CONFIG.azure.deploymentName;
-    const apiVersion = AI_CONFIG.azure.apiVersion;
+    const { deploymentName } = AI_CONFIG.azure;
+    const { apiVersion } = AI_CONFIG.azure;
 
     // Azure OpenAI API URL format (api-version is optional for newer Foundry deployments)
     const baseUrl = `${endpoint}/openai/deployments/${deploymentName}/chat/completions`;
@@ -475,7 +479,7 @@ export class SummaryService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${AI_CONFIG.sluice.apiKey}`,
+          Authorization: `Bearer ${AI_CONFIG.sluice.apiKey}`,
         },
         body: JSON.stringify({
           model: AI_CONFIG.sluice.model,
@@ -528,7 +532,7 @@ export class SummaryService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${AI_CONFIG.openai.apiKey}`,
+        Authorization: `Bearer ${AI_CONFIG.openai.apiKey}`,
       },
       body: JSON.stringify({
         model: AI_CONFIG.openai.model,
@@ -655,9 +659,7 @@ active participation from all members. [This is a mock summary - configure AI AP
   /**
    * Calculates participant statistics
    */
-  private calculateParticipantStats(
-    messages: ChatMessage[]
-  ): SummaryResult['participantStats'] {
+  private calculateParticipantStats(messages: ChatMessage[]): SummaryResult['participantStats'] {
     const counts: Record<string, number> = {};
 
     for (const msg of messages) {

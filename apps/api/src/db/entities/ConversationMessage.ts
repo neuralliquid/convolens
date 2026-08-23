@@ -8,8 +8,10 @@ import {
   PrimaryGeneratedColumn,
   type Relation,
 } from 'typeorm';
-import { ConversationIntake } from './ConversationIntake';
+
 import { dateColumnType } from '../column-types';
+
+import { ConversationIntake } from './ConversationIntake';
 import { MessageTranscript } from './MessageTranscript';
 
 @Entity({ name: 'conversation_messages' })

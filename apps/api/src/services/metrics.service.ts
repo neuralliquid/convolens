@@ -10,8 +10,8 @@
  * - Custom dashboards
  */
 
-import { logger } from '../utils/logger.js';
 import { getCorrelationContext } from '../middleware/correlation.js';
+import { logger } from '../utils/logger.js';
 
 // =============================================================================
 // Types
@@ -115,7 +115,12 @@ class MetricsCollector {
   /**
    * Observe a value in a histogram
    */
-  observeHistogram(name: string, value: number, labels: MetricLabels = {}, buckets?: number[]): void {
+  observeHistogram(
+    name: string,
+    value: number,
+    labels: MetricLabels = {},
+    buckets?: number[]
+  ): void {
     const key = this.getKey(name, labels);
     const bucketsToUse = buckets || this.defaultBuckets;
 
@@ -125,7 +130,7 @@ class MetricsCollector {
       histogram = {
         name,
         labels,
-        buckets: bucketsToUse.map(le => ({ le, count: 0 })),
+        buckets: bucketsToUse.map((le) => ({ le, count: 0 })),
         sum: 0,
         count: 0,
       };
@@ -151,7 +156,7 @@ class MetricsCollector {
     gauges: Gauge[];
     histograms: Array<Histogram & { percentiles: { p50: number; p95: number; p99: number } }>;
   } {
-    const histogramsWithPercentiles = Array.from(this.histograms.values()).map(h => ({
+    const histogramsWithPercentiles = Array.from(this.histograms.values()).map((h) => ({
       ...h,
       percentiles: this.calculatePercentiles(h),
     }));
@@ -276,7 +281,13 @@ export const metrics = {
   /**
    * Track AI provider usage
    */
-  trackAiUsage(provider: string, model: string, tokens: number, durationMs: number, success: boolean): void {
+  trackAiUsage(
+    provider: string,
+    model: string,
+    tokens: number,
+    durationMs: number,
+    success: boolean
+  ): void {
     const status = success ? 'success' : 'failure';
     const labels = { provider, model, status };
 

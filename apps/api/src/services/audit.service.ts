@@ -20,8 +20,8 @@
  * });
  */
 
-import { logger } from '../utils/logger.js';
 import { getCorrelationContext } from '../middleware/correlation.js';
+import { logger } from '../utils/logger.js';
 
 // =============================================================================
 // Types
@@ -279,19 +279,19 @@ class AuditService {
     let filtered = [...this.entries];
 
     if (filters.userId) {
-      filtered = filtered.filter(e => e.userId === filters.userId);
+      filtered = filtered.filter((e) => e.userId === filters.userId);
     }
     if (filters.action) {
-      filtered = filtered.filter(e => e.action === filters.action);
+      filtered = filtered.filter((e) => e.action === filters.action);
     }
     if (filters.result) {
-      filtered = filtered.filter(e => e.result === filters.result);
+      filtered = filtered.filter((e) => e.result === filters.result);
     }
     if (filters.startDate) {
-      filtered = filtered.filter(e => new Date(e.timestamp) >= filters.startDate!);
+      filtered = filtered.filter((e) => new Date(e.timestamp) >= filters.startDate!);
     }
     if (filters.endDate) {
-      filtered = filtered.filter(e => new Date(e.timestamp) <= filters.endDate!);
+      filtered = filtered.filter((e) => new Date(e.timestamp) <= filters.endDate!);
     }
 
     // Sort by timestamp descending (newest first)
@@ -355,7 +355,7 @@ class AuditService {
   // ==========================================================================
 
   private generateId(): string {
-    return 'audit_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+    return `audit_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 9)}`;
   }
 
   private getSeverityForAction(action: AuditAction): AuditSeverity {
@@ -388,7 +388,14 @@ class AuditService {
     const sanitized = { ...details };
 
     // Remove sensitive fields
-    const sensitiveFields = ['password', 'token', 'secret', 'apiKey', 'accessToken', 'refreshToken'];
+    const sensitiveFields = [
+      'password',
+      'token',
+      'secret',
+      'apiKey',
+      'accessToken',
+      'refreshToken',
+    ];
     for (const field of sensitiveFields) {
       if (field in sanitized) {
         sanitized[field] = '[REDACTED]';
@@ -402,9 +409,7 @@ class AuditService {
     const [local, domain] = email.split('@');
     if (!local || !domain) return '***@***';
 
-    const maskedLocal = local.length > 2
-      ? local.slice(0, 2) + '***'
-      : '***';
+    const maskedLocal = local.length > 2 ? `${local.slice(0, 2)}***` : '***';
 
     return `${maskedLocal}@${domain}`;
   }
@@ -438,13 +443,12 @@ class AuditService {
   private shouldAlertSuspicious(entry: AuditEntry): boolean {
     // Check for rapid failed login attempts
     if (entry.action === AuditAction.USER_LOGIN_FAILED) {
-      const recentFailures = this.entries
-        .slice(-20)
-        .filter(e =>
+      const recentFailures = this.entries.slice(-20).filter(
+        (e) =>
           e.action === AuditAction.USER_LOGIN_FAILED &&
           e.ipAddress === entry.ipAddress &&
           Date.now() - new Date(e.timestamp).getTime() < 5 * 60 * 1000 // Last 5 minutes
-        );
+      );
 
       if (recentFailures.length >= 5) {
         return true;
@@ -453,13 +457,12 @@ class AuditService {
 
     // Check for rapid rate limit hits
     if (entry.action === AuditAction.API_RATE_LIMIT) {
-      const recentRateLimits = this.entries
-        .slice(-50)
-        .filter(e =>
+      const recentRateLimits = this.entries.slice(-50).filter(
+        (e) =>
           e.action === AuditAction.API_RATE_LIMIT &&
           e.userId === entry.userId &&
           Date.now() - new Date(e.timestamp).getTime() < 10 * 60 * 1000 // Last 10 minutes
-        );
+      );
 
       if (recentRateLimits.length >= 10) {
         return true;
@@ -517,23 +520,25 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
     res.end = originalEnd;
 
     // Log the request (non-blocking)
-    const user = (req as any).user;
-    auditService.log({
-      action: AuditAction.ADMIN_ACCESS, // Would be more specific in real implementation
-      result: res.statusCode < 400 ? AuditResult.SUCCESS : AuditResult.FAILURE,
-      userId: user?.id,
-      userEmail: user?.email,
-      ipAddress: req.ip || req.socket.remoteAddress,
-      userAgent: req.headers['user-agent'],
-      resourceType: 'api',
-      resourceId: req.path,
-      details: {
-        method: req.method,
-        path: req.path,
-        statusCode: res.statusCode,
-        query: Object.keys(req.query).length > 0 ? req.query : undefined,
-      },
-    }).catch(() => {}); // Silent fail for audit
+    const { user } = req as any;
+    auditService
+      .log({
+        action: AuditAction.ADMIN_ACCESS, // Would be more specific in real implementation
+        result: res.statusCode < 400 ? AuditResult.SUCCESS : AuditResult.FAILURE,
+        userId: user?.id,
+        userEmail: user?.email,
+        ipAddress: req.ip || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        resourceType: 'api',
+        resourceId: req.path,
+        details: {
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          query: Object.keys(req.query).length > 0 ? req.query : undefined,
+        },
+      })
+      .catch(() => {}); // Silent fail for audit
 
     // Call original end with proper argument handling
     if (typeof chunkOrCb === 'function') {
@@ -542,9 +547,8 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
       return originalEnd(chunkOrCb as Buffer | string | undefined, encodingOrCb);
     } else if (encodingOrCb !== undefined) {
       return originalEnd(chunkOrCb as Buffer | string | undefined, encodingOrCb, cb);
-    } else {
-      return originalEnd(chunkOrCb as Buffer | string | undefined, cb);
     }
+    return originalEnd(chunkOrCb as Buffer | string | undefined, cb);
   } as typeof res.end;
 
   next();

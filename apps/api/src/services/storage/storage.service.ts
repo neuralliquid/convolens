@@ -17,15 +17,16 @@
  * const url = await storage.getFileUrl('exports/chat.json');
  */
 
+import { createHmac } from 'crypto';
 import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
-import { createHmac } from 'crypto';
-import { logger } from '../../utils/logger.js';
+
 import {
   getStorageProvider,
   getAzureBlobStorageConfig,
   type StorageProvider,
 } from '../../config/azure/index.js';
+import { logger } from '../../utils/logger.js';
 
 // =============================================================================
 // Constants
@@ -421,7 +422,7 @@ export class StorageService {
       } else if (config.accountKey) {
         // For production, use Azure SDK or proper HMAC signing
         // This is a simplified version for POC
-        headers['Authorization'] = this.createAzureAuthHeader(
+        headers.Authorization = this.createAzureAuthHeader(
           'PUT',
           config.accountName,
           config.containerName,
@@ -430,7 +431,7 @@ export class StorageService {
           headers
         );
       } else {
-        headers['Authorization'] = await this.getAzureBearerAuthorization();
+        headers.Authorization = await this.getAzureBearerAuthorization();
       }
 
       await withRetry(async () => {

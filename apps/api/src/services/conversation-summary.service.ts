@@ -1,13 +1,15 @@
 import { QueryFailedError, type DataSource } from 'typeorm';
+
 import { AppDataSource } from '../config/database';
+import { ConversationIntake } from '../db/entities/ConversationIntake';
+import type { ConversationMessage } from '../db/entities/ConversationMessage';
 import {
   ConversationSummary,
   type ConversationSummaryContent,
   type SummaryActionItem,
   type SummaryEvidenceItem,
 } from '../db/entities/ConversationSummary';
-import type { ConversationMessage } from '../db/entities/ConversationMessage';
-import { ConversationIntake } from '../db/entities/ConversationIntake';
+
 import { catchUpGenerator, type CatchUpGenerator } from './ai/catch-up-generator.service';
 
 export type ConversationSummaryErrorCode =

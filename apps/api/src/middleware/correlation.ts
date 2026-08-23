@@ -12,9 +12,10 @@
  * app.use(correlationMiddleware);
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { randomUUID } from 'crypto';
 import { AsyncLocalStorage } from 'async_hooks';
+import { randomUUID } from 'crypto';
+
+import { Request, Response, NextFunction } from 'express';
 
 // =============================================================================
 // Types
@@ -72,8 +73,8 @@ export function runWithCorrelation<T>(context: CorrelationContext, fn: () => T):
 export function correlationMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Get or generate correlation ID
   const correlationId =
-    req.headers['x-correlation-id'] as string ||
-    req.headers['x-request-id'] as string ||
+    (req.headers['x-correlation-id'] as string) ||
+    (req.headers['x-request-id'] as string) ||
     generateId('corr');
 
   // Always generate a new request ID for this specific request
@@ -83,7 +84,7 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
   const userId = (req as any).user?.id;
 
   // Determine source (e.g., chrome-extension, web, api)
-  const source = req.headers['x-source'] as string || 'unknown';
+  const source = (req.headers['x-source'] as string) || 'unknown';
 
   // Create correlation context
   const context: CorrelationContext = {
@@ -109,7 +110,7 @@ export function correlationMiddleware(req: Request, res: Response, next: NextFun
 
     // Capture response finish for logging
     const originalEnd = res.end.bind(res);
-    res.end = function(this: Response, ...args: any[]) {
+    res.end = function (this: Response, ...args: any[]) {
       logRequestEnd(req, res);
       return originalEnd(...args);
     } as typeof res.end;
@@ -203,11 +204,17 @@ export function getAzureTraceHeaders(): Record<string, string> {
 
   // Azure uses traceparent format for distributed tracing
   // Format: version-traceId-spanId-flags
-  const traceId = context.correlationId.replace(/[^a-f0-9]/gi, '').substring(0, 32).padEnd(32, '0');
-  const spanId = context.requestId.replace(/[^a-f0-9]/gi, '').substring(0, 16).padEnd(16, '0');
+  const traceId = context.correlationId
+    .replace(/[^a-f0-9]/gi, '')
+    .substring(0, 32)
+    .padEnd(32, '0');
+  const spanId = context.requestId
+    .replace(/[^a-f0-9]/gi, '')
+    .substring(0, 16)
+    .padEnd(16, '0');
 
   return {
-    'traceparent': `00-${traceId}-${spanId}-01`,
+    traceparent: `00-${traceId}-${spanId}-01`,
     'x-ms-client-request-id': context.requestId,
   };
 }
