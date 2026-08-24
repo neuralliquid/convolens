@@ -589,7 +589,7 @@
         font-size: 10px;
         text-transform: uppercase;
         letter-spacing: 0.03em;
-        color: #9ca3af;
+        color: #6b7280;
         margin-bottom: 6px;
       }
 
@@ -607,15 +607,16 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
+        min-width: 22px;
+        min-height: 22px;
+        padding: 0 4px;
+        border-radius: 999px;
+        border: 1px solid #d1d5db;
         background: #e5e7eb;
-        color: #6b7280;
+        color: #374151;
         font-size: 9px;
         font-weight: 600;
         letter-spacing: -0.02em;
-        cursor: default;
       }
 
       .footer a {
@@ -959,20 +960,32 @@
         ></span>
       </div>
       <div class="footer-connector">WhatsApp is the first connector</div>
-      <div class="footer-platforms" aria-label="More platforms coming soon">
+      <section class="footer-platforms" aria-label="More platforms coming soon">
         <span class="footer-platforms-label">Coming soon</span>
-        <ul class="platform-badges">
-          <li class="platform-badge" title="Facebook Messenger">
-            <span aria-hidden="true">FB</span>
-            <span class="sr-only">Facebook Messenger</span>
+        <ul class="platform-badges" role="list">
+          <li class="platform-badge" title="Telegram">
+            <span aria-hidden="true">TG</span>
+            <span class="sr-only">Telegram</span>
           </li>
           <li class="platform-badge" title="Discord">
             <span aria-hidden="true">DC</span>
             <span class="sr-only">Discord</span>
           </li>
-          <li class="platform-badge" title="Telegram">
-            <span aria-hidden="true">TG</span>
-            <span class="sr-only">Telegram</span>
+          <li class="platform-badge" title="Signal">
+            <span aria-hidden="true">SG</span>
+            <span class="sr-only">Signal</span>
+          </li>
+          <li class="platform-badge" title="Slack">
+            <span aria-hidden="true">SL</span>
+            <span class="sr-only">Slack</span>
+          </li>
+          <li class="platform-badge" title="iMessage">
+            <span aria-hidden="true">iM</span>
+            <span class="sr-only">iMessage</span>
+          </li>
+          <li class="platform-badge" title="Facebook Messenger">
+            <span aria-hidden="true">FB</span>
+            <span class="sr-only">Facebook Messenger</span>
           </li>
           <li class="platform-badge" title="LinkedIn">
             <span aria-hidden="true">in</span>
@@ -991,7 +1004,7 @@
             <span class="sr-only">TikTok</span>
           </li>
         </ul>
-      </div>
+      </section>
     </div>
 
     <script src="popup.js"></script>
