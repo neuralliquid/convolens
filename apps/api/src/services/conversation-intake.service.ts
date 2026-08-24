@@ -1274,6 +1274,16 @@ export class ConversationIntakeService {
    * the specific row was already gone (e.g. a concurrent delete of that same
    * conversation), which isn't a failure, so we move on to the next row
    * rather than abandoning the rest of the user's data.
+   *
+   * Known gap: this loop declares completion as soon as one lookup finds no
+   * rows left. It does not hold a lock against `save()`, so a conversation
+   * actively being ingested (e.g. an in-flight extension sync for the same
+   * userId) can commit after that final lookup and survive account
+   * deletion. Closing this needs a durable per-user lifecycle state that
+   * `save()` checks inside its own write transaction — a real change to a
+   * method that already layers a local lock, a Postgres advisory lock, and
+   * an in-transaction recheck for its dedup logic, so it isn't a quick
+   * follow-on here. Tracked separately rather than rushed into this path.
    */
   async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
     const repository = this.dataSource.getRepository(ConversationIntake);
