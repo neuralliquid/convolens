@@ -5,6 +5,7 @@ import { AppDataSource } from '../config/database';
 import { User } from '../db/entities/User';
 import { UserRole } from '../db/entities/User';
 import { conversationIntakeService } from './conversation-intake.service';
+import { logger } from '../utils/logger';
 
 export function issueApiToken(user: Pick<User, 'id' | 'email' | 'role'>): string {
   return jwt.sign(
@@ -68,8 +69,24 @@ export class AuthService {
    * (their Mystira login) is not managed by this app and is out of scope.
    */
   async deleteAccount(userId: string): Promise<{ deletedConversationCount: number }> {
-    const { deletedCount } = await conversationIntakeService.deleteAllForUser(userId);
-    await this.userRepository.delete({ id: userId });
+    let deletedCount: number;
+    try {
+      ({ deletedCount } = await conversationIntakeService.deleteAllForUser(userId));
+    } catch (error) {
+      logger.error('Failed to delete conversations while deleting account:', error);
+      throw error;
+    }
+
+    try {
+      await this.userRepository.delete({ id: userId });
+    } catch (error) {
+      logger.error(
+        `Conversations for user were deleted (${deletedCount}), but deleting the user row failed:`,
+        error
+      );
+      throw error;
+    }
+
     return { deletedConversationCount: deletedCount };
   }
 }

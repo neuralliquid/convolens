@@ -568,15 +568,24 @@ async function assertAccountDeletionNotInProgress(
  * failure; a stale one (an earlier deletion that crashed before releasing
  * it) is taken over in place, the same reclaim-on-stale-lease pattern used
  * throughout this file.
+ *
+ * Returns the claim's startedAt, which the caller must use to scope its
+ * heartbeat updates and its eventual release (`{ userId, startedAt }`)
+ * rather than `{ userId }` alone. Without that, a caller that loses
+ * ownership — its own claim went stale and a second deleteAllForUser took
+ * over — would keep heartbeating or, worse, delete the successor's lock
+ * instead of its own, defeating the mutual exclusion this function exists
+ * to provide.
  */
-async function claimAccountDeletionLock(dataSource: DataSource, userId: string): Promise<void> {
+async function claimAccountDeletionLock(dataSource: DataSource, userId: string): Promise<Date> {
   const lockRepository = dataSource.getRepository(AccountDeletionLock);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const existing = await lockRepository.findOneBy({ userId });
     if (!existing) {
+      const startedAt = new Date();
       try {
-        await lockRepository.insert({ userId, startedAt: new Date(), heartbeatAt: new Date() });
-        return;
+        await lockRepository.insert({ userId, startedAt, heartbeatAt: startedAt });
+        return startedAt;
       } catch (error) {
         if (!isAccountDeletionLockUniqueConstraintError(error)) throw error;
         continue;
@@ -589,11 +598,12 @@ async function claimAccountDeletionLock(dataSource: DataSource, userId: string):
         'Account deletion is already in progress for this user'
       );
     }
+    const startedAt = new Date();
     const taken = await lockRepository.update(
       { userId, heartbeatAt: existing.heartbeatAt },
-      { startedAt: new Date(), heartbeatAt: new Date() }
+      { startedAt, heartbeatAt: startedAt }
     );
-    if (taken.affected === 1) return;
+    if (taken.affected === 1) return startedAt;
   }
   throw new Error('Could not claim the account deletion lock; too much concurrent contention');
 }
@@ -1422,10 +1432,10 @@ export class ConversationIntakeService {
     const lockRepository = this.dataSource.getRepository(AccountDeletionLock);
     let deletedCount = 0;
 
-    await claimAccountDeletionLock(this.dataSource, userId);
+    const claimedAt = await claimAccountDeletionLock(this.dataSource, userId);
     const heartbeat = setInterval(() => {
       lockRepository
-        .update({ userId }, { heartbeatAt: new Date() })
+        .update({ userId, startedAt: claimedAt }, { heartbeatAt: new Date() })
         .catch((error) => logger.error('Account deletion lock heartbeat failed:', error));
     }, ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS);
     heartbeat.unref?.();
@@ -1447,7 +1457,7 @@ export class ConversationIntakeService {
     } finally {
       clearInterval(heartbeat);
       try {
-        await lockRepository.delete({ userId });
+        await lockRepository.delete({ userId, startedAt: claimedAt });
       } catch (error) {
         logger.error('Failed to release account deletion lock:', error);
       }

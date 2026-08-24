@@ -31,13 +31,27 @@ export function DeleteAccountButton() {
       if (!response.ok) {
         throw new Error(payload.error || "Failed to delete account");
       }
-      await logout();
-      router.push("/");
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Failed to delete account",
       );
       setIsDeleting(false);
+      return;
+    }
+
+    // The account is already gone at this point — a failure past here is a
+    // sign-out problem, not a deletion problem, and must not be reported (or
+    // retried) as one. Leave the button disabled either way: there's no
+    // account left to delete again.
+    try {
+      await logout();
+      router.push("/");
+    } catch (reason) {
+      setError(
+        `Your account was deleted, but signing you out failed (${
+          reason instanceof Error ? reason.message : "unknown error"
+        }). Please clear your session or close this tab.`,
+      );
     }
   }
 

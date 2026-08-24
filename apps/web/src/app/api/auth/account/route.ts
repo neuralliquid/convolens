@@ -6,8 +6,24 @@ import {
 
 export async function DELETE(request: Request) {
   try {
+    const body: unknown = await request.json().catch(() => null);
+    const confirm =
+      body !== null &&
+      typeof body === "object" &&
+      (body as Record<string, unknown>).confirm === "DELETE"
+        ? "DELETE"
+        : null;
+    if (!confirm) {
+      return Response.json(
+        {
+          error:
+            'Confirmation required: send { "confirm": "DELETE" } to permanently delete this account',
+        },
+        { status: 400 },
+      );
+    }
+
     const token = await getConvolensApiToken();
-    const body = await request.json().catch(() => ({}));
     const response = await fetch(
       `${getConvolensApiBaseUrl()}/api/auth/account`,
       {
@@ -16,7 +32,7 @@ export async function DELETE(request: Request) {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ confirm: body?.confirm }),
+        body: JSON.stringify({ confirm }),
         cache: "no-store",
       },
     );
