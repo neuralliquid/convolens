@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import JSZip from 'jszip';
+
 import { logger } from '../utils/logger';
 
 export interface ChatMessage {
@@ -61,6 +63,97 @@ function attachedMedia(content: string): {
   const fileName = match?.[1]?.trim();
   if (!fileName) return null;
   return { fileName, mediaType: classifyAttachedMedia(fileName) };
+}
+
+// ZIP local-file-header signature ("PK\x03\x04"). Browsers report inconsistent
+// (and sometimes generic, e.g. application/octet-stream) MIME types for .zip
+// uploads, so the archive is identified by its magic bytes rather than trusted
+// metadata.
+const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+
+/**
+ * Whether a buffer looks like a ZIP archive, checked by magic bytes.
+ */
+export function looksLikeZipArchive(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer.subarray(0, 4).equals(ZIP_SIGNATURE);
+}
+
+// A crafted (or just pathologically repetitive) small archive can compress
+// at ratios far beyond anything a real chat export reaches under DEFLATE, so
+// an entry within the 25MB upload cap can still decompress into gigabytes.
+// Bound the decompressed size instead of trusting the archive; 100MB mirrors
+// the hard ceiling this route file already applies to voice-note uploads.
+const MAX_EXTRACTED_TEXT_BYTES = 100 * 1024 * 1024;
+
+export class ZipEntryTooLargeError extends Error {
+  constructor(entryName: string, limitBytes: number) {
+    super(`Zip entry "${entryName}" exceeds the ${limitBytes}-byte decompressed size limit`);
+    this.name = 'ZipEntryTooLargeError';
+  }
+}
+
+/**
+ * Reads a zip entry's decompressed text via JSZip's streaming API, aborting
+ * once `maxBytes` is exceeded rather than materializing the full output
+ * first (which is what `entry.async('text')` does).
+ */
+function readZipEntryBounded(entry: JSZip.JSZipObject, maxBytes: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const stream = entry.nodeStream();
+    stream.on('data', (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        stream.removeAllListeners();
+        stream.pause();
+        reject(new ZipEntryTooLargeError(entry.name, maxBytes));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    stream.on('error', reject);
+  });
+}
+
+/**
+ * Extracts the chat transcript from a WhatsApp "Export chat" .zip archive.
+ *
+ * WhatsApp's export (with or without media) bundles one chat text file
+ * alongside any attached media:
+ *   iOS:     _chat.txt
+ *   Android: WhatsApp Chat with <name>.txt
+ * Either convention is matched by name; if neither is present, the first
+ * .txt entry found is used as a fallback so unusual archive layouts still work.
+ *
+ * @returns the transcript text, or null if the archive opened fine but has
+ *   no .txt entry. Rejects (does not resolve null) if the archive itself
+ *   can't be read — corrupt data, or a single entry whose decompressed size
+ *   exceeds `maxBytes` — since callers generally want to tell "no transcript
+ *   in an otherwise valid export" apart from "couldn't read this upload at
+ *   all".
+ *
+ * @param maxBytes decompressed-size cap, exposed mainly so tests can exercise
+ *   the cap against small fixtures instead of real oversized archives.
+ *   Defaults to {@link MAX_EXTRACTED_TEXT_BYTES}.
+ */
+export async function extractChatTextFromZip(
+  buffer: Buffer,
+  maxBytes: number = MAX_EXTRACTED_TEXT_BYTES
+): Promise<string | null> {
+  const zip = await JSZip.loadAsync(buffer);
+  const txtEntries = Object.values(zip.files).filter(
+    (entry) => !entry.dir && entry.name.toLowerCase().endsWith('.txt')
+  );
+  if (txtEntries.length === 0) return null;
+
+  const preferred =
+    txtEntries.find((entry) => /(?:^|\/)_chat\.txt$/i.test(entry.name)) ||
+    txtEntries.find((entry) => /(?:^|\/)WhatsApp Chat with .+\.txt$/i.test(entry.name)) ||
+    txtEntries[0];
+
+  return readZipEntryBounded(preferred, maxBytes);
 }
 
 /**
