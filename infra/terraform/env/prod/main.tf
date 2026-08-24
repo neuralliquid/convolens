@@ -483,6 +483,20 @@ resource "azurerm_container_app" "api" {
         value = "true"
       }
 
+      # Container Apps' identity sidecar has no implicit default identity — a
+      # UserAssigned-only container must pass client_id on every token request or
+      # every request fails with "Unable to load the proper Managed Identity.",
+      # even with exactly one identity attached. Not needed on the legacy
+      # SystemAssigned path (identity type set at line 294).
+      dynamic "env" {
+        for_each = local.is_blue_green_target ? [1] : []
+
+        content {
+          name  = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
+          value = azurerm_user_assigned_identity.api[0].client_id
+        }
+      }
+
       # All three or none — see local.sluice_enabled.
       dynamic "env" {
         for_each = local.sluice_enabled ? [1] : []
