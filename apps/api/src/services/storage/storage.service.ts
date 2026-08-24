@@ -367,6 +367,15 @@ export class StorageService {
     const tokenUrl = new URL(endpoint);
     tokenUrl.searchParams.set('api-version', '2019-08-01');
     tokenUrl.searchParams.set('resource', 'https://storage.azure.com/');
+    // Container Apps' identity sidecar has no implicit default identity: a
+    // UserAssigned-only container must select one explicitly, even when only one
+    // is attached, or every request fails with "Unable to load the proper
+    // Managed Identity." (400). SystemAssigned deployments don't set this and
+    // are unaffected — the sidecar only needs a selector when there's a UAI.
+    const identityClientId = process.env.AZURE_STORAGE_IDENTITY_CLIENT_ID;
+    if (identityClientId) {
+      tokenUrl.searchParams.set('client_id', identityClientId);
+    }
     const response = await fetchWithTimeout(
       tokenUrl.toString(),
       { headers: { 'X-IDENTITY-HEADER': identityHeader } },
