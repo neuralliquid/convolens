@@ -192,6 +192,7 @@ interface GuidedCaptureSession {
   chatIdentity: string;
   payload: ExtractedChat;
   mode: "guided" | "automatic";
+  excludedMediaTypes: string[];
   captureLimit: number;
   items: GuidedWindowItem<ExtractedMessage>[];
   observer: MutationObserver;
@@ -1890,6 +1891,27 @@ function nextParticipantRef(participants: ExtractedParticipant[]): string {
   return `participant_${next}`;
 }
 
+/**
+ * Drops messages whose media type the user excluded from this capture.
+ * Shared by the initial "loaded messages" collection and every guided/
+ * automatic window merged in afterward, so an exclusion applied once
+ * stays applied for the life of the capture operation.
+ */
+function filterMessagesByExcludedMediaTypes(
+  messages: ExtractedMessage[],
+  excludedMediaTypes: string[],
+): ExtractedMessage[] {
+  if (excludedMediaTypes.length === 0) return messages;
+  return messages.filter(
+    (message) =>
+      !(
+        message.isMedia &&
+        message.mediaType &&
+        excludedMediaTypes.includes(message.mediaType)
+      ),
+  );
+}
+
 function cloneGuidedMessage(
   message: ExtractedMessage,
   senderRef: string | undefined,
@@ -2083,11 +2105,14 @@ function mergeGuidedPayload(
     }
     remappedRefs.set(participant.ref, canonical.ref);
   }
-  const remappedMessages = incoming.messages.map((message) =>
-    cloneGuidedMessage(
-      message,
-      message.senderRef ? remappedRefs.get(message.senderRef) : undefined,
+  const remappedMessages = filterMessagesByExcludedMediaTypes(
+    incoming.messages.map((message) =>
+      cloneGuidedMessage(
+        message,
+        message.senderRef ? remappedRefs.get(message.senderRef) : undefined,
+      ),
     ),
+    session.excludedMediaTypes,
   );
   const incomingItems = guidedItems(remappedMessages);
   const mergeEdge = guidedMergeEdge(session.items, incomingItems);
@@ -2595,6 +2620,7 @@ async function startGuidedCaptureOperation(
   chatIdentity: string,
   initialPayload: ExtractedChat,
   mode: "guided" | "automatic",
+  excludedMediaTypes: string[],
 ): Promise<CaptureCollectionSummary> {
   const messageList = findConversationRoot(
     document,
@@ -2619,6 +2645,7 @@ async function startGuidedCaptureOperation(
     chatIdentity,
     payload: initialPayload,
     mode,
+    excludedMediaTypes,
     captureLimit:
       mode === "automatic"
         ? AUTOMATIC_CAPTURE_SAFETY_CAP
@@ -2834,13 +2861,9 @@ async function collectCaptureOperation(
       throw new Error("No readable loaded messages were found.");
     }
     if (excludedMediaTypes.length > 0) {
-      const filteredMessages = payload.messages.filter(
-        (message) =>
-          !(
-            message.isMedia &&
-            message.mediaType &&
-            excludedMediaTypes.includes(message.mediaType)
-          ),
+      const filteredMessages = filterMessagesByExcludedMediaTypes(
+        payload.messages,
+        excludedMediaTypes,
       );
       if (filteredMessages.length === 0) {
         throw new Error(
@@ -2879,6 +2902,7 @@ async function collectCaptureOperation(
         chatIdentity,
         payload,
         mode,
+        excludedMediaTypes,
       );
     }
     const unreadableCount = payload.diagnostics.unreadableMessageCount;
