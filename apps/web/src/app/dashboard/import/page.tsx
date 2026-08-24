@@ -57,12 +57,18 @@ export default function ImportChatPage() {
     },
     // Mirrors the API's multer config in chat-export.routes.ts: 25MB cap,
     // .txt or .zip (WhatsApp's "Export chat" archive with attached media).
+    // Extension entries (".txt"/".zip") are included alongside the MIME
+    // types because browsers report .zip under empty or generic MIME types
+    // in some environments — useFileUpload falls back to filename-suffix
+    // matching for any entry starting with ".".
     maxSizeMB: 25,
     acceptedTypes: [
       "text/plain",
       "application/zip",
       "application/x-zip-compressed",
       "application/x-zip",
+      ".txt",
+      ".zip",
     ],
   });
 

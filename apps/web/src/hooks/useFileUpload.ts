@@ -44,10 +44,20 @@ export function useFileUpload(
         return { success: false, error };
       }
 
-      // Validate file type
+      // Validate file type. Browsers report inconsistent (sometimes empty
+      // or generic) MIME types for less common formats like .zip, so an
+      // entry in `acceptedTypes` starting with "." is matched against the
+      // filename suffix instead of `file.type`. This is a UX check only —
+      // the API re-validates by extension and magic bytes server-side.
+      const matchesExtension = acceptedTypes.some(
+        (accepted) =>
+          accepted.startsWith(".") &&
+          file.name.toLowerCase().endsWith(accepted.toLowerCase()),
+      );
       if (
         !acceptedTypes.includes(file.type) &&
-        !acceptedTypes.includes("*/*")
+        !acceptedTypes.includes("*/*") &&
+        !matchesExtension
       ) {
         const error = `Unsupported file type. Allowed types: ${acceptedTypes.join(", ")}`;
         onError?.(error);
