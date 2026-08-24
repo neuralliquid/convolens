@@ -181,5 +181,23 @@ This is not a valid line
 
       expect(text).toBeNull();
     });
+
+    it('rejects (does not resolve null) for a corrupt archive', async () => {
+      // Looks like a zip by magic bytes but isn't valid zip structure past that.
+      const corrupt = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00]);
+
+      await expect(extractChatTextFromZip(corrupt)).rejects.toThrow();
+    });
+
+    it('rejects an entry whose decompressed size exceeds the cap', async () => {
+      const zip = new JSZip();
+      zip.file('_chat.txt', 'a'.repeat(1024));
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      // maxBytes is injectable so this exercises the real streaming/reject
+      // path against a tiny fixture instead of needing a multi-hundred-MB
+      // archive to trigger the default (100MB) production cap.
+      await expect(extractChatTextFromZip(buffer, 100)).rejects.toThrow(/exceeds/i);
+    });
   });
 });

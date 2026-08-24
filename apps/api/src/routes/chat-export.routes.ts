@@ -44,7 +44,8 @@ const upload = multer({
     fileSize: 25 * 1024 * 1024, // 25MB limit
   },
   fileFilter: (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    const isTxt = file.mimetype === 'text/plain' || file.originalname.endsWith('.txt');
+    const isTxt =
+      file.mimetype === 'text/plain' || file.originalname.toLowerCase().endsWith('.txt');
     const isZip =
       CHAT_EXPORT_ZIP_MIME_TYPES.has(file.mimetype) ||
       file.originalname.toLowerCase().endsWith('.zip');
@@ -371,10 +372,22 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
 
     let fileContent: string;
     if (looksLikeZipArchive(req.file.buffer)) {
-      const extracted = await extractChatTextFromZip(req.file.buffer).catch((error) => {
+      // extractChatTextFromZip() resolves null only for a well-formed archive
+      // with no transcript inside; it rejects for anything that couldn't be
+      // read at all (corrupt data, an oversized entry). Those are surfaced as
+      // two different messages rather than collapsed into one, since "your
+      // export has no chat file" and "we couldn't open your upload" call for
+      // different next steps from the user.
+      let extracted: string | null;
+      try {
+        extracted = await extractChatTextFromZip(req.file.buffer);
+      } catch (error) {
         logger.warn('Failed to read uploaded zip archive:', error);
-        return null;
-      });
+        return res.status(400).json({
+          error:
+            'The uploaded zip archive could not be read. Export the chat again and upload the archive unmodified.',
+        });
+      }
       if (extracted === null) {
         return res.status(400).json({
           error:
