@@ -1,0 +1,21 @@
+schema: md-agent/v1
+source: docs/prd/PRD-002-baton-project-routing-for-action-item-candidates.md
+title: "PRD-002: Baton project routing for action-item candidates"
+purpose: "ConvoLens product contract for letting a user publish an accepted action-item candidate (TicketCandidate) to any Baton project their own token can see, instead of the one hardcoded ConvoLens project. Does not authorize new production flags. Extends the existing ticket-candidate pipeline; does not rebuild it."
+audience:
+  - agent
+  - human
+facts:
+  - "Canonical Baton task is c794ef85-60d4-4e7a-8829-d850552ad153 (project d20d739a, ConvoLens); PRD required, ADR and tech spec are follow-on."
+  - "Related retort task c24f726d-6a3c-49a3-a466-0cbc1b32a14a — its DQ1 is resolved pointing to this task: ConvoLens's reuse surface is authenticated per-user HTTP bound to its own consented WhatsApp ingest, not a generic callable analyzer."
+  - "ConvoLens already implements deterministic regex extraction, human accept/reject review, and idempotent claim-locked Baton publish end-to-end (ticket-candidate.service.ts, baton-mcp.client.ts, ticket-candidate.routes.ts). This PRD does not rebuild that."
+  - "The gap: normalizePinnedProjectId() rejects every project ID except one hardcoded constant (CONVOLENS_BATON_PROJECT_ID). Nothing else in the pipeline is gated on that pin."
+  - "D1 resolved: authorization must be server-side — derive the valid project set from listProjects(batonToken) against the same batonResource already used for searchTasks/createTask; never trust a client-supplied project ID alone. BATON_DEFAULT_PROJECT_ID stays a valid pre-authorized fallback."
+  - "D2 resolved: the voice-note/audio ingest path (Rail Spring Certification worked example) stays blocked and out of scope. This PRD generalizes only the existing text pipeline's project routing."
+  - "D3 resolved: fingerprint is sha256(intakeId, message.position, title), no project component. Verified in code that a candidate cannot be retargeted to a different project once a publish attempt has started (update()/decide() require status='pending'; revoke() requires publishStatus='not_requested'). No new locking mechanism needed, add a regression test."
+  - "D4 open (Baton decision 62e22e20): whether to invest in an opt-in LLM-assisted extraction pass vs. staying regex-only."
+  - "D5 open (Baton decision 67c7b283): compliance-sensitive flag trigger criteria and whether it's a distinct candidate state (with decisionQuestions) or an evidence annotation."
+  - "D6 open (Baton decision 29a96184): whether ConvoLens should ever expose a narrow API for externally-supplied text, decoupled from its own consented WhatsApp ingest — decided jointly with retort task c24f726d, not by this PRD."
+  - "batonToken is not currently forwarded on the /decision route (only /publish and /admin-retry read x-baton-access-token) — must be added once decide()-time authorization needs a live token."
+  - "ConvoLens's own BATON_MCP_RESOURCE is https://mcp.baton.celladoresystems.com/mcp — do not assume this is the same Baton deployment as other workspace tooling without checking."
+last_synced: "2026-08-24"
