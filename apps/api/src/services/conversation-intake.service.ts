@@ -1266,9 +1266,14 @@ export class ConversationIntakeService {
    *
    * Unlike listForUser (capped at 100 for the dashboard view), this is
    * uncapped — an account-deletion pass must not silently leave conversations
-   * behind for a user with a larger history. If any row fails to delete (e.g.
-   * an in-flight Baton publish), the error propagates and the pass stops
-   * rather than reporting a partial deletion as complete.
+   * behind for a user with a larger history. deleteForUser throws (rather
+   * than returning false) for every real failure mode — an in-flight Baton
+   * publish, an active reconciliation window, a row that won't stabilize for
+   * CAS — so those propagate here too and the pass stops instead of
+   * reporting a partial deletion as complete. A `false` return only means
+   * the specific row was already gone (e.g. a concurrent delete of that same
+   * conversation), which isn't a failure, so we move on to the next row
+   * rather than abandoning the rest of the user's data.
    */
   async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
     const repository = this.dataSource.getRepository(ConversationIntake);
@@ -1278,8 +1283,7 @@ export class ConversationIntakeService {
       const next = await repository.findOne({ where: { userId }, select: ['id'] });
       if (!next) break;
       const deleted = await this.deleteForUser(userId, next.id);
-      if (!deleted) break; // guards against looping forever if a row won't clear
-      deletedCount += 1;
+      if (deleted) deletedCount += 1;
     }
 
     return { deletedCount };
