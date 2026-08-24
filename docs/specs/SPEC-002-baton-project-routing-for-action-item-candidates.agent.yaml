@@ -1,0 +1,19 @@
+schema: md-agent/v1
+source: docs/specs/SPEC-002-baton-project-routing-for-action-item-candidates.md
+title: "SPEC-002: Baton project routing for action-item candidates"
+purpose: "Implementable contract for PRD-002 / ADR-0004. Phase 1 (authorized routing) and Phase 2 (suggestion matching contract) are normative; Phase 3 is client-type-only (blocked on D5); Phase 4 is out of scope (blocked on D4)."
+audience:
+  - agent
+  - human
+facts:
+  - "BatonMcpClient gains listProjects(accessToken): Promise<BatonMcpProject[]>, wrapping MCP tool list_projects via the existing callTool/callWithTimeout pattern (15s BATON_TIMEOUT_MS). Response shape ({id, name, description?}) is assumed, not yet confirmed against a live schema — verify before writing the parser."
+  - "createTask()'s input type gains optional decisionQuestions?: string[]; omit the field entirely when empty, never send []."
+  - "TicketCandidateService: normalizePinnedProjectId() is deleted, replaced by private authorizeProjectId(projectId, batonToken). CRITICAL branch: if this.batonResource is empty (flag off), it falls back to today's exact equality-against-defaultProjectId check with NO Baton call and NO token requirement — preserving today's accept-with-default behavior byte-for-byte. Only when the flag is on does it call listAvailableProjects(batonToken) for a live membership check. All failure modes reuse TicketCandidateValidation (400), a deliberate simplification per ADR-0004, not a new error taxonomy. Getting this branch backwards breaks every accept when the flag is off (today's default) — see SPEC §4.1, §13."
+  - "update() and decide() both gain an optional batonToken param, required only when changes.projectId (update) or an accept's projectId (decide) is being set AND this.batonResource is configured (flag on) — with the flag off, no token is required at all. generate() keeps assigning this.defaultProjectId directly with no live check. publish()/revoke()/remove() are unchanged; publish() does not re-call listProjects because D3 guarantees projectId can't change after decide()."
+  - "New route GET /api/ticket-candidates/baton/projects returns {projects, defaultProjectId}, no-store. Reads x-baton-access-token unconditionally via the existing batonToken(req) helper, exactly like /publish and /admin-retry already do today (verified: neither does a route-level 401 check) — no new 401 shape at the API layer. POST /:id/decision and PATCH /:id likewise read the header unconditionally and let the service decide whether it's required."
+  - "apps/web BFF: new baton/projects/route.ts using getConvolensPublishTokens() (same helper [id]/publish/route.ts already uses). [id]/decision/route.ts and [id]/route.ts (PATCH) branch on BOTH body.projectId being set AND BATON_OAUTH_MCP_ENABLED === 'true' (checked directly, not inferred) — use getConvolensPublishTokens() only when both hold, else getConvolensApiToken(). Branching on projectId alone (omitting the flag check) would 503 every accept when the flag is off, since the client always sends the default projectId on accept today — that was an error caught and fixed during spec review, not the shipped design."
+  - "No new feature flag — only one BATON_OAUTH_MCP_ENABLED env var exists across both apps' .env.example, both default false; PRD-002's 'flag family' phrasing is loose, not a second flag."
+  - "No DB migration — TicketCandidate.projectId is already varchar(36), nullable, no FK/CHECK constraint."
+  - "D3 regression test: update()/decide() must reject a projectId change once publishStatus != 'not_requested' or status != 'pending', via the existing WHERE-clause zero-row-update -> TicketCandidateConflict path — not a new mechanism."
+  - "Implementation slices are 7 separate PRs (client, service, api routes, BFF routes, picker UI, Phase 2 matching, Phase 3-after-D5). Combining Phase 1-5 with Phase 2, or starting Phase 3 UI/consumer work ahead of D5, violates this spec."
+last_synced: "2026-08-24"

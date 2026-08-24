@@ -1,0 +1,19 @@
+schema: md-agent/v1
+source: docs/adr/0004-baton-project-routing-authorization.md
+title: "ADR-0004: Server-side authorized project routing for Baton publish, and a decisionQuestions schema addition"
+purpose: "Proposed architecture for PRD-002, not yet ratified by a human reviewer. Ratifies D1 (live, uncached listProjects(token) membership check, never a client-trusted project ID) at the checkpoints BATON_OAUTH_MCP_ENABLED actually enables, and decides the decisionQuestions client schema shape. Does not resolve D4/D5/D6."
+audience:
+  - agent
+  - human
+facts:
+  - "Status is Proposed, not Accepted — D1-D3 are Baton-resolved on c794ef85, but this document's own mechanism decisions (no caching, the BATON_OAUTH_MCP_ENABLED=false fallback semantics, publish() not re-checking) are new and have not been reviewed by a human. Baton c794ef85. Product contract is PRD-002 (Status: Draft); implementable contract is SPEC-002."
+  - "Never trust a client-supplied projectId alone. Replace normalizePinnedProjectId()'s equality-against-one-default check with a live listProjects(token) membership check, preserving the existing TicketCandidateValidation error shape."
+  - "listProjects is called live, no caching, at every checkpoint: the picker-list route, decide()/project-changing PATCH :id, and nowhere else (publish() does not re-check — D3 guarantees projectId can't change after decide())."
+  - "Caching listProjects was considered and rejected for v1: staleness would reopen the revoked-access-must-fail-closed requirement. Latency is bounded by the existing 15s BatonMcpClient timeout instead."
+  - "Any listProjects failure/timeout/empty result is an explicit error, never a silent fallback to CONVOLENS_BATON_PROJECT_ID."
+  - "x-baton-access-token must be forwarded on /decision and project-changing PATCH :id the same way /publish already forwards it — BFF-derived from session, never browser-supplied directly."
+  - "decisionQuestions?: string[] is an additive optional field on BatonMcpClient.createTask()'s input type, decided now so Phase 3 isn't blocked re-litigating the schema — but its usage (which candidates get flagged) stays blocked on D5. Verify the field's real shape against Baton MCP's live create_task tool schema before Phase 3 ships; do not assume string[] is final."
+  - "Project-suggestion matching (Phase 2) stays plain deterministic code inside ConvoLens, never a model call, no new service."
+  - "No database migration required — TicketCandidate.projectId is already a free varchar(36); the constraint that changes is code-level, not schema-level."
+  - "D4 (LLM extraction), D5 (compliance-flag criteria), D6 (generic external reuse) are open and explicitly out of scope for this ADR."
+last_synced: "2026-08-24"
