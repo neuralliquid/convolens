@@ -211,7 +211,7 @@ Status key: **P** planned · **E** experimental · **B** blocked · **I** implem
 - Replace `normalizePinnedProjectId()` with an authorization-checked variant that calls `listProjects` and checks membership; keep the same `TicketCandidateValidation` error shape.
 - Forward `batonToken` on `/decision` (and project-changing `PATCH /:id`), matching how `/publish` already forwards it.
 - New BFF/API route exposing the authorized project list for the picker (e.g. `GET /api/ticket-candidates/baton/projects`): BFF reads `session.batonAccessToken` server-side and forwards it as `x-baton-access-token`, the same pattern `/publish` already uses — never a browser-supplied token. API calls `listProjects(batonToken)` and returns only that token's own live list. Response is `cache: no-store`.
-- UI: project picker replacing the implicit "always ConvoLens" assumption, showing project **name**, not a bare UUID. Publish stays disabled until accept + an explicit project choice, exactly as today.
+- UI: project picker replacing the implicit "always ConvoLens" assumption, showing project **name**, not a bare UUID. The picker pre-selects the resolved default project, so a user who changes nothing still has a valid, visible selection and sees the same one-click publish flow as today — this pre-selection applies only to this destination picker, never to Phase 2's suggestion chip (§13, always unselected). Publish stays disabled until accept + a project selection exists (default or changed); clearing the selection blocks publish the same as a missing accept.
 - Regression test: a publish attempt cannot change `projectId` (covers the invariant in §7/D3).
 
 ### Phase 2 — Deterministic project suggestion (P)
@@ -249,7 +249,7 @@ Status key: **P** planned · **E** experimental · **B** blocked · **I** implem
 
 - Picker shows project name and owning context, never a raw UUID.
 - Suggested-project chip is labeled "Suggested match" with the matched reason (e.g. "matches project description"), not a bare confidence percentage presented as certainty.
-- Publish stays disabled until both accept **and** an explicit project choice exist — unchanged from today.
+- Publish stays disabled until both accept **and** a project selection exist. The picker pre-selects the resolved default project (§11 Phase 1), so a user who changes nothing still has a valid selection and sees the same one-click flow as today; that pre-selection is specific to this destination picker and never applies to the Phase 2 suggestion chip.
 - A compliance-flagged candidate (once D5 resolves) is visually distinct and requires an extra confirmation step; it does not silently pass through the normal accept button.
 - Failure to load the authorized project list shows an explicit error state — never a silent fallback to the old pinned project (see §14).
 
