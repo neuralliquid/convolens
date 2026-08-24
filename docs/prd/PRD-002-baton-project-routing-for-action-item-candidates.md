@@ -21,7 +21,7 @@ ConvoLens already turns WhatsApp text into reviewed, Baton-published action item
 
 On 2026-08-24 that same six-step pattern — ingest, transcribe, extract, match the right Baton **project**, file tasks with `decisionQuestions` for anything ambiguous, flag anything compliance-sensitive rather than auto-acting — was proven by hand outside ConvoLens, against unrelated content (Rail Spring Certification voice notes; see `org-meta/docs/handoffs/2026-08-24-*.md`). That prompted a proposal to generalize the pattern into a standalone Claude Code skill (retort task `c24f726d`). Reading ConvoLens's own source resolves that skill's first open question directly: ConvoLens already has the harder half of this built, tested, and shipped behind a feature flag — it does not need to be reimplemented.
 
-What ConvoLens does not have is the one capability that made the manual worked example valuable: routing a filed action item to the *right* Baton project. Every candidate ConvoLens has ever published has gone to ConvoLens's own backlog, because `normalizePinnedProjectId()` rejects every project ID except one hardcoded constant (`CONVOLENS_BATON_PROJECT_ID`). That pin is a deliberate safety boundary, not an oversight — but it is also the entire gap between "ConvoLens files its own todos" and "ConvoLens routes action items to whichever Baton project they actually belong to."
+What ConvoLens does not have is the one capability that made the manual worked example valuable: routing a filed action item to the *right* Baton project. Every candidate ConvoLens has ever published has gone to ConvoLens's own backlog, because `normalizePinnedProjectId()` rejects every project ID except one resolved default (`this.defaultProjectId` — operator-configurable via `BATON_DEFAULT_PROJECT_ID`, falling back to the hardcoded `CONVOLENS_BATON_PROJECT_ID` constant only when that env var is unset). That pin is a deliberate safety boundary, not an oversight — but it is also the entire gap between "ConvoLens files its own todos" and "ConvoLens routes action items to whichever Baton project they actually belong to."
 
 This PRD scopes closing that gap as a ConvoLens product feature: extend the existing review-and-publish pipeline to a user-chosen project, drawn only from the projects that user's own Baton token can see, instead of one fixed project. It does not scope rebuilding the pipeline, and it does not scope the audio-ingest half of the worked example.
 
@@ -32,7 +32,7 @@ This PRD scopes closing that gap as a ConvoLens product feature: extend the exis
 | Term | Meaning in ConvoLens | Source of truth | Status |
 | --- | --- | --- | --- |
 | **Action-item candidate** | A `TicketCandidate` row: `pending → accepted/rejected → published`. UI copy already calls these "Todos", not tickets. | `db/entities/TicketCandidate.ts` | Implemented |
-| **Target project** | The single Baton project a candidate is proposed to publish into. | `candidate.projectId` | Implemented, but fixed to one constant today |
+| **Target project** | The single Baton project a candidate is proposed to publish into. | `candidate.projectId` | Implemented, but fixed to one resolved default today |
 | **Authorized project set** | The Baton projects the *publishing user's own token* can see, per `list_projects`. The only valid source of truth for which project IDs a request may target. | New — `BatonMcpClient.listProjects()` | Missing |
 | **Project suggestion** | A deterministic, ranked hint ("this candidate's evidence matches project X's description") shown in the picker. Never pre-selected, never auto-published. | New | Planned |
 | **Compliance-sensitive flag** | A candidate whose content touches legal standing, safety, or certification claims and should not be silently accepted or silently dropped. Criteria are an open decision (§16, D5). | New | Missing |
@@ -108,7 +108,7 @@ Opening project choice is not a config toggle; it is an authorization decision. 
 ### Missing
 
 - `BatonMcpClient.listProjects()` — the client wraps `search_tasks` and `create_task` only; no `list_projects` call exists anywhere in ConvoLens today.
-- Any server-side authorization check against a live project list. `normalizePinnedProjectId()` is a static equality check against one constant, not a membership check.
+- Any server-side authorization check against a live project list. `normalizePinnedProjectId()` is a static equality check against one resolved default value (`this.defaultProjectId`), not a membership check.
 - `batonToken` is not forwarded on the `/decision` route today (only `/publish` and `/admin-retry` read `x-baton-access-token`) — needed once `decide()`/`update()` must validate a project choice against a live token-scoped list.
 - Project picker UI — today the frontend has nothing to pick; there is exactly one implicit destination.
 - Deterministic project-suggestion matching.
@@ -152,9 +152,9 @@ User (accepts a candidate, picks a destination project)
 
 ### 8.2 Authorization design (resolved — D1, §16)
 
-`normalizePinnedProjectId()` is today the **only** server-side check on where a candidate can be published, and it is a pure equality check against a constant — everything else (`normalizeBatonProjectId`) only validates UUID shape and forwards under the user's own token. Replacing "equals one constant" with "any syntactically valid UUID" would build a confused deputy: client-supplied target, user's credential, no membership check.
+`normalizePinnedProjectId()` is today the **only** server-side check on where a candidate can be published, and it is a pure equality check against `this.defaultProjectId` (env-overridable via `BATON_DEFAULT_PROJECT_ID`, else the hardcoded `CONVOLENS_BATON_PROJECT_ID` constant) — everything else (`normalizeBatonProjectId`) only validates UUID shape and forwards under the user's own token. Replacing "equals one resolved default" with "any syntactically valid UUID" would build a confused deputy: client-supplied target, user's credential, no membership check.
 
-Requirement: the allowed project set for a given publish/decide call **must** be derived server-side, per request, from `listProjects(batonToken)` — called against the exact same `this.batonResource` the class already uses for `searchTasks`/`createTask` (`BATON_MCP_RESOURCE`, overridable via `BATON_MCP_RESOURCE` env var; **note this is `https://mcp.baton.celladoresystems.com/mcp` in ConvoLens's own config, not necessarily the same Baton deployment other tooling in this workspace points at** — do not assume they are interchangeable). A requested `projectId` is accepted only if it appears in that live-fetched set; otherwise reject with the same `TicketCandidateValidation` shape used today. `BATON_DEFAULT_PROJECT_ID` / `CONVOLENS_BATON_PROJECT_ID` remains a valid, pre-authorized fallback so existing single-project behavior is unchanged for a user who never picks anything else.
+Requirement: the allowed project set for a given publish/decide call **must** be derived server-side, per request, from `listProjects(batonToken)` — called against the exact same `this.batonResource` the class already uses for `searchTasks`/`createTask` (`BATON_MCP_RESOURCE`, overridable via `BATON_MCP_RESOURCE` env var; **note this is `https://mcp.baton.celladoresystems.com/mcp` in ConvoLens's own config, not necessarily the same Baton deployment other tooling in this workspace points at** — do not assume they are interchangeable). A requested `projectId` is accepted only if it appears in that live-fetched set; otherwise reject with the same `TicketCandidateValidation` shape used today. The resolved default (`this.defaultProjectId` — `BATON_DEFAULT_PROJECT_ID` env override, else the hardcoded `CONVOLENS_BATON_PROJECT_ID` constant) is checked through that same live membership call — it is **not** exempted from it. Existing single-project behavior is unchanged only in the practical sense that a user who never picks anything else already has token access to ConvoLens's own project; if `listProjects` ever fails to include it for a given token, publish must fail closed (§14, gap 10), not silently succeed against an unchecked value.
 
 Consequence: `batonToken` must be forwarded to `/decision` (and `/:id` PATCH when it changes `projectId`) the same way `/publish` already forwards it, since authorization now needs a live token at that point, not only at publish time.
 
@@ -210,7 +210,7 @@ Status key: **P** planned · **E** experimental · **B** blocked · **I** implem
 - `BatonMcpClient.listProjects(token)` wrapping the `list_projects` MCP tool, same client/timeout pattern as `searchTasks`/`createTask`.
 - Replace `normalizePinnedProjectId()` with an authorization-checked variant that calls `listProjects` and checks membership; keep the same `TicketCandidateValidation` error shape.
 - Forward `batonToken` on `/decision` (and project-changing `PATCH /:id`), matching how `/publish` already forwards it.
-- New BFF/API route exposing the authorized project list for the picker (e.g. `GET /api/ticket-candidates/baton/projects`).
+- New BFF/API route exposing the authorized project list for the picker (e.g. `GET /api/ticket-candidates/baton/projects`): BFF reads `session.batonAccessToken` server-side and forwards it as `x-baton-access-token`, the same pattern `/publish` already uses — never a browser-supplied token. API calls `listProjects(batonToken)` and returns only that token's own live list. Response is `cache: no-store`.
 - UI: project picker replacing the implicit "always ConvoLens" assumption, showing project **name**, not a bare UUID. Publish stays disabled until accept + an explicit project choice, exactly as today.
 - Regression test: a publish attempt cannot change `projectId` (covers the invariant in §7/D3).
 
@@ -285,7 +285,7 @@ Status key: **P** planned · **E** experimental · **B** blocked · **I** implem
 
 | ID | Question | Status | Resolution |
 | --- | --- | --- | --- |
-| **D1** | How is the authorized project set determined and enforced? | **Resolved** | Server-side only: `listProjects(batonToken)` against the same `batonResource` used elsewhere in the class, intersected against the requested `projectId`. A client-supplied project ID is never sufficient on its own. `BATON_DEFAULT_PROJECT_ID` stays a valid pre-authorized fallback. |
+| **D1** | How is the authorized project set determined and enforced? | **Resolved** | Server-side only: `listProjects(batonToken)` against the same `batonResource` used elsewhere in the class, intersected against the requested `projectId`. A client-supplied project ID is never sufficient on its own. The resolved default project ID (`BATON_DEFAULT_PROJECT_ID` env override, else `CONVOLENS_BATON_PROJECT_ID`) is checked through that same live call, not exempted — it stays unchanged in practice only because existing users already have access to it. |
 | **D2** | Does this PRD extend to the voice-note / audio-ingest path (the Rail Spring worked example)? | **Resolved** | No. That path stays **Blocked**, gated separately behind transcription production evidence. This PRD generalizes only the existing text pipeline's project routing. |
 | **D3** | Does supporting multiple target projects require changing the candidate fingerprint or adding new locking? | **Resolved** | No. Verified in code: `update()`/`decide()` only set `projectId` while `status = 'pending'`; `revoke()` requires `publishStatus = 'not_requested'`; `remove()` refuses once a publish attempt has started. A candidate cannot be retargeted after publish begins. Add a regression test; no new mechanism needed. |
 | **D4** (`62e22e20`) | Should ConvoLens invest in an experimental LLM-assisted extraction pass (higher recall for contacts, figures, decisions) as an opt-in alternative to the deterministic regex extractor, or stay regex-only for v1? | **Open** | Tracked as a pending Baton decision requirement on `c794ef85`. |
@@ -306,7 +306,7 @@ Phase 1 succeeds when:
 
 - A user can publish an accepted candidate to any Baton project their own token can see.
 - Publishing to a project outside that authorized set is rejected server-side, even if the client sends that project ID directly.
-- A user who never picks anything else sees no behavior change (falls back to `BATON_DEFAULT_PROJECT_ID`).
+- A user who never picks anything else sees no behavior change in practice — the resolved default project ID is validated through the same `listProjects` check as any other target, not exempted from it; it only feels unchanged because existing users already have access to it.
 
 Phase 2 succeeds when the picker shows a ranked, labeled suggestion without pre-selecting it, and match telemetry contains no candidate text.
 
