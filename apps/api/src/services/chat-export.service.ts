@@ -163,15 +163,17 @@ export async function extractChatTextFromZip(
  */
 export async function parseWhatsAppExport(fileContent: string): Promise<ChatExportData> {
   try {
-    const lines = fileContent.split(/\r?\n/).filter((line) => line.trim() !== '');
+    // Number lines before filtering blanks — otherwise lineNumber would
+    // index into the filtered array instead of the source file, and every
+    // logged line number after the first blank line would be wrong.
+    const lines = fileContent
+      .split(/\r?\n/)
+      .map((line, index) => ({ line, lineNumber: index + 1 }))
+      .filter((entry) => entry.line.trim() !== '');
     const participants = new Set<string>();
     const messages: ChatMessage[] = [];
 
-    for (const [index, line] of lines.entries()) {
-      if (!line.trim()) continue;
-      // 1-based, matching how a user would count lines in the source file.
-      const lineNumber = index + 1;
-
+    for (const { line, lineNumber } of lines) {
       const messageMatch = IOS_MESSAGE_REGEX.exec(line) || ANDROID_MESSAGE_REGEX.exec(line);
       const systemMatch = messageMatch
         ? null

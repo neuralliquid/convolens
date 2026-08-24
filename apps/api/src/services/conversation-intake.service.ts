@@ -608,6 +608,17 @@ async function claimAccountDeletionLock(dataSource: DataSource, userId: string):
   throw new Error('Could not claim the account deletion lock; too much concurrent contention');
 }
 
+/**
+ * A held account-deletion lock, returned by
+ * ConversationIntakeService.holdAccountDeletionLock. The heartbeat keeps
+ * running until release() is called; callers must release it — including on
+ * a thrown error — or the lock only self-heals after
+ * ACCOUNT_DELETION_LOCK_LEASE_MS.
+ */
+export interface AccountDeletionLockHandle {
+  release(): Promise<void>;
+}
+
 export class ConversationIntakeService {
   constructor(
     private readonly dataSource: DataSource = AppDataSource,
@@ -1374,6 +1385,46 @@ export class ConversationIntakeService {
   }
 
   /**
+   * Claims the durable per-user AccountDeletionLock and keeps it heartbeated
+   * until release() is called. Exposed separately from deleteAllForUser so a
+   * caller that does more than delete conversations — AuthService.deleteAccount
+   * also deletes the user row — can hold the same lock across all of it:
+   * deleteAllForUser's own confirming re-read (see its docstring) only
+   * guarantees no conversation survives the *conversation* sweep, not that
+   * nothing lands between deleteAllForUser returning and whatever the caller
+   * does next. Passing the returned handle into deleteAllForUser makes it
+   * skip claiming (and releasing) its own lock, trusting the caller's instead.
+   *
+   * Callers must release() the handle — including on a thrown error, e.g. in
+   * a `finally` — or the lock only self-heals after
+   * ACCOUNT_DELETION_LOCK_LEASE_MS.
+   */
+  async holdAccountDeletionLock(userId: string): Promise<AccountDeletionLockHandle> {
+    const lockRepository = this.dataSource.getRepository(AccountDeletionLock);
+    const claimedAt = await claimAccountDeletionLock(this.dataSource, userId);
+    const heartbeat = setInterval(() => {
+      lockRepository
+        .update({ userId, startedAt: claimedAt }, { heartbeatAt: new Date() })
+        .catch((error) => logger.error('Account deletion lock heartbeat failed:', error));
+    }, ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS);
+    heartbeat.unref?.();
+
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        clearInterval(heartbeat);
+        try {
+          await lockRepository.delete({ userId, startedAt: claimedAt });
+        } catch (error) {
+          logger.error('Failed to release account deletion lock:', error);
+        }
+      },
+    };
+  }
+
+  /**
    * Deletes every conversation owned by a user, for account deletion. Reuses
    * deleteForUser per row so each conversation gets the same storage-artifact
    * cleanup and Baton-publish-lease safety it gets on an individual delete.
@@ -1422,23 +1473,24 @@ export class ConversationIntakeService {
    * iteration boundaries instead would let the lease expire mid-row and let
    * a concurrent save() self-heal past an active deletion.
    *
-   * The lock is released in a `finally` — including when deleteForUser
-   * throws mid-pass — so a failed attempt doesn't permanently block
-   * ingestion; a retried or crash-recovered deleteAllForUser only waits out
-   * the lease.
+   * By default (no existingLock) this claims and releases its own lock — the
+   * lock is released in a `finally` — including when deleteForUser throws
+   * mid-pass — so a failed attempt doesn't permanently block ingestion; a
+   * retried or crash-recovered deleteAllForUser only waits out the lease. A
+   * caller that needs the lock held past this method's return (e.g. to also
+   * delete the user row before anything can self-heal past this deletion)
+   * should claim it itself via holdAccountDeletionLock and pass the handle
+   * in — deleteAllForUser then neither claims nor releases it, leaving both
+   * entirely to the caller.
    */
-  async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
+  async deleteAllForUser(
+    userId: string,
+    existingLock?: AccountDeletionLockHandle
+  ): Promise<{ deletedCount: number }> {
     const repository = this.dataSource.getRepository(ConversationIntake);
-    const lockRepository = this.dataSource.getRepository(AccountDeletionLock);
     let deletedCount = 0;
 
-    const claimedAt = await claimAccountDeletionLock(this.dataSource, userId);
-    const heartbeat = setInterval(() => {
-      lockRepository
-        .update({ userId, startedAt: claimedAt }, { heartbeatAt: new Date() })
-        .catch((error) => logger.error('Account deletion lock heartbeat failed:', error));
-    }, ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS);
-    heartbeat.unref?.();
+    const lock = existingLock || (await this.holdAccountDeletionLock(userId));
 
     try {
       for (;;) {
@@ -1455,11 +1507,8 @@ export class ConversationIntakeService {
         if (deleted) deletedCount += 1;
       }
     } finally {
-      clearInterval(heartbeat);
-      try {
-        await lockRepository.delete({ userId, startedAt: claimedAt });
-      } catch (error) {
-        logger.error('Failed to release account deletion lock:', error);
+      if (!existingLock) {
+        await lock.release();
       }
     }
 

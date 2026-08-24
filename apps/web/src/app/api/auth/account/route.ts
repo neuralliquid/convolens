@@ -6,6 +6,11 @@ import {
 
 export async function DELETE(request: Request) {
   try {
+    // Resolve the caller's session before looking at the request body at
+    // all — an unauthenticated caller should never learn anything about
+    // confirmation requirements for an action they can't take.
+    const token = await getConvolensApiToken();
+
     const body: unknown = await request.json().catch(() => null);
     const confirm =
       body !== null &&
@@ -23,7 +28,6 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const token = await getConvolensApiToken();
     const response = await fetch(
       `${getConvolensApiBaseUrl()}/api/auth/account`,
       {
