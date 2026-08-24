@@ -420,6 +420,11 @@
   background: var(--ws-surface-muted);
 }
 
+.ws-media-type-toggle:has(input:focus-visible) {
+  outline: 3px solid #53b1fd;
+  outline-offset: 2px;
+}
+
 .ws-sr-only {
   position: absolute;
   width: 1px;

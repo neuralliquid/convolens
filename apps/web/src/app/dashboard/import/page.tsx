@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Chrome, ExternalLink, FileText, ShieldCheck } from "lucide-react";
@@ -21,6 +21,25 @@ import { toast } from "@/components/ui/toaster";
 export default function ImportChatPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("whatsapp");
+  const whatsappTabTriggerRef = useRef<HTMLButtonElement>(null);
+  const focusWhatsappTabOnActivate = useRef(false);
+
+  // Radix unmounts inactive TabsContent, so the "Use the browser extension
+  // instead" button (which lives inside the file-export tab's content) is
+  // removed from the DOM the moment it switches tabs, dropping keyboard
+  // focus to the document body. Move focus to the newly active tab trigger
+  // once the switch actually takes effect.
+  useEffect(() => {
+    if (activeTab === "whatsapp" && focusWhatsappTabOnActivate.current) {
+      focusWhatsappTabOnActivate.current = false;
+      whatsappTabTriggerRef.current?.focus();
+    }
+  }, [activeTab]);
+
+  const jumpToExtensionTab = () => {
+    focusWhatsappTabOnActivate.current = true;
+    setActiveTab("whatsapp");
+  };
 
   const { uploadFile } = useFileUpload("/api/chat-export/upload", {
     onSuccess: (result) => {
@@ -57,7 +76,11 @@ export default function ImportChatPage() {
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-2 max-w-md mb-8">
-            <TabsTrigger value="whatsapp" className="gap-1.5">
+            <TabsTrigger
+              ref={whatsappTabTriggerRef}
+              value="whatsapp"
+              className="gap-1.5"
+            >
               Browser extension
               <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
                 Recommended
@@ -110,7 +133,7 @@ export default function ImportChatPage() {
                   <button
                     type="button"
                     className="font-medium text-primary underline-offset-4 hover:underline"
-                    onClick={() => setActiveTab("whatsapp")}
+                    onClick={jumpToExtensionTab}
                   >
                     Use the browser extension instead
                   </button>
