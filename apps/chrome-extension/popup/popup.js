@@ -72,7 +72,7 @@ let activeWhatsAppTabId = null;
 let captureModeChangeGeneration = 0;
 let operationalState = { preferredMode: "loaded" };
 
-const PACKAGED_VERSION = "1.0.25";
+const PACKAGED_VERSION = "1.0.26";
 const runtimeVersion = chrome.runtime.getManifest().version;
 if (runtimeVersion === PACKAGED_VERSION) {
   extensionVersion.textContent = `v${runtimeVersion}`;

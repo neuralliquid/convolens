@@ -102,7 +102,7 @@ function runAction(action) {
 // Initialization
 // =============================================================================
 
-const PACKAGED_VERSION = "1.0.25";
+const PACKAGED_VERSION = "1.0.26";
 
 async function init() {
   const runtimeVersion = chrome.runtime.getManifest().version;
