@@ -412,6 +412,36 @@ async function injectUI(): Promise<void> {
           <span>I understand WhatsApp will scroll this chat. I can pause, stop and review, or cancel.</span>
         </label>
       </div>
+      <fieldset class="ws-media-type-options" id="ws-media-type-options">
+        <legend>Include media types</legend>
+        <div class="ws-media-type-row">
+          <label class="ws-media-type-toggle" title="Photos — captured as a placeholder only. WhatsApp encrypts media, so the image itself isn't sent.">
+            <input type="checkbox" class="ws-mediaTypeCheckbox" value="image" checked>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+            <span class="ws-sr-only">Photos</span>
+          </label>
+          <label class="ws-media-type-toggle" title="Videos — captured as a placeholder only. WhatsApp encrypts media, so the video itself isn't sent.">
+            <input type="checkbox" class="ws-mediaTypeCheckbox" value="video" checked>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2"></rect></svg>
+            <span class="ws-sr-only">Videos</span>
+          </label>
+          <label class="ws-media-type-toggle" title="Voice notes &amp; audio — captured as a placeholder only. WhatsApp encrypts media, so the audio itself isn't sent.">
+            <input type="checkbox" class="ws-mediaTypeCheckbox" value="audio" checked>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"></path><path d="M19 10v2a7 7 0 01-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            <span class="ws-sr-only">Voice notes &amp; audio</span>
+          </label>
+          <label class="ws-media-type-toggle" title="Documents — captured as a placeholder only. WhatsApp encrypts media, so the file itself isn't sent.">
+            <input type="checkbox" class="ws-mediaTypeCheckbox" value="document" checked>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            <span class="ws-sr-only">Documents</span>
+          </label>
+          <label class="ws-media-type-toggle" title="Stickers — captured as a placeholder only. WhatsApp encrypts media, so the sticker itself isn't sent.">
+            <input type="checkbox" class="ws-mediaTypeCheckbox" value="sticker" checked>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+            <span class="ws-sr-only">Stickers</span>
+          </label>
+        </div>
+      </fieldset>
       <button id="ws-extract-btn" class="ws-capture-btn" type="button" disabled>
         Sign in to capture
       </button>
@@ -1164,6 +1194,14 @@ function selectedPageCaptureMode(): "loaded" | "guided" | "automatic" {
       : "loaded";
 }
 
+function selectedPageExcludedMediaTypes(): string[] {
+  return Array.from(
+    document.querySelectorAll<HTMLInputElement>(".ws-mediaTypeCheckbox"),
+  )
+    .filter((input) => !input.checked)
+    .map((input) => input.value);
+}
+
 function selectedPageAutomaticBoundary(): AutomaticCaptureBoundary {
   const value = (
     document.getElementById("ws-automatic-boundary") as HTMLSelectElement | null
@@ -1238,6 +1276,7 @@ async function handleExtractClick(): Promise<void> {
       action: "START_CAPTURE_OPERATION",
       initiator: "page",
       mode,
+      excludedMediaTypes: selectedPageExcludedMediaTypes(),
       ...(mode === "automatic"
         ? { automaticBoundary: selectedPageAutomaticBoundary() }
         : {}),
