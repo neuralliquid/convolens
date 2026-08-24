@@ -16,4 +16,4 @@ facts:
   - "No DB migration — TicketCandidate.projectId is already varchar(36), nullable, no FK/CHECK constraint."
   - "D3 regression test: update()/decide() must reject a projectId change once publishStatus != 'not_requested' or status != 'pending', via the existing WHERE-clause zero-row-update -> TicketCandidateConflict path — not a new mechanism."
   - "Implementation slices are 7 separate PRs (client, service, api routes, BFF routes, picker UI, Phase 2 matching, Phase 3-after-D5). Combining Phase 1-5 with Phase 2, or starting Phase 3 UI/consumer work ahead of D5, violates this spec."
-last_synced: "2026-08-25"
+last_synced: "2026-08-24"
