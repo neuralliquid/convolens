@@ -2759,6 +2759,7 @@ async function finalizeAutomaticCaptureOperation(
 async function collectCaptureOperation(
   operationId: string,
   mode: "loaded" | "guided" | "automatic" = "loaded",
+  excludedMediaTypes: string[] = [],
 ): Promise<CaptureCollectionSummary> {
   if (
     activeCaptureOperation &&
@@ -2786,12 +2787,32 @@ async function collectCaptureOperation(
   updateProgress(35);
 
   try {
-    const payload = await extractCurrentChatWithRetry(
+    let payload = await extractCurrentChatWithRetry(
       EXTRACTION_CONFIG.retryAttempts,
       true,
     );
     if (!payload || payload.messages.length === 0) {
       throw new Error("No readable loaded messages were found.");
+    }
+    if (excludedMediaTypes.length > 0) {
+      const filteredMessages = payload.messages.filter(
+        (message) =>
+          !(
+            message.isMedia &&
+            message.mediaType &&
+            excludedMediaTypes.includes(message.mediaType)
+          ),
+      );
+      if (filteredMessages.length === 0) {
+        throw new Error(
+          "No messages remained after excluding the selected media types. Include at least one media type to capture this chat.",
+        );
+      }
+      payload = {
+        ...payload,
+        messages: filteredMessages,
+        messageCount: filteredMessages.length,
+      };
     }
     if (getCurrentChatIdentity() !== chatIdentity) {
       throw new Error(
@@ -3511,7 +3532,11 @@ function handleMessage(
 ): boolean {
   switch (message.action) {
     case "COLLECT_CAPTURE_OPERATION":
-      collectCaptureOperation(message.operationId, message.mode)
+      collectCaptureOperation(
+        message.operationId,
+        message.mode,
+        message.excludedMediaTypes ?? [],
+      )
         .then((summary) =>
           respondSafely(sendResponse, {
             success: true,

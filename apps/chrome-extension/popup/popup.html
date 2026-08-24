@@ -368,6 +368,76 @@
         font-weight: 600;
       }
 
+      .media-type-options {
+        display: block;
+        margin: 2px 0 10px;
+        padding: 0;
+        border: 0;
+      }
+
+      .media-type-options legend {
+        margin-bottom: 4px;
+        color: #6b7280;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .media-type-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .media-type-toggle {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid #d1d5db;
+        border-radius: 7px;
+        color: #6b7280;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s,
+          background 0.15s;
+      }
+
+      .media-type-toggle svg {
+        width: 15px;
+        height: 15px;
+        pointer-events: none;
+      }
+
+      .media-type-toggle input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        margin: 0;
+        cursor: pointer;
+      }
+
+      .media-type-toggle:has(input:checked) {
+        border-color: #25d366;
+        color: #0b6b4f;
+        background: #f0fdf6;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
       .automatic-options {
         display: none;
         gap: 8px;
@@ -600,6 +670,131 @@
                 >
               </label>
             </div>
+            <fieldset class="media-type-options" id="mediaTypeOptions">
+              <legend>Include media types</legend>
+              <div class="media-type-row">
+                <label
+                  class="media-type-toggle"
+                  title="Photos — captured as a placeholder only. WhatsApp encrypts media, so the image itself isn't sent."
+                >
+                  <input
+                    type="checkbox"
+                    class="mediaTypeCheckbox"
+                    value="image"
+                    checked
+                  />
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                  <span class="sr-only">Photos</span>
+                </label>
+                <label
+                  class="media-type-toggle"
+                  title="Videos — captured as a placeholder only. WhatsApp encrypts media, so the video itself isn't sent."
+                >
+                  <input
+                    type="checkbox"
+                    class="mediaTypeCheckbox"
+                    value="video"
+                    checked
+                  />
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M23 7l-7 5 7 5V7z" />
+                    <rect x="1" y="5" width="15" height="14" rx="2" />
+                  </svg>
+                  <span class="sr-only">Videos</span>
+                </label>
+                <label
+                  class="media-type-toggle"
+                  title="Voice notes & audio — captured as a placeholder only. WhatsApp encrypts media, so the audio itself isn't sent."
+                >
+                  <input
+                    type="checkbox"
+                    class="mediaTypeCheckbox"
+                    value="audio"
+                    checked
+                  />
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                    <path d="M19 10v2a7 7 0 01-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                  <span class="sr-only">Voice notes &amp; audio</span>
+                </label>
+                <label
+                  class="media-type-toggle"
+                  title="Documents — captured as a placeholder only. WhatsApp encrypts media, so the file itself isn't sent."
+                >
+                  <input
+                    type="checkbox"
+                    class="mediaTypeCheckbox"
+                    value="document"
+                    checked
+                  />
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  <span class="sr-only">Documents</span>
+                </label>
+                <label
+                  class="media-type-toggle"
+                  title="Stickers — captured as a placeholder only. WhatsApp encrypts media, so the sticker itself isn't sent."
+                >
+                  <input
+                    type="checkbox"
+                    class="mediaTypeCheckbox"
+                    value="sticker"
+                    checked
+                  />
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                    <line x1="9" y1="9" x2="9.01" y2="9" />
+                    <line x1="15" y1="9" x2="15.01" y2="9" />
+                  </svg>
+                  <span class="sr-only">Stickers</span>
+                </label>
+              </div>
+            </fieldset>
             <button class="btn-secondary" id="extractBtn">
               Review loaded messages
             </button>

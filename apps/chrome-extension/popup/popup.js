@@ -48,6 +48,13 @@ const pauseAutomaticCapture = document.getElementById("pauseAutomaticCapture");
 const automaticOptions = document.getElementById("automaticOptions");
 const automaticBoundary = document.getElementById("automaticBoundary");
 const automaticConsent = document.getElementById("automaticConsent");
+const mediaTypeCheckboxes = document.querySelectorAll(".mediaTypeCheckbox");
+
+function selectedExcludedMediaTypes() {
+  return Array.from(mediaTypeCheckboxes)
+    .filter((input) => !input.checked)
+    .map((input) => input.value);
+}
 const collectionProgressTitle = document.getElementById(
   "collectionProgressTitle",
 );
@@ -679,6 +686,7 @@ extractBtn.addEventListener("click", async () => {
       tabId: tab.id,
       initiator: "popup",
       mode,
+      excludedMediaTypes: selectedExcludedMediaTypes(),
       ...(mode === "automatic"
         ? { automaticBoundary: selectedAutomaticBoundary() }
         : {}),

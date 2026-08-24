@@ -611,6 +611,7 @@ async function startCaptureOperation(
       action: "COLLECT_CAPTURE_OPERATION",
       operationId: operation.operationId,
       mode: operation.mode,
+      excludedMediaTypes: message.excludedMediaTypes ?? [],
     })) as ExtensionResponse<{
       summary: CaptureCollectionSummary;
     }>;
