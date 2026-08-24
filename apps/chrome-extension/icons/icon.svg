@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="64" cy="64" r="60" fill="#16A36A"/>
-  <path d="M31 71C31 49.5 48.5 32 70 32C91.5 32 109 49.5 109 71C109 92.5 91.5 110 70 110H31V71Z" fill="white"/>
-  <rect x="43" y="52" width="40" height="5" rx="2.5" fill="#16A36A"/>
-  <rect x="43" y="65" width="30" height="5" rx="2.5" fill="#16A36A"/>
-  <rect x="43" y="78" width="36" height="5" rx="2.5" fill="#16A36A"/>
-  <circle cx="90" cy="54" r="20" fill="#0B6B57" stroke="white" stroke-width="4"/>
-  <circle cx="90" cy="54" r="9" stroke="white" stroke-width="4"/>
-  <path d="M97 61L105 69" stroke="white" stroke-width="5" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="10" y1="6" x2="120" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C58B"/>
+      <stop offset="1" stop-color="#0B6B4F"/>
+    </linearGradient>
+  </defs>
+  <rect x="5" y="5" width="118" height="118" rx="30" fill="url(#bg)"/>
+  <path d="M22 66C22 46.7 39.5 31 61 31C82.5 31 100 46.7 100 66C100 85.3 82.5 101 61 101C56.4 101 52 100.2 48 98.7L28 106L33 89.3C26.2 82.6 22 74.7 22 66Z" fill="white"/>
+  <circle cx="90" cy="88" r="21" fill="white"/>
+  <circle cx="90" cy="88" r="12" fill="url(#bg)"/>
+  <rect x="101" y="98" width="24" height="10" rx="5" fill="white" transform="rotate(45 101 98)"/>
 </svg>

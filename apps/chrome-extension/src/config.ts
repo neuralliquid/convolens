@@ -192,6 +192,7 @@ export interface StartCaptureOperationMessage {
   initiator: "popup" | "page";
   mode?: import("./capture-operation").CaptureOperationMode;
   automaticBoundary?: import("./capture-operation").AutomaticCaptureBoundary;
+  excludedMediaTypes?: string[];
 }
 
 export interface GetCaptureOperationMessage {
@@ -216,6 +217,7 @@ export interface CollectCaptureOperationMessage {
   action: "COLLECT_CAPTURE_OPERATION";
   operationId: string;
   mode: import("./capture-operation").CaptureOperationMode;
+  excludedMediaTypes?: string[];
 }
 
 export interface UpdateGuidedCaptureOperationMessage {

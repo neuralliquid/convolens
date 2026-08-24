@@ -220,6 +220,34 @@ test("rebuilds diagnostic method counts from the retained guided buffer", () => 
   );
 });
 
+test("keeps an excluded media type dropped from every window merged after the first", () => {
+  assert.match(
+    contentSource,
+    /function filterMessagesByExcludedMediaTypes\(\s*messages: ExtractedMessage\[\],\s*excludedMediaTypes: string\[\],/,
+  );
+  assert.match(contentSource, /excludedMediaTypes: string\[\];/);
+  assert.match(
+    contentSource,
+    /const remappedMessages = filterMessagesByExcludedMediaTypes\(\s*incoming\.messages\.map/,
+  );
+  assert.match(
+    contentSource,
+    /remappedMessages\s*=\s*filterMessagesByExcludedMediaTypes\([\s\S]{0,200}session\.excludedMediaTypes,\s*\);\s*const incomingItems = guidedItems\(remappedMessages\);/,
+  );
+  assert.match(
+    contentSource,
+    /async function startGuidedCaptureOperation\(\s*operationId: string,\s*chatIdentity: string,\s*initialPayload: ExtractedChat,\s*mode: "guided" \| "automatic",\s*excludedMediaTypes: string\[\],/,
+  );
+  assert.match(
+    contentSource,
+    /const session: GuidedCaptureSession = \{[\s\S]*?mode,\s*excludedMediaTypes,/,
+  );
+  assert.match(
+    contentSource,
+    /return await startGuidedCaptureOperation\(\s*operationId,\s*chatIdentity,\s*payload,\s*mode,\s*excludedMediaTypes,\s*\);/,
+  );
+});
+
 test("commits only participant identities referenced by the bounded merge", () => {
   assert.match(
     contentSource,

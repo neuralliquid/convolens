@@ -10,6 +10,8 @@ const statusText = document.getElementById("statusText");
 const loggedOutSection = document.getElementById("loggedOut");
 const loggedInSection = document.getElementById("loggedIn");
 const loginBtn = document.getElementById("loginBtn");
+const loginSpinner = document.getElementById("loginSpinner");
+const loginBtnLabel = document.getElementById("loginBtnLabel");
 const signupBtn = document.getElementById("signupBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const extractBtn = document.getElementById("extractBtn");
@@ -19,6 +21,8 @@ const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
 const userAvatar = document.getElementById("userAvatar");
 const actionStatus = document.getElementById("actionStatus");
+const actionStatusIcon = document.getElementById("actionStatusIcon");
+const actionStatusText = document.getElementById("actionStatusText");
 const extensionVersion = document.getElementById("extensionVersion");
 const dashboardLink = document.getElementById("dashboardLink");
 const capturePreview = document.getElementById("capturePreview");
@@ -44,6 +48,13 @@ const pauseAutomaticCapture = document.getElementById("pauseAutomaticCapture");
 const automaticOptions = document.getElementById("automaticOptions");
 const automaticBoundary = document.getElementById("automaticBoundary");
 const automaticConsent = document.getElementById("automaticConsent");
+const mediaTypeCheckboxes = document.querySelectorAll(".mediaTypeCheckbox");
+
+function selectedExcludedMediaTypes() {
+  return Array.from(mediaTypeCheckboxes)
+    .filter((input) => !input.checked)
+    .map((input) => input.value);
+}
 const collectionProgressTitle = document.getElementById(
   "collectionProgressTitle",
 );
@@ -72,8 +83,15 @@ if (runtimeVersion === PACKAGED_VERSION) {
 }
 dashboardLink.href = `${DASHBOARD_URL}/dashboard`;
 
+const ACTION_STATUS_ICONS = {
+  info: "ℹ",
+  success: "✓",
+  error: "⚠",
+};
+
 function setActionStatus(message = "", type = "info") {
-  actionStatus.textContent = message;
+  actionStatusText.textContent = message;
+  actionStatusIcon.textContent = ACTION_STATUS_ICONS[type] || "";
   actionStatus.className = message
     ? `action-status show ${type}`
     : "action-status";
@@ -84,12 +102,22 @@ function normalizeExtensionError(error) {
     typeof error === "string"
       ? error
       : error?.message || "Extension unavailable";
+
   if (
     /message port closed|receiving end does not exist|context invalidated|tab was closed/i.test(
       message,
     )
   ) {
     return "The extension channel closed. Reopen the popup and review the loaded messages again.";
+  }
+  if (/failed to fetch|network ?error|load failed/i.test(message)) {
+    return "Couldn't reach ConvoLens. Check your internet connection and try again.";
+  }
+  if (/timed? ?out/i.test(message)) {
+    return "ConvoLens took too long to respond. Try again in a moment.";
+  }
+  if (/^extension unavailable$/i.test(message)) {
+    return "The extension isn't responding. Reload the extension from chrome://extensions and try again.";
   }
   return message;
 }
@@ -556,18 +584,24 @@ async function checkWhatsAppStatus() {
   }
 }
 
+function setLoginBtnBusy(busy, label) {
+  loginSpinner.hidden = !busy;
+  loginBtnLabel.textContent = label;
+  loginBtn.disabled = busy;
+}
+
 // Event Listeners
 loginBtn.addEventListener("click", async () => {
-  setActionStatus("");
-  loginBtn.textContent = "Connecting…";
-  loginBtn.disabled = true;
+  loginError.textContent = "";
+  setLoginBtnBusy(true, "Checking your ConvoLens session…");
+  setActionStatus("Looking for a signed-in ConvoLens session…", "info");
 
   try {
     const result = await sendRuntimeMessage({ action: "SYNC_MYSTIRA_AUTH" });
     if (result.success) {
+      setLoginBtnBusy(true, "Connected — loading extension…");
       showLoggedIn(result.data?.user);
       await refreshOperationalState();
-      loginError.textContent = "";
       setActionStatus(
         "Connected. Choose a WhatsApp chat and review its loaded messages.",
         "success",
@@ -575,15 +609,20 @@ loginBtn.addEventListener("click", async () => {
     } else {
       loginError.textContent =
         result.error || "Complete sign in, then try again.";
+      setActionStatus(
+        "Not signed in yet. Complete sign in in the new tab, then try again.",
+        "error",
+      );
       openTab(
         `${DASHBOARD_URL}/login?callbackUrl=${encodeURIComponent("/dashboard/import")}`,
       );
     }
   } catch (error) {
-    loginError.textContent = normalizeExtensionError(error);
+    const message = normalizeExtensionError(error);
+    loginError.textContent = message;
+    setActionStatus(message, "error");
   } finally {
-    loginBtn.textContent = "I've signed in — connect";
-    loginBtn.disabled = false;
+    setLoginBtnBusy(false, "I've signed in — connect");
   }
 });
 
@@ -647,6 +686,7 @@ extractBtn.addEventListener("click", async () => {
       tabId: tab.id,
       initiator: "popup",
       mode,
+      excludedMediaTypes: selectedExcludedMediaTypes(),
       ...(mode === "automatic"
         ? { automaticBoundary: selectedAutomaticBoundary() }
         : {}),

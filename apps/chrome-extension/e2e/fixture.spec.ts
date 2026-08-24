@@ -113,6 +113,35 @@ test("loads the production extension and sends only after explicit review", asyn
   ).not.toHaveProperty("normalizedPhone");
 });
 
+test("excludes an unchecked media type from the reviewed and uploaded payload", async ({
+  harness,
+}) => {
+  await openCapturePanel(harness.page);
+  await harness.page.locator('.ws-mediaTypeCheckbox[value="image"]').uncheck();
+
+  const review = harness.page.locator("#ws-extract-btn");
+  await expect(review).toBeEnabled();
+  await review.click();
+  await expect(harness.page.locator("#ws-status-text")).toHaveText(
+    "5 loaded messages ready for review.",
+  );
+  await expect(harness.page.locator("#ws-preview-loaded")).toHaveText("5");
+
+  await harness.page.locator("#ws-confirm-capture").click();
+  await expect(harness.page.locator("#ws-status-text")).toHaveText(
+    "5 loaded messages received by ConvoLens.",
+  );
+  expect(harness.apiRequests).toHaveLength(1);
+  expect(harness.apiRequests[0].body).toMatchObject({ messageCount: 5 });
+  const messages = harness.apiRequests[0].body.messages as Array<{
+    mediaType?: string;
+  }>;
+  expect(messages).toHaveLength(5);
+  expect(messages.some((message) => message.mediaType === "image")).toBe(
+    false,
+  );
+});
+
 test("renders deterministic duplicate evidence on a repeated reviewed capture", async ({
   harness,
 }) => {

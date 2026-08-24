@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Chrome, ExternalLink, FileText, ShieldCheck } from "lucide-react";
@@ -20,7 +20,26 @@ import { toast } from "@/components/ui/toaster";
 
 export default function ImportChatPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("file");
+  const [activeTab, setActiveTab] = useState("whatsapp");
+  const whatsappTabTriggerRef = useRef<HTMLButtonElement>(null);
+  const focusWhatsappTabOnActivate = useRef(false);
+
+  // Radix unmounts inactive TabsContent, so the "Use the browser extension
+  // instead" button (which lives inside the file-export tab's content) is
+  // removed from the DOM the moment it switches tabs, dropping keyboard
+  // focus to the document body. Move focus to the newly active tab trigger
+  // once the switch actually takes effect.
+  useEffect(() => {
+    if (activeTab === "whatsapp" && focusWhatsappTabOnActivate.current) {
+      focusWhatsappTabOnActivate.current = false;
+      whatsappTabTriggerRef.current?.focus();
+    }
+  }, [activeTab]);
+
+  const jumpToExtensionTab = () => {
+    focusWhatsappTabOnActivate.current = true;
+    setActiveTab("whatsapp");
+  };
 
   const { uploadFile } = useFileUpload("/api/chat-export/upload", {
     onSuccess: (result) => {
@@ -45,19 +64,29 @@ export default function ImportChatPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Import Chat</h1>
         <p className="text-muted-foreground mb-8">
-          Choose a WhatsApp text export or the browser extension. Additional
-          import options are planned as the preview expands.
+          Use the browser extension to send a chat straight from WhatsApp
+          Web without exporting a file first. A plain-text export is also
+          available if you prefer to upload a file.
         </p>
 
         <Tabs
-          defaultValue="file"
+          defaultValue="whatsapp"
           value={activeTab}
           onValueChange={setActiveTab}
           className="w-full"
         >
           <TabsList className="grid w-full grid-cols-2 max-w-md mb-8">
+            <TabsTrigger
+              ref={whatsappTabTriggerRef}
+              value="whatsapp"
+              className="gap-1.5"
+            >
+              Browser extension
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                Recommended
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="file">Chat export (.txt)</TabsTrigger>
-            <TabsTrigger value="whatsapp">Browser extension</TabsTrigger>
           </TabsList>
 
           <TabsContent value="file">
@@ -98,6 +127,17 @@ export default function ImportChatPage() {
                     Review the file before uploading. Only choose a conversation
                     you have permission to send to ConvoLens.
                   </p>
+                </div>
+                <div className="mt-6 text-sm text-muted-foreground">
+                  Prefer a live connection without manually exporting a file?{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-primary underline-offset-4 hover:underline"
+                    onClick={jumpToExtensionTab}
+                  >
+                    Use the browser extension instead
+                  </button>
+                  .
                 </div>
               </CardContent>
             </Card>
