@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useAuth } from "@convolens/contexts";
 import { PageHeader } from "@/components/ui/page-header";
-import { Button } from "@/components/ui/button";
 import { StyledCard } from "@/components/ui/styled-card";
+import { Badge } from "@/components/ui/badge";
+import { DeleteAccountButton } from "@/components/settings/delete-account-button";
 import PageWrapper from "../page-wrapper";
 import { Settings, Bell, Shield, User, Moon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -15,7 +16,6 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
-  const [dataCollection, setDataCollection] = useState(false);
 
   return (
     <PageWrapper>
@@ -118,19 +118,23 @@ export default function SettingsPage() {
         <TabsContent value="privacy">
           <StyledCard title="Privacy Settings" icon={<Shield className="h-6 w-6" />}>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label htmlFor="data-collection">Data Collection</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="data-collection">Data Collection</Label>
+                    <Badge variant="outline">Planned</Badge>
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Allow anonymous usage data collection to improve the app
+                    Anonymous usage data collection is not enabled today — this
+                    toggle will control it once it ships.
                   </p>
                 </div>
-                <Switch 
-                  id="data-collection" 
-                  checked={dataCollection}
-                  onCheckedChange={setDataCollection}
-                />
+                <Switch id="data-collection" checked={false} disabled />
               </div>
+              <p className="text-sm text-muted-foreground">
+                ConvoLens does not log the content of your conversations in
+                telemetry.
+              </p>
             </div>
           </StyledCard>
         </TabsContent>
@@ -142,10 +146,17 @@ export default function SettingsPage() {
                 <Label>Email</Label>
                 <p className="text-sm font-medium">{user?.email || 'example@email.com'}</p>
               </div>
-              
-              <div className="pt-4 flex justify-end space-x-2">
-                <Button variant="outline">Change Password</Button>
-                <Button variant="destructive">Delete Account</Button>
+
+              <div className="pt-4">
+                <p className="mb-2 text-sm font-medium text-destructive">
+                  Danger zone
+                </p>
+                <p className="mb-4 text-sm text-muted-foreground">
+                  Deletes every conversation, message, and file you&apos;ve
+                  imported into ConvoLens, then signs you out. This cannot be
+                  undone.
+                </p>
+                <DeleteAccountButton />
               </div>
             </div>
           </StyledCard>

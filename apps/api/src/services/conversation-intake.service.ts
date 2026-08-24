@@ -1258,6 +1258,32 @@ export class ConversationIntakeService {
     const result = await repository.delete({ id, userId });
     return result.affected === 1;
   }
+
+  /**
+   * Deletes every conversation owned by a user, for account deletion. Reuses
+   * deleteForUser per row so each conversation gets the same storage-artifact
+   * cleanup and Baton-publish-lease safety it gets on an individual delete.
+   *
+   * Unlike listForUser (capped at 100 for the dashboard view), this is
+   * uncapped — an account-deletion pass must not silently leave conversations
+   * behind for a user with a larger history. If any row fails to delete (e.g.
+   * an in-flight Baton publish), the error propagates and the pass stops
+   * rather than reporting a partial deletion as complete.
+   */
+  async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    let deletedCount = 0;
+
+    for (;;) {
+      const next = await repository.findOne({ where: { userId }, select: ['id'] });
+      if (!next) break;
+      const deleted = await this.deleteForUser(userId, next.id);
+      if (!deleted) break; // guards against looping forever if a row won't clear
+      deletedCount += 1;
+    }
+
+    return { deletedCount };
+  }
 }
 
 export const conversationIntakeService = new ConversationIntakeService();
