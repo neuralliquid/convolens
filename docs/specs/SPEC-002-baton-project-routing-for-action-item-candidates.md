@@ -136,7 +136,7 @@ The resolved default project ID goes through this same function with no special-
 
 **Regression guard this step 2 exists to satisfy:** with `BATON_OAUTH_MCP_ENABLED=false` (today's default in both `apps/api/.env.example` and `apps/web/.env.example`), plain accept-with-the-default-project must keep working exactly as it does today. Routing every `decide()`/`update()` call through the live-check branch unconditionally — i.e. omitting step 2 — would make every accept throw `TicketCandidateValidation('Baton publishing is not configured')`, since accepting without a `projectId` is already rejected separately (`'Choose a Baton project before accepting'`). That is a regression this spec must not ship; step 2 is what prevents it.
 
-`normalizePinnedProjectId()` is deleted. `normalizeBatonProjectId()` (the free function, UUID-shape-only) is unchanged and still used directly by `generate()`.
+`normalizePinnedProjectId()` is deleted. `normalizeBatonProjectId()` (the free function, UUID-shape-only) is unchanged and is now called from `authorizeProjectId` step 1 above — not from `generate()`. §4.3 explains why `generate()` calls neither: assigning a server-controlled constant needs no shape validation, so its (indirect, today) call through the old `normalizePinnedProjectId()` is dropped rather than replaced.
 
 ### 4.2 New: `listAvailableProjects`
 
