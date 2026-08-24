@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { authRateLimit } from '../middleware/rate-limit.js';
 import { authService } from '../services/auth.service.js';
+import { ConversationIntakeError } from '../services/conversation-intake.service.js';
 import { exchangeMystiraIdToken } from '../services/mystira-auth.service.js';
 import { logger } from '../utils/logger.js';
 
@@ -57,6 +58,9 @@ router.delete('/account', authenticateToken, async (req, res) => {
       deletedConversationCount: result.deletedConversationCount,
     });
   } catch (error) {
+    if (error instanceof ConversationIntakeError && error.code === 'ACCOUNT_DELETION_IN_PROGRESS') {
+      return res.status(409).json({ error: error.message, code: error.code });
+    }
     logger.error('Error deleting account:', error);
     return res.status(500).json({
       error: 'Failed to delete the account. Please try again shortly.',
