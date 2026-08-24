@@ -20,7 +20,7 @@ const read = (path: string) =>
 test("keeps release versions aligned and package inspection mandatory", () => {
   const manifest = JSON.parse(read("../manifest.json"));
   const packageJson = JSON.parse(read("../package.json"));
-  assert.equal(manifest.version, "1.0.25");
+  assert.equal(manifest.version, "1.0.26");
   assert.equal(packageJson.version, manifest.version);
   assert.deepEqual(manifest.content_scripts[0], {
     matches: ["https://web.whatsapp.com/*"],

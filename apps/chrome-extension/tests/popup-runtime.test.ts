@@ -25,7 +25,7 @@ test("renders the runtime manifest version and keeps release versions aligned", 
   assert.match(popupHtml, /id="extensionVersion"/);
   assert.match(
     popupSource,
-    /const PACKAGED_VERSION = "1\.0\.25"/,
+    /const PACKAGED_VERSION = "1\.0\.26"/,
   );
   assert.match(
     popupSource,
@@ -37,7 +37,7 @@ test("renders the runtime manifest version and keeps release versions aligned", 
   );
   assert.match(
     optionsSource,
-    /const PACKAGED_VERSION = "1\.0\.25"/,
+    /const PACKAGED_VERSION = "1\.0\.26"/,
   );
   assert.match(
     optionsSource,
@@ -48,7 +48,7 @@ test("renders the runtime manifest version and keeps release versions aligned", 
     /reload \$\{PACKAGED_VERSION\}/,
   );
   assert.equal(manifest.version, packageJson.version);
-  assert.equal(manifest.version, "1.0.25");
+  assert.equal(manifest.version, "1.0.26");
 });
 
 test("opens the conversation dashboard from both popup entry points", () => {
