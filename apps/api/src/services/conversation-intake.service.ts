@@ -1258,6 +1258,46 @@ export class ConversationIntakeService {
     const result = await repository.delete({ id, userId });
     return result.affected === 1;
   }
+
+  /**
+   * Deletes every conversation owned by a user, for account deletion. Reuses
+   * deleteForUser per row so each conversation gets the same storage-artifact
+   * cleanup and Baton-publish-lease safety it gets on an individual delete.
+   *
+   * Unlike listForUser (capped at 100 for the dashboard view), this is
+   * uncapped — an account-deletion pass must not silently leave conversations
+   * behind for a user with a larger history. deleteForUser throws (rather
+   * than returning false) for every real failure mode — an in-flight Baton
+   * publish, an active reconciliation window, a row that won't stabilize for
+   * CAS — so those propagate here too and the pass stops instead of
+   * reporting a partial deletion as complete. A `false` return only means
+   * the specific row was already gone (e.g. a concurrent delete of that same
+   * conversation), which isn't a failure, so we move on to the next row
+   * rather than abandoning the rest of the user's data.
+   *
+   * Known gap: this loop declares completion as soon as one lookup finds no
+   * rows left. It does not hold a lock against `save()`, so a conversation
+   * actively being ingested (e.g. an in-flight extension sync for the same
+   * userId) can commit after that final lookup and survive account
+   * deletion. Closing this needs a durable per-user lifecycle state that
+   * `save()` checks inside its own write transaction — a real change to a
+   * method that already layers a local lock, a Postgres advisory lock, and
+   * an in-transaction recheck for its dedup logic, so it isn't a quick
+   * follow-on here. Tracked separately rather than rushed into this path.
+   */
+  async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
+    const repository = this.dataSource.getRepository(ConversationIntake);
+    let deletedCount = 0;
+
+    for (;;) {
+      const next = await repository.findOne({ where: { userId }, select: ['id'] });
+      if (!next) break;
+      const deleted = await this.deleteForUser(userId, next.id);
+      if (deleted) deletedCount += 1;
+    }
+
+    return { deletedCount };
+  }
 }
 
 export const conversationIntakeService = new ConversationIntakeService();

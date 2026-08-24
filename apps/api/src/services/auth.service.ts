@@ -4,6 +4,7 @@ import { JWT_SECRET } from '../config/constants';
 import { AppDataSource } from '../config/database';
 import { User } from '../db/entities/User';
 import { UserRole } from '../db/entities/User';
+import { conversationIntakeService } from './conversation-intake.service';
 
 export function issueApiToken(user: Pick<User, 'id' | 'email' | 'role'>): string {
   return jwt.sign(
@@ -57,4 +58,20 @@ export class AuthService {
   async getProfile(userId: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { id: userId } });
   }
+
+  /**
+   * Deletes a user's account and all of their data. `userId` here is the
+   * subject identity attached to the request by authenticateToken — for a
+   * Mystira-federated user (the live auth path) that's the Mystira `sub`,
+   * for which no local User row exists at all, so the repository delete is
+   * expected to affect 0 rows in the common case. The user's identity itself
+   * (their Mystira login) is not managed by this app and is out of scope.
+   */
+  async deleteAccount(userId: string): Promise<{ deletedConversationCount: number }> {
+    const { deletedCount } = await conversationIntakeService.deleteAllForUser(userId);
+    await this.userRepository.delete({ id: userId });
+    return { deletedConversationCount: deletedCount };
+  }
 }
+
+export const authService = new AuthService();

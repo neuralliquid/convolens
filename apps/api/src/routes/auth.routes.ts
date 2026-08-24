@@ -1,6 +1,8 @@
 import { Router } from 'express';
 
+import { authenticateToken } from '../middleware/auth.middleware.js';
 import { authRateLimit } from '../middleware/rate-limit.js';
+import { authService } from '../services/auth.service.js';
 import { exchangeMystiraIdToken } from '../services/mystira-auth.service.js';
 import { logger } from '../utils/logger.js';
 
@@ -29,6 +31,36 @@ router.post('/mystira/exchange', authRateLimit, async (req, res) => {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     return res.status(401).json({ error: 'Unable to authenticate the Mystira Identity session' });
+  }
+});
+
+// Deletes the caller's account and every conversation they've imported
+// (messages, transcripts, ticket candidates, and stored artifacts cascade
+// with it — see ConversationIntakeService.deleteForUser). Irreversible, so
+// it requires an explicit confirmation in the body rather than just a token.
+router.delete('/account', authenticateToken, async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  if (req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({
+      error:
+        'Confirmation required: send { "confirm": "DELETE" } to permanently delete this account',
+    });
+  }
+
+  try {
+    const result = await authService.deleteAccount(userId);
+    return res.json({
+      message: 'Account and all associated conversations have been deleted',
+      deletedConversationCount: result.deletedConversationCount,
+    });
+  } catch (error) {
+    logger.error('Error deleting account:', error);
+    return res.status(500).json({
+      error: 'Failed to delete the account. Please try again shortly.',
+    });
   }
 });
 
