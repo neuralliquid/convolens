@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import JSZip from 'jszip';
+
 import { logger } from '../utils/logger';
 
 export interface ChatMessage {
@@ -61,6 +63,46 @@ function attachedMedia(content: string): {
   const fileName = match?.[1]?.trim();
   if (!fileName) return null;
   return { fileName, mediaType: classifyAttachedMedia(fileName) };
+}
+
+// ZIP local-file-header signature ("PK\x03\x04"). Browsers report inconsistent
+// (and sometimes generic, e.g. application/octet-stream) MIME types for .zip
+// uploads, so the archive is identified by its magic bytes rather than trusted
+// metadata.
+const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+
+/**
+ * Whether a buffer looks like a ZIP archive, checked by magic bytes.
+ */
+export function looksLikeZipArchive(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer.subarray(0, 4).equals(ZIP_SIGNATURE);
+}
+
+/**
+ * Extracts the chat transcript from a WhatsApp "Export chat" .zip archive.
+ *
+ * WhatsApp's export (with or without media) bundles one chat text file
+ * alongside any attached media:
+ *   iOS:     _chat.txt
+ *   Android: WhatsApp Chat with <name>.txt
+ * Either convention is matched by name; if neither is present, the first
+ * .txt entry found is used as a fallback so unusual archive layouts still work.
+ *
+ * @returns the transcript text, or null if the archive has no .txt entry
+ */
+export async function extractChatTextFromZip(buffer: Buffer): Promise<string | null> {
+  const zip = await JSZip.loadAsync(buffer);
+  const txtEntries = Object.values(zip.files).filter(
+    (entry) => !entry.dir && entry.name.toLowerCase().endsWith('.txt')
+  );
+  if (txtEntries.length === 0) return null;
+
+  const preferred =
+    txtEntries.find((entry) => /(?:^|\/)_chat\.txt$/i.test(entry.name)) ||
+    txtEntries.find((entry) => /(?:^|\/)WhatsApp Chat with .+\.txt$/i.test(entry.name)) ||
+    txtEntries[0];
+
+  return preferred.async('text');
 }
 
 /**

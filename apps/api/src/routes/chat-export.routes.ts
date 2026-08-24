@@ -3,7 +3,12 @@ import multer from 'multer';
 
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { parseWhatsAppExport, isValidWhatsAppExport } from '../services/chat-export.service.js';
+import {
+  parseWhatsAppExport,
+  isValidWhatsAppExport,
+  looksLikeZipArchive,
+  extractChatTextFromZip,
+} from '../services/chat-export.service.js';
 import { conversationIntakeService } from '../services/conversation-intake.service.js';
 import {
   ConversationSummaryError,
@@ -21,16 +26,32 @@ import {
 import { logger } from '../utils/logger.js';
 
 const router: Router = Router();
+// Browsers report inconsistent (sometimes generic) MIME types for .zip
+// uploads, so both the declared type and the extension are accepted here;
+// the buffer itself is verified by magic bytes once it's available in the
+// route handler.
+const CHAT_EXPORT_ZIP_MIME_TYPES = new Set([
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/x-zip',
+]);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    // WhatsApp's "Export chat" zip (chat + attached media) is much larger
+    // than a plain-text export; a 10MB cap rejected zips before their
+    // content was even checked.
+    fileSize: 25 * 1024 * 1024, // 25MB limit
   },
   fileFilter: (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    if (file.mimetype === 'text/plain' || file.originalname.endsWith('.txt')) {
+    const isTxt = file.mimetype === 'text/plain' || file.originalname.endsWith('.txt');
+    const isZip =
+      CHAT_EXPORT_ZIP_MIME_TYPES.has(file.mimetype) ||
+      file.originalname.toLowerCase().endsWith('.zip');
+    if (isTxt || isZip) {
       cb(null, true);
     } else {
-      cb(new Error('Only .txt files are allowed'));
+      cb(new Error('Only .txt or .zip WhatsApp chat exports are allowed'));
     }
   },
 });
@@ -348,7 +369,22 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const fileContent = req.file.buffer.toString('utf-8');
+    let fileContent: string;
+    if (looksLikeZipArchive(req.file.buffer)) {
+      const extracted = await extractChatTextFromZip(req.file.buffer).catch((error) => {
+        logger.warn('Failed to read uploaded zip archive:', error);
+        return null;
+      });
+      if (extracted === null) {
+        return res.status(400).json({
+          error:
+            'Could not find a WhatsApp chat text file inside the uploaded zip. Export the chat again and upload the archive unmodified.',
+        });
+      }
+      fileContent = extracted;
+    } else {
+      fileContent = req.file.buffer.toString('utf-8');
+    }
 
     // Validate it's a valid WhatsApp export
     if (!isValidWhatsAppExport(fileContent)) {
@@ -368,7 +404,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       userId,
       sourcePlatform: 'whatsapp',
       sourceKind: 'upload',
-      displayName: req.file.originalname.replace(/\.txt$/i, '') || 'WhatsApp export',
+      displayName: req.file.originalname.replace(/\.(?:txt|zip)$/i, '') || 'WhatsApp export',
       isGroup: chatData.participants.length > 2,
       participants: chatData.participants,
       provenance: {
@@ -389,7 +425,10 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
     const persisted = await conversationIntakeService.ensureRawArtifact(
       saved.conversation,
       userId,
-      { body: req.file.buffer, contentType: 'text/plain' }
+      // fileContent is the parsed transcript either way — the raw upload
+      // buffer itself for a .txt upload, or the extracted _chat.txt for a
+      // .zip upload. Either way it's the plain-text export the archive holds.
+      { body: fileContent, contentType: 'text/plain' }
     );
 
     return res.status(200).json({

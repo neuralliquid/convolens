@@ -1,6 +1,11 @@
 import { jest, describe, it, expect, beforeAll, afterEach } from '@jest/globals';
+import JSZip from 'jszip';
 
-import { parseWhatsAppExport } from '../chat-export.service';
+import {
+  parseWhatsAppExport,
+  looksLikeZipArchive,
+  extractChatTextFromZip,
+} from '../chat-export.service';
 import type { ChatExportData } from '../chat-export.service';
 
 describe('ChatExportService', () => {
@@ -122,6 +127,59 @@ This is not a valid line
         sender: 'System',
         content: 'Messages are end-to-end encrypted',
       });
+    });
+  });
+
+  describe('looksLikeZipArchive', () => {
+    it('recognizes a ZIP archive by its magic bytes', () => {
+      expect(looksLikeZipArchive(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0]))).toBe(true);
+    });
+
+    it('rejects plain text content', () => {
+      expect(looksLikeZipArchive(Buffer.from('[25/07/2026, 12:30:00] Hans: hi'))).toBe(false);
+    });
+  });
+
+  describe('extractChatTextFromZip', () => {
+    it('extracts an iOS-style _chat.txt entry', async () => {
+      const zip = new JSZip();
+      zip.file('_chat.txt', '[25/07/2026, 12:30:00] Hans: hi from ios export');
+      zip.file('IMG-20260725-WA0001.jpg', Buffer.from([0xff, 0xd8]));
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      const text = await extractChatTextFromZip(buffer);
+
+      expect(text).toBe('[25/07/2026, 12:30:00] Hans: hi from ios export');
+    });
+
+    it('extracts an Android-style "WhatsApp Chat with <name>.txt" entry', async () => {
+      const zip = new JSZip();
+      zip.file('WhatsApp Chat with Irma.txt', '25/07/2026, 12:30 - Hans: hi from android export');
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      const text = await extractChatTextFromZip(buffer);
+
+      expect(text).toBe('25/07/2026, 12:30 - Hans: hi from android export');
+    });
+
+    it('falls back to the first .txt entry when neither naming convention matches', async () => {
+      const zip = new JSZip();
+      zip.file('transcript.txt', 'fallback content');
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      const text = await extractChatTextFromZip(buffer);
+
+      expect(text).toBe('fallback content');
+    });
+
+    it('returns null when the archive has no .txt entry', async () => {
+      const zip = new JSZip();
+      zip.file('IMG-20260725-WA0001.jpg', Buffer.from([0xff, 0xd8]));
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+      const text = await extractChatTextFromZip(buffer);
+
+      expect(text).toBeNull();
     });
   });
 });
