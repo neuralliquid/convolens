@@ -29,13 +29,13 @@ export interface ChatExportData {
 // WhatsApp also sometimes inserts a narrow no-break space (U+202F) instead of
 // a regular space before AM/PM. Support both formats and both space kinds.
 const IOS_MESSAGE_REGEX =
-  /^\[(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s ]?(?<meridiem>AM|PM)?\]\s(?<sender>.+?):\s(?<content>.+)$/i;
+  /^\[(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s\u202F]?(?<meridiem>AM|PM)?\]\s(?<sender>.+?):\s(?<content>.+)$/i;
 const IOS_SYSTEM_REGEX =
-  /^\[(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s ]?(?<meridiem>AM|PM)?\]\s(?<content>.+)$/i;
+  /^\[(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s\u202F]?(?<meridiem>AM|PM)?\]\s(?<content>.+)$/i;
 const ANDROID_MESSAGE_REGEX =
-  /^(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s ]?(?<meridiem>AM|PM)?\s-\s(?<sender>.+?):\s(?<content>.+)$/i;
+  /^(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s\u202F]?(?<meridiem>AM|PM)?\s-\s(?<sender>.+?):\s(?<content>.+)$/i;
 const ANDROID_SYSTEM_REGEX =
-  /^(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s ]?(?<meridiem>AM|PM)?\s-\s(?<content>.+)$/i;
+  /^(?<date>\d{1,2}\/\d{1,2}\/\d{2,4}),\s(?<time>\d{1,2}:\d{2}(?::\d{2})?)[\s\u202F]?(?<meridiem>AM|PM)?\s-\s(?<content>.+)$/i;
 
 // Media indicator in WhatsApp exports
 const MEDIA_INDICATOR = '<Media omitted>';
@@ -189,11 +189,11 @@ export function isValidWhatsAppExport(content: string): boolean {
   // brackets; Android leaves it bare with a trailing " - " instead — the two
   // platforms produce incompatible export files, so both must be checked.
   const patterns = [
-    /^\[\d{1,2}\/\d{1,2}\/\d{2,4}, \d{1,2}:\d{2}(?::\d{2})?[\s ]?(?:AM|PM)?\] [^:]+: /im, // iOS message
-    /^\d{1,2}\/\d{1,2}\/\d{2,4}, \d{1,2}:\d{2}(?::\d{2})?[\s ]?(?:AM|PM)? - [^:]+: /im, // Android message
+    /^\[\d{1,2}\/\d{1,2}\/\d{2,4}, \d{1,2}:\d{2}(?::\d{2})?[\s\u202F]?(?:AM|PM)?\] [^:]+: /im, // iOS message
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}, \d{1,2}:\d{2}(?::\d{2})?[\s\u202F]?(?:AM|PM)? - [^:]+: /im, // Android message
     /^WhatsApp Chat with .+$/im, // Header
     /^Messages and calls are end-to-end encrypted/im, // Footer (iOS)
-    /^\d{1,2}\/\d{1,2}\/\d{2,4}, \d{1,2}:\d{2}(?::\d{2})?[\s ]?(?:AM|PM)? - Messages and calls are end-to-end encrypted/im, // Footer (Android)
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}, \d{1,2}:\d{2}(?::\d{2})?[\s\u202F]?(?:AM|PM)? - Messages and calls are end-to-end encrypted/im, // Footer (Android)
   ];
 
   // Check if any of the patterns match
