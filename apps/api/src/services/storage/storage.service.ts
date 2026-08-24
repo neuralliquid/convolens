@@ -373,6 +373,10 @@ export class StorageService {
       AZURE_MANAGED_IDENTITY_TIMEOUT_MS
     );
     if (!response.ok) {
+      const detail = await response.text().catch(() => '<unreadable response body>');
+      logger.error(
+        `[StorageService] Managed identity token request failed: ${response.status} ${detail}`
+      );
       throw new Error(`Managed identity token request failed: ${response.status}`);
     }
     const payload = (await response.json()) as {
