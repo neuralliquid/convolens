@@ -14,6 +14,35 @@ interface FileUploadProps {
   maxSizeMB?: number;
 }
 
+// react-dropzone's `accept` option is keyed by MIME type, not extension.
+// This used to be hardcoded to `{ "text/plain": acceptedFormats }`, which
+// silently ignored whatever extensions a caller passed in — anything other
+// than a plain-text file was rejected by the dropzone before `onDrop` (and
+// therefore `acceptedFormats`) ever ran. Map each accepted extension to the
+// MIME type(s) browsers actually report for it so callers can extend
+// `acceptedFormats` and have it take effect.
+const EXTENSION_MIME_TYPES: Record<string, string[]> = {
+  ".txt": ["text/plain"],
+  ".zip": ["application/zip", "application/x-zip-compressed", "application/x-zip"],
+};
+
+function buildAcceptMap(formats: string[]): Record<string, string[]> {
+  const accept: Record<string, string[]> = {};
+  for (const format of formats) {
+    const mimeTypes = EXTENSION_MIME_TYPES[format.toLowerCase()];
+    if (!mimeTypes) {
+      // Unrecognized extension — key by the extension itself so
+      // react-dropzone still filters by suffix instead of dropping it.
+      accept[format] = [...(accept[format] ?? []), format];
+      continue;
+    }
+    for (const mime of mimeTypes) {
+      accept[mime] = [...(accept[mime] ?? []), format];
+    }
+  }
+  return accept;
+}
+
 const FileUpload: React.FC<FileUploadProps> = ({
   onFileUpload,
   acceptedFormats = [".txt"],
@@ -60,9 +89,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      "text/plain": acceptedFormats,
-    },
+    accept: buildAcceptMap(acceptedFormats),
     maxFiles: 1,
     disabled: isUploading,
   });

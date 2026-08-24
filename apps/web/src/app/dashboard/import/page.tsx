@@ -55,8 +55,15 @@ export default function ImportChatPage() {
     onError: (error) => {
       console.error("Upload error:", error);
     },
-    maxSizeMB: 10,
-    acceptedTypes: ["text/plain"],
+    // Mirrors the API's multer config in chat-export.routes.ts: 25MB cap,
+    // .txt or .zip (WhatsApp's "Export chat" archive with attached media).
+    maxSizeMB: 25,
+    acceptedTypes: [
+      "text/plain",
+      "application/zip",
+      "application/x-zip-compressed",
+      "application/x-zip",
+    ],
   });
 
   return (
@@ -86,7 +93,7 @@ export default function ImportChatPage() {
                 Recommended
               </span>
             </TabsTrigger>
-            <TabsTrigger value="file">Chat export (.txt)</TabsTrigger>
+            <TabsTrigger value="file">Chat export (.txt or .zip)</TabsTrigger>
           </TabsList>
 
           <TabsContent value="file">
@@ -94,14 +101,15 @@ export default function ImportChatPage() {
               <CardHeader>
                 <CardTitle>Upload Chat Export</CardTitle>
                 <CardDescription>
-                  Select a WhatsApp text export without media.
+                  Select a WhatsApp text export, or the full "Export chat"
+                  .zip archive.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <FileUpload
                   onFileUpload={uploadFile}
-                  acceptedFormats={[".txt"]}
-                  maxSizeMB={10}
+                  acceptedFormats={[".txt", ".zip"]}
+                  maxSizeMB={25}
                 />
                 <div className="mt-6 text-sm text-muted-foreground">
                   <h4 className="font-medium mb-2">
