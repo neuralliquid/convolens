@@ -244,14 +244,42 @@ let launcherModeChangeGeneration = 0;
 let launcherCaptureAuthGeneration = 0;
 
 // =============================================================================
+// Cross-injection guard
+// =============================================================================
+//
+// `isInitialized` above only guards against double-init *within one script
+// instance*. Chrome can re-inject content.js into an already-open WhatsApp
+// tab (extension reload, service-worker restart) without ever firing
+// `beforeunload`, which leaves the previous instance's MutationObserver and
+// onMessage listener running. The new instance then registers its own copy
+// of both, and the two run side by side — duplicate "Chat changed" logs,
+// and "message channel closed" errors once the orphaned instance's async
+// handlers try to respond on a listener nobody torn down. Stash the active
+// instance's teardown on `window` so a fresh injection can retire the old
+// one before starting.
+declare global {
+  interface Window {
+    __convoLensCleanup?: () => void;
+  }
+}
+
+// =============================================================================
 // Initialization
 // =============================================================================
 
 async function init(): Promise<void> {
-  // Guard against multiple initializations
+  // Guard against multiple initializations within this script instance.
   if (isInitialized) {
     console.log("[ConvoLens] Already initialized, skipping");
     return;
+  }
+
+  // Guard against a stale instance from a prior injection still being live.
+  if (window.__convoLensCleanup) {
+    console.log(
+      "[ConvoLens] Prior instance detected, tearing it down before re-init",
+    );
+    window.__convoLensCleanup();
   }
 
   console.log("[ConvoLens] Content script initializing...");
@@ -267,6 +295,7 @@ async function init(): Promise<void> {
   // reload, even while the page UI is still settling.
   chrome.runtime.onMessage.addListener(handleMessage);
   isInitialized = true;
+  window.__convoLensCleanup = cleanup;
   window.addEventListener("beforeunload", cleanup);
 
   // Wait for WhatsApp to fully load
@@ -306,6 +335,12 @@ function cleanup(): void {
   chrome.runtime.onMessage.removeListener(handleMessage);
   window.removeEventListener("resize", handleViewportResize);
   isInitialized = false;
+  // Only clear the cross-injection guard if it still points at this
+  // instance — a newer instance may already have overwritten it if this
+  // cleanup ran because that newer instance tore this one down.
+  if (window.__convoLensCleanup === cleanup) {
+    window.__convoLensCleanup = undefined;
+  }
   console.log("[ConvoLens] Cleanup completed");
 }
 
@@ -2525,13 +2560,22 @@ function startGuidedWindowDrain(session: GuidedCaptureSession): void {
     ) {
       const stopReason = session.pendingStopReason;
       session.pendingStopReason = undefined;
-      void chrome.runtime.sendMessage(
+      sendRuntimeLifecycleMessage(
         session.mode === "automatic"
           ? {
               action: "CONTROL_AUTOMATIC_CAPTURE_OPERATION",
               operationId: session.operationId,
               command: "stop",
-              stopReason,
+              // Every site that sets pendingStopReason on an "automatic"
+              // session already restricts it to an "automatic-*" reason
+              // (see runAutomaticCapture and the limitReached/
+              // consecutiveFailures branches above); ExtensionMessage's
+              // stopReason for this action is typed narrower than the
+              // shared CaptureStopReason union, so assert the invariant.
+              stopReason: stopReason as Extract<
+                CaptureStopReason,
+                `automatic-${string}`
+              >,
             }
           : {
               action: "STOP_GUIDED_CAPTURE_OPERATION",
@@ -2691,7 +2735,7 @@ function activateGuidedCaptureOperation(operationId: string): void {
   });
   session.timeoutId = window.setTimeout(() => {
     if (guidedCaptureSession?.operationId !== operationId) return;
-    void chrome.runtime.sendMessage({
+    sendRuntimeLifecycleMessage({
       action: "STOP_GUIDED_CAPTURE_OPERATION",
       operationId,
       stopReason: "guided-timeout",
