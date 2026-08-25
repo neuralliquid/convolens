@@ -34,6 +34,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
+import { isIdTokenFresh } from "./token-freshness";
 
 // User type definition matching Supabase user structure
 export type User = {
@@ -269,7 +270,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (nextAuthResponse?.ok) {
-          if (nextAuthSession?.user) {
+          // `user` can stay truthy while the forwarded Mystira idToken has
+          // gone stale (the session cookie outlives the ID token, and a
+          // failed refresh hasn't set `refreshError` yet) — treat that the
+          // same as no session so the redirect-to-login guards below fire
+          // instead of the caller silently retrying a doomed API call.
+          if (nextAuthSession?.user && isIdTokenFresh(nextAuthSession.idToken)) {
             const mappedUser: User = {
               id:
                 nextAuthSession.user.id ||

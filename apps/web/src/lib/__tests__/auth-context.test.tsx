@@ -1,12 +1,19 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AuthProvider, useAuth } from "@convolens/contexts";
 
+function makeIdToken(expSecondsFromNow: number): string {
+  const payload = { exp: Math.floor(Date.now() / 1000) + expSecondsFromNow };
+  const base64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `header.${base64}.signature`;
+}
+
 const mystiraSession = {
   user: {
     id: "mystira-1",
     email: "preview@example.com",
     name: "Preview",
   },
+  idToken: makeIdToken(3600),
 };
 
 function Probe() {
@@ -224,5 +231,45 @@ describe("AuthProvider session expiry and logout", () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes("/api/auth/signout")),
     ).toBe(false);
+  });
+
+  it("does not restore auth when the session carries a stale Mystira ID token", async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/auth/session")) {
+        return Promise.resolve(
+          jsonResponse({
+            user: mystiraSession.user,
+            idToken: makeIdToken(-30),
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("out");
+    });
+    expect(screen.getByTestId("email")).toHaveTextContent("");
+    expect(localStorage.getItem("convolens_user")).toBeNull();
+  });
+
+  it("does not restore auth when the session has a user but no ID token at all", async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/auth/session")) {
+        return Promise.resolve(jsonResponse({ user: mystiraSession.user }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("out");
+    });
+    expect(localStorage.getItem("convolens_user")).toBeNull();
   });
 });
