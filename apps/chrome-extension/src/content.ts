@@ -260,20 +260,17 @@ let launcherCaptureAuthGeneration = 0;
 //
 // `cleanup()` also cancels any in-progress capture (it was written for real
 // `beforeunload`, where that's correct — the tab is gone). Retiring for
-// re-injection is not a real unload: the page is still here, the user's
-// capture may still be running, and calling full `cleanup()` on it would
-// silently discard their in-progress work. So the guard exposes
-// `hasActiveCapture()` alongside `cleanup`, and a fresh injection defers
-// to the incumbent instance instead of retiring it while a capture is live
-// — the new instance simply doesn't initialize, leaving the existing one
-// (with its still-registered onMessage listener) in sole control until the
-// capture finishes or the tab genuinely unloads.
+// re-injection is not a real unload: the page is still here and the user's
+// capture may still be running, so cancelling it here would silently
+// discard in-progress work the user never asked to stop. `cleanup` takes a
+// `retiring` flag that skips only the cancel-message send — every other
+// teardown step (observers, listeners, session state) still runs in full,
+// so the new instance always starts clean and always ends up with a
+// working listener, even if the prior instance's own messaging was already
+// broken by the same event that triggered the re-injection.
 declare global {
   interface Window {
-    __convoLensInstance?: {
-      cleanup: () => void;
-      hasActiveCapture: () => boolean;
-    };
+    __convoLensCleanup?: (options?: { retiring?: boolean }) => void;
   }
 }
 
@@ -289,19 +286,8 @@ async function init(): Promise<void> {
   }
 
   // Guard against a stale instance from a prior injection still being live.
-  const priorInstance = window.__convoLensInstance;
-  if (priorInstance) {
-    if (priorInstance.hasActiveCapture()) {
-      // Don't retire an instance mid-capture — cleanup() would cancel the
-      // user's in-progress operation for what is, from their perspective,
-      // a no-op (the tab never unloaded). Leave the incumbent running and
-      // in control; it will retire itself normally once the capture ends
-      // or the tab actually unloads.
-      console.log(
-        "[ConvoLens] Prior instance has an active capture in progress, deferring to it instead of re-initializing",
-      );
-      return;
-    }
+  const priorCleanup = window.__convoLensCleanup;
+  if (priorCleanup) {
     console.log(
       "[ConvoLens] Prior instance detected, tearing it down before re-init",
     );
@@ -311,7 +297,7 @@ async function init(): Promise<void> {
       // invalidated (e.g. a real service-worker restart, not just a content
       // script re-injection). Best-effort: a throw here must not abort this
       // instance's own init before it registers its own listener.
-      priorInstance.cleanup();
+      priorCleanup({ retiring: true });
     } catch (error) {
       console.warn(
         "[ConvoLens] Prior instance teardown failed, continuing init anyway",
@@ -333,12 +319,8 @@ async function init(): Promise<void> {
   // reload, even while the page UI is still settling.
   chrome.runtime.onMessage.addListener(handleMessage);
   isInitialized = true;
-  window.__convoLensInstance = {
-    cleanup,
-    hasActiveCapture: () =>
-      activeCaptureOperation !== null || guidedCaptureSession !== null,
-  };
-  window.addEventListener("beforeunload", cleanup);
+  window.__convoLensCleanup = cleanup;
+  window.addEventListener("beforeunload", handleBeforeUnload);
 
   // Wait for WhatsApp to fully load
   await waitForWhatsAppReady();
@@ -361,11 +343,25 @@ async function init(): Promise<void> {
 }
 
 /**
- * Cleanup resources when page unloads
+ * `beforeunload` listener. A thin, strictly zero-arg wrapper because
+ * `cleanup` itself now takes an options object — DOM's `EventListener` type
+ * doesn't structurally match that, and this call must always mean a real
+ * unload (never `retiring`), so no options are threaded through here.
  */
-function cleanup(): void {
+function handleBeforeUnload(): void {
+  cleanup();
+}
+
+/**
+ * Cleanup resources when the page unloads, or when a fresher content-script
+ * injection is retiring this instance (see the cross-injection guard
+ * above). `options.retiring` is only ever passed explicitly by that guard;
+ * a real unload always goes through `handleBeforeUnload`, which calls this
+ * with no arguments.
+ */
+function cleanup(options?: { retiring?: boolean }): void {
   const operation = activeCaptureOperation;
-  if (operation && operation.state !== "uploading") {
+  if (operation && operation.state !== "uploading" && !options?.retiring) {
     sendRuntimeLifecycleMessage({
       action: "CANCEL_CAPTURE_OPERATION",
       operationId: operation.operationId,
@@ -386,13 +382,13 @@ function cleanup(): void {
   // removes this instance's own beforeunload registration — never a newer
   // instance's, even when this cleanup ran because that newer instance
   // tore this one down mid-init.
-  window.removeEventListener("beforeunload", cleanup);
+  window.removeEventListener("beforeunload", handleBeforeUnload);
   isInitialized = false;
   // Only clear the cross-injection guard if it still points at this
   // instance — a newer instance may already have overwritten it if this
   // cleanup ran because that newer instance tore this one down.
-  if (window.__convoLensInstance?.cleanup === cleanup) {
-    window.__convoLensInstance = undefined;
+  if (window.__convoLensCleanup === cleanup) {
+    window.__convoLensCleanup = undefined;
   }
   console.log("[ConvoLens] Cleanup completed");
 }

@@ -98,3 +98,43 @@ test("classifies upstream HTTP 429 as retry-required", () => {
   assert.match(backgroundSource, /error\.status === 429/);
   assert.match(backgroundSource, /retryRequired: true/);
 });
+
+test("retires a prior content-script instance unconditionally instead of deferring init", () => {
+  // An earlier revision skipped this instance's own init entirely
+  // (`hasActiveCapture`) when the incumbent had a capture running, which
+  // could leave a tab with zero working onMessage listeners if the
+  // incumbent's own extension context was already invalidated. It always
+  // retires the incumbent now instead, so a fresh injection always ends up
+  // with a working listener.
+  assert.doesNotMatch(contentSource, /hasActiveCapture/);
+  assert.ok(
+    contentSource.includes("const priorCleanup = window.__convoLensCleanup;"),
+  );
+  assert.ok(contentSource.includes("  if (priorCleanup) {"));
+  assert.ok(contentSource.includes("priorCleanup({ retiring: true });"));
+});
+
+test("cancels an in-progress capture on a real unload but not on cross-injection retirement", () => {
+  const cleanupBody = contentSource.match(
+    /function cleanup\(options\?: \{ retiring\?: boolean \}\): void \{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(cleanupBody, "expected to find the cleanup() function body");
+  // The cancel-message send must be the only step gated on `retiring` --
+  // every other teardown step (observers, listeners, session state) has to
+  // run unconditionally so the retired instance's own listener is always
+  // gone before the new instance registers its own.
+  assert.ok(
+    cleanupBody!.includes(
+      'if (operation && operation.state !== "uploading" && !options?.retiring) {',
+    ),
+  );
+  // Two occurrences: the `retiring` field in the function's own signature,
+  // plus the one guard condition above -- nowhere else in the body reads it.
+  assert.equal(cleanupBody!.match(/retiring/g)?.length, 2);
+  // A real unload goes through this zero-arg wrapper, so `options` is
+  // always undefined there and the cancel branch above always runs.
+  assert.match(
+    contentSource,
+    /function handleBeforeUnload\(\): void \{\s*cleanup\(\);\s*\}/,
+  );
+});
