@@ -257,9 +257,23 @@ let launcherCaptureAuthGeneration = 0;
 // handlers try to respond on a listener nobody torn down. Stash the active
 // instance's teardown on `window` so a fresh injection can retire the old
 // one before starting.
+//
+// `cleanup()` also cancels any in-progress capture (it was written for real
+// `beforeunload`, where that's correct — the tab is gone). Retiring for
+// re-injection is not a real unload: the page is still here, the user's
+// capture may still be running, and calling full `cleanup()` on it would
+// silently discard their in-progress work. So the guard exposes
+// `hasActiveCapture()` alongside `cleanup`, and a fresh injection defers
+// to the incumbent instance instead of retiring it while a capture is live
+// — the new instance simply doesn't initialize, leaving the existing one
+// (with its still-registered onMessage listener) in sole control until the
+// capture finishes or the tab genuinely unloads.
 declare global {
   interface Window {
-    __convoLensCleanup?: () => void;
+    __convoLensInstance?: {
+      cleanup: () => void;
+      hasActiveCapture: () => boolean;
+    };
   }
 }
 
@@ -275,11 +289,23 @@ async function init(): Promise<void> {
   }
 
   // Guard against a stale instance from a prior injection still being live.
-  if (window.__convoLensCleanup) {
+  const priorInstance = window.__convoLensInstance;
+  if (priorInstance) {
+    if (priorInstance.hasActiveCapture()) {
+      // Don't retire an instance mid-capture — cleanup() would cancel the
+      // user's in-progress operation for what is, from their perspective,
+      // a no-op (the tab never unloaded). Leave the incumbent running and
+      // in control; it will retire itself normally once the capture ends
+      // or the tab actually unloads.
+      console.log(
+        "[ConvoLens] Prior instance has an active capture in progress, deferring to it instead of re-initializing",
+      );
+      return;
+    }
     console.log(
       "[ConvoLens] Prior instance detected, tearing it down before re-init",
     );
-    window.__convoLensCleanup();
+    priorInstance.cleanup();
   }
 
   console.log("[ConvoLens] Content script initializing...");
@@ -295,7 +321,11 @@ async function init(): Promise<void> {
   // reload, even while the page UI is still settling.
   chrome.runtime.onMessage.addListener(handleMessage);
   isInitialized = true;
-  window.__convoLensCleanup = cleanup;
+  window.__convoLensInstance = {
+    cleanup,
+    hasActiveCapture: () =>
+      activeCaptureOperation !== null || guidedCaptureSession !== null,
+  };
   window.addEventListener("beforeunload", cleanup);
 
   // Wait for WhatsApp to fully load
@@ -349,8 +379,8 @@ function cleanup(): void {
   // Only clear the cross-injection guard if it still points at this
   // instance — a newer instance may already have overwritten it if this
   // cleanup ran because that newer instance tore this one down.
-  if (window.__convoLensCleanup === cleanup) {
-    window.__convoLensCleanup = undefined;
+  if (window.__convoLensInstance?.cleanup === cleanup) {
+    window.__convoLensInstance = undefined;
   }
   console.log("[ConvoLens] Cleanup completed");
 }
