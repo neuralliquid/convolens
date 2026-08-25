@@ -300,10 +300,16 @@ async function init(): Promise<void> {
 
   // Wait for WhatsApp to fully load
   await waitForWhatsAppReady();
+  // A fresher injection may have torn this instance down (isInitialized is
+  // flipped back to false by cleanup()) while we were waiting — bail out
+  // rather than resume and clobber the newer instance's DOM/listeners.
+  if (!isInitialized) return;
 
   // Inject UI elements
   await injectUI();
+  if (!isInitialized) return;
   await refreshLauncherFromValidatedAuthentication().catch(() => undefined);
+  if (!isInitialized) return;
   window.addEventListener("resize", handleViewportResize);
 
   // Observe chat navigation
@@ -334,6 +340,11 @@ function cleanup(): void {
   }
   chrome.runtime.onMessage.removeListener(handleMessage);
   window.removeEventListener("resize", handleViewportResize);
+  // removeEventListener is keyed on function identity, so this only ever
+  // removes this instance's own beforeunload registration — never a newer
+  // instance's, even when this cleanup ran because that newer instance
+  // tore this one down mid-init.
+  window.removeEventListener("beforeunload", cleanup);
   isInitialized = false;
   // Only clear the cross-injection guard if it still points at this
   // instance — a newer instance may already have overwritten it if this
