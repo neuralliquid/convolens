@@ -305,7 +305,19 @@ async function init(): Promise<void> {
     console.log(
       "[ConvoLens] Prior instance detected, tearing it down before re-init",
     );
-    priorInstance.cleanup();
+    try {
+      // cleanup() calls chrome.runtime.onMessage.removeListener(...), which
+      // throws if the prior instance's extension context was already
+      // invalidated (e.g. a real service-worker restart, not just a content
+      // script re-injection). Best-effort: a throw here must not abort this
+      // instance's own init before it registers its own listener.
+      priorInstance.cleanup();
+    } catch (error) {
+      console.warn(
+        "[ConvoLens] Prior instance teardown failed, continuing init anyway",
+        error,
+      );
+    }
   }
 
   console.log("[ConvoLens] Content script initializing...");
