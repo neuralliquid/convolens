@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 import webPackage from "../../../../package.json";
 
 export function Footer() {
@@ -18,15 +19,16 @@ export function Footer() {
               ConvoLens
             </h2>
             <p className="mt-4 max-w-md text-gray-600 dark:text-gray-400">
-              Preserve the WhatsApp support conversation you need to review.
+              Preserve the WhatsApp conversation you need to keep — for
+              yourself or your team.
             </p>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-500">
               Import by WhatsApp text export or browser extension. Additional
               import paths are planned as the private preview expands.
             </p>
-            <p className="mt-5 inline-flex rounded-full border border-green-200 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-green-700 dark:border-green-800 dark:text-green-300">
+            <Badge variant="preview" className="mt-5 uppercase tracking-wider">
               Private preview
-            </p>
+            </Badge>
           </div>
 
           <div>

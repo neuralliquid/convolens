@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, FileText, MessageSquare, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import styles from "./landing-page.module.css";
 import "./enhanced-styles.css";
 
@@ -58,17 +59,21 @@ export default function LandingPage() {
 
         <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8">
           <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-green-200 bg-white/80 px-4 py-2 text-sm font-semibold text-green-800 shadow-sm backdrop-blur dark:border-green-800 dark:bg-gray-900/75 dark:text-green-300">
+            <Badge
+              variant="preview"
+              className="mb-6 gap-2 px-4 py-2 text-sm shadow-sm backdrop-blur dark:bg-gray-900/75"
+            >
               <ShieldCheck className="h-4 w-4" />
               Private preview
-            </div>
+            </Badge>
             <h1 className="max-w-4xl text-4xl font-bold leading-tight text-gray-900 dark:text-white sm:text-5xl md:text-6xl">
-              Keep important support conversations in one place.
+              Keep an important WhatsApp conversation in one place.
             </h1>
             <p className="mt-6 max-w-2xl text-xl leading-8 text-gray-600 dark:text-gray-300">
-              Import a WhatsApp chat by text export or browser extension and
-              preserve its messages, participants, and timestamps in a focused
-              workspace.
+              Whether it&apos;s a conversation you need to keep for yourself
+              or one your team needs on record, import a WhatsApp chat by
+              text export or browser extension and preserve its messages,
+              participants, and timestamps in a focused workspace.
             </p>
             <div className="mt-9 flex flex-col gap-4 sm:flex-row">
               <Link
@@ -125,6 +130,9 @@ export default function LandingPage() {
               extension. Additional import paths are planned as the preview
               expands.
             </p>
+            <Badge variant="planned" className="mt-3">
+              More import paths — planned
+            </Badge>
           </div>
         </div>
       </section>
