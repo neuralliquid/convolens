@@ -8,8 +8,8 @@
 - retort "content → Baton tasks" skill (narrowed by this PRD's findings; its DQ1 is resolved against this task): `c24f726d-6a3c-49a3-a466-0cbc1b32a14a`
 
 **Follow-on docs:**
-- ADR-0004 (not yet written): authorization design + `decisionQuestions` schema
-- SPEC-002 (not yet written): API/DB changes and picker UI contract
+- ADR-0004 (proposed, not yet ratified): [`../adr/0004-baton-project-routing-authorization.md`](../adr/0004-baton-project-routing-authorization.md)
+- SPEC-002: [`../specs/SPEC-002-baton-project-routing-for-action-item-candidates.md`](../specs/SPEC-002-baton-project-routing-for-action-item-candidates.md)
 
 This PRD is the ConvoLens product contract for extending an existing, shipped pipeline. It does not authorize production flags or public claims beyond what is already live. It does not scope voice-note ingestion — see §5.
 
@@ -196,8 +196,8 @@ Status key: **P** planned · **E** experimental · **B** blocked · **I** implem
 
 - [x] Baton task with PRD required (`c794ef85`)
 - [x] This PRD
-- [ ] ADR-0004 (authorization design, `decisionQuestions` schema)
-- [ ] SPEC-002 (API/DB changes, picker UI contract)
+- [x] ADR-0004 (authorization design, `decisionQuestions` schema)
+- [x] SPEC-002 (API/DB changes, picker UI contract)
 - [x] Resolve D1 — authorization model (server-derived, never client-trusted)
 - [x] Resolve D2 — audio path stays **B**, out of scope for this PRD
 - [x] Resolve D3 — fingerprint/retarget invariant confirmed, no new mechanism needed
