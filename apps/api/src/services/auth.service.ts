@@ -5,6 +5,7 @@ import { AppDataSource } from '../config/database';
 import { User } from '../db/entities/User';
 import { UserRole } from '../db/entities/User';
 import { conversationIntakeService } from './conversation-intake.service';
+import { logger } from '../utils/logger';
 
 export function issueApiToken(user: Pick<User, 'id' | 'email' | 'role'>): string {
   return jwt.sign(
@@ -66,11 +67,42 @@ export class AuthService {
    * for which no local User row exists at all, so the repository delete is
    * expected to affect 0 rows in the common case. The user's identity itself
    * (their Mystira login) is not managed by this app and is out of scope.
+   *
+   * Holds the account-deletion lock across both steps below, not just the
+   * conversation sweep: deleteAllForUser's own confirming re-read (see its
+   * docstring) only guarantees no conversation survives *while it runs* — if
+   * it released the lock on return, a save() that started just after would
+   * be free to commit a straggler conversation in the gap between that
+   * return and this method's own user-row delete, for an account the API is
+   * about to report as fully deleted. Claiming the lock here and passing it
+   * into deleteAllForUser keeps that window closed until the user row is
+   * actually gone too.
    */
   async deleteAccount(userId: string): Promise<{ deletedConversationCount: number }> {
-    const { deletedCount } = await conversationIntakeService.deleteAllForUser(userId);
-    await this.userRepository.delete({ id: userId });
-    return { deletedConversationCount: deletedCount };
+    const lock = await conversationIntakeService.holdAccountDeletionLock(userId);
+    try {
+      let deletedCount: number;
+      try {
+        ({ deletedCount } = await conversationIntakeService.deleteAllForUser(userId, lock));
+      } catch (error) {
+        logger.error('Failed to delete conversations while deleting account:', error);
+        throw error;
+      }
+
+      try {
+        await this.userRepository.delete({ id: userId });
+      } catch (error) {
+        logger.error(
+          `Conversations for user were deleted (${deletedCount}), but deleting the user row failed:`,
+          error
+        );
+        throw error;
+      }
+
+      return { deletedConversationCount: deletedCount };
+    } finally {
+      await lock.release();
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import { DataSource, type DataSourceOptions } from 'typeorm';
 
+import { AccountDeletionLock } from '../db/entities/AccountDeletionLock';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
@@ -36,6 +37,7 @@ const commonOptions = {
     BatonPublishAttempt,
     ConversationSummary,
     MessageTranscript,
+    AccountDeletionLock,
   ],
   migrations: CONVERSATION_MIGRATIONS,
   migrationsRun,

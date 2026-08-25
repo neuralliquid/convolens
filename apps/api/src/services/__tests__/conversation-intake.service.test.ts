@@ -6,12 +6,16 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource, IsNull } from 'typeorm';
 
+import { AccountDeletionLock } from '../../db/entities/AccountDeletionLock';
 import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
 import { MessageTranscript } from '../../db/entities/MessageTranscript';
 import { TicketCandidate } from '../../db/entities/TicketCandidate';
 import {
+  ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS,
+  ACCOUNT_DELETION_LOCK_LEASE_MS,
+  ConversationIntakeError,
   ConversationIntakeService,
   RAW_ARTIFACT_CLAIM_LEASE_MS,
   RAW_ARTIFACT_DELETE_GRACE_MS,
@@ -95,6 +99,7 @@ describe('ConversationIntakeService', () => {
         MessageTranscript,
         TicketCandidate,
         BatonPublishAttempt,
+        AccountDeletionLock,
       ],
     });
     await dataSource.initialize();
@@ -106,6 +111,7 @@ describe('ConversationIntakeService', () => {
     await dataSource.getRepository(TicketCandidate).clear();
     await dataSource.getRepository(ConversationMessage).clear();
     await dataSource.getRepository(ConversationIntake).clear();
+    await dataSource.getRepository(AccountDeletionLock).clear();
   });
 
   it('bounds crash recovery plus a replacement upload below caller timeouts', () => {
@@ -821,6 +827,131 @@ describe('ConversationIntakeService', () => {
     expect(stored.rawArtifactStatus).not.toBe('deleting');
     expect(stored.batonPublishClaimId).toBe('renewed-publish-claim');
     expect(stored.batonPublishClaimedAt!.getTime()).toBeGreaterThan(staleAt.getTime());
+  });
+
+  describe('deleteAllForUser', () => {
+    it('heartbeats well inside the lock lease, so a long-running pass never self-evicts', () => {
+      expect(ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS).toBeLessThan(
+        ACCOUNT_DELETION_LOCK_LEASE_MS / 2
+      );
+    });
+
+    it('deletes every conversation for the target user and releases the lock, leaving other users untouched', async () => {
+      const first = await service.save(baseInput);
+      const second = await service.save(stableInput());
+      const other = await service.save({ ...baseInput, userId: 'other-user' });
+
+      const result = await service.deleteAllForUser(baseInput.userId);
+
+      expect(result.deletedCount).toBe(2);
+      expect(await service.getForUser(baseInput.userId, first.conversation.id)).toBeNull();
+      expect(await service.getForUser(baseInput.userId, second.conversation.id)).toBeNull();
+      expect(await service.getForUser('other-user', other.conversation.id)).not.toBeNull();
+      expect(
+        await dataSource.getRepository(AccountDeletionLock).findOneBy({ userId: baseInput.userId })
+      ).toBeNull();
+    });
+
+    it('blocks a concurrent save() while its lock is active, and rolls back without creating a row', async () => {
+      const lockRepository = dataSource.getRepository(AccountDeletionLock);
+      await lockRepository.insert({
+        userId: baseInput.userId,
+        startedAt: new Date(),
+        heartbeatAt: new Date(),
+      });
+
+      await expect(service.save(baseInput)).rejects.toBeInstanceOf(ConversationIntakeError);
+      await expect(service.save(baseInput)).rejects.toMatchObject({
+        code: 'ACCOUNT_DELETION_IN_PROGRESS' satisfies ConversationIntakeError['code'],
+      });
+
+      expect(
+        await dataSource.getRepository(ConversationIntake).findOneBy({
+          userId: baseInput.userId,
+          contentHash: createConversationContentHash(baseInput),
+        })
+      ).toBeNull();
+    });
+
+    it('does not block save() once a stale lock is past its lease (self-healing)', async () => {
+      const lockRepository = dataSource.getRepository(AccountDeletionLock);
+      const staleAt = new Date(Date.now() - ACCOUNT_DELETION_LOCK_LEASE_MS - 1_000);
+      await lockRepository.insert({
+        userId: baseInput.userId,
+        startedAt: staleAt,
+        heartbeatAt: staleAt,
+      });
+
+      const saved = await service.save(baseInput);
+
+      expect(saved.duplicate).toBe(false);
+    });
+
+    it('releases the lock in a finally, so a mid-pass failure does not permanently block ingestion', async () => {
+      await service.save(baseInput);
+      const deleteForUserSpy = jest
+        .spyOn(service, 'deleteForUser')
+        .mockRejectedValueOnce(new Error('simulated deleteForUser failure'));
+
+      try {
+        await expect(service.deleteAllForUser(baseInput.userId)).rejects.toThrow(
+          'simulated deleteForUser failure'
+        );
+      } finally {
+        deleteForUserSpy.mockRestore();
+      }
+
+      expect(
+        await dataSource.getRepository(AccountDeletionLock).findOneBy({ userId: baseInput.userId })
+      ).toBeNull();
+    });
+
+    it('rechecks before declaring done, so a conversation that appears between its sweep and confirm reads is still deleted', async () => {
+      const repository = dataSource.getRepository(ConversationIntake);
+      const originalFindOne = repository.findOne.bind(repository);
+      let findOneCalls = 0;
+      const findOneSpy = jest
+        .spyOn(repository, 'findOne')
+        .mockImplementation(async (...args: Parameters<typeof originalFindOne>) => {
+          findOneCalls += 1;
+          // Call 1 = the sweep loop's "no rows left" read; call 2 = its
+          // confirming re-read. This index is load-bearing: it targets the
+          // gap between those two specific reads, so a new findOne added
+          // anywhere in the sweep path shifts it and needs updating here too.
+          // Insert directly (bypassing save()'s own lock check) to simulate a
+          // straggler landing in that exact gap — see the docstring on
+          // deleteAllForUser for why closing it requires this confirming
+          // read rather than trusting the first.
+          if (findOneCalls === 2) {
+            await repository.insert(
+              repository.create({
+                userId: baseInput.userId,
+                sourcePlatform: baseInput.sourcePlatform,
+                sourceKind: baseInput.sourceKind,
+                displayName: baseInput.displayName,
+                isGroup: baseInput.isGroup,
+                participants: baseInput.participants,
+                contentHash: 'straggler-content-hash',
+              })
+            );
+          }
+          return originalFindOne(...args);
+        });
+
+      try {
+        const result = await service.deleteAllForUser(baseInput.userId);
+        expect(result.deletedCount).toBe(1);
+      } finally {
+        findOneSpy.mockRestore();
+      }
+
+      expect(
+        await repository.findOne({ where: { userId: baseInput.userId }, select: ['id'] })
+      ).toBeNull();
+      expect(
+        await dataSource.getRepository(AccountDeletionLock).findOneBy({ userId: baseInput.userId })
+      ).toBeNull();
+    });
   });
 
   it('excludes generated source IDs from the durable content hash', () => {

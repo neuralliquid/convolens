@@ -9,7 +9,10 @@ import {
   looksLikeZipArchive,
   extractChatTextFromZip,
 } from '../services/chat-export.service.js';
-import { conversationIntakeService } from '../services/conversation-intake.service.js';
+import {
+  ConversationIntakeError,
+  conversationIntakeService,
+} from '../services/conversation-intake.service.js';
 import {
   ConversationSummaryError,
   conversationSummaryService,
@@ -468,6 +471,9 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       },
     });
   } catch (error) {
+    if (error instanceof ConversationIntakeError && error.code === 'ACCOUNT_DELETION_IN_PROGRESS') {
+      return res.status(409).json({ error: error.message, code: error.code });
+    }
     logger.error('Error processing chat export:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to process file';
     return res.status(500).json({ error: errorMessage });
@@ -589,6 +595,10 @@ router.post('/extension', authenticateToken, async (req, res) => {
       reconciliationRequired: saved.reconciliationRequired,
     });
   } catch (error) {
+    if (error instanceof ConversationIntakeError && error.code === 'ACCOUNT_DELETION_IN_PROGRESS') {
+      metrics.trackExtraction(false, 'chrome-extension');
+      return res.status(409).json({ error: error.message, code: error.code });
+    }
     logger.error('Error processing extension chat data:', error);
     metrics.trackExtraction(false, 'chrome-extension');
     const errorMessage = error instanceof Error ? error.message : 'Failed to process chat data';

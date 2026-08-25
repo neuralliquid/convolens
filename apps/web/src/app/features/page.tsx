@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FileText, History, LogIn, MessageSquareText } from "lucide-react";
 import PageWrapper from "../page-wrapper";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -41,12 +42,17 @@ export default function FeaturesPage() {
               Private preview
             </p>
             <h1 className="mt-3 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              Preserve a WhatsApp support conversation and its context.
+              Preserve an important WhatsApp conversation and its context.
             </h1>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">
               ConvoLens provides two authenticated WhatsApp import paths today,
               with additional sources planned as validated workflows are added.
+              It works the same way whether the conversation is one you need
+              to keep for yourself or one your team needs on record.
             </p>
+            <Badge variant="planned" className="mt-4">
+              More import sources — planned
+            </Badge>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Button asChild variant="primary">
                 <Link href="/login?redirectTo=/dashboard/import">
@@ -72,9 +78,7 @@ export default function FeaturesPage() {
                       <div className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/10 text-primary">
                         <Icon className="h-5 w-5" />
                       </div>
-                      <span className="rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground">
-                        Private preview
-                      </span>
+                      <Badge variant="preview">Private preview</Badge>
                     </div>
                     <CardTitle className="text-xl">{feature.title}</CardTitle>
                   </CardHeader>

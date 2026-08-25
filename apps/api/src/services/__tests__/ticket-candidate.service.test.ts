@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { DataSource } from 'typeorm';
 
+import { AccountDeletionLock } from '../../db/entities/AccountDeletionLock';
 import { BatonPublishAttempt } from '../../db/entities/BatonPublishAttempt';
 import { ConversationIntake } from '../../db/entities/ConversationIntake';
 import { ConversationMessage } from '../../db/entities/ConversationMessage';
@@ -93,6 +94,7 @@ describe('TicketCandidateService', () => {
         MessageTranscript,
         TicketCandidate,
         BatonPublishAttempt,
+        AccountDeletionLock,
       ],
     });
     await dataSource.initialize();

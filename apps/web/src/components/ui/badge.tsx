@@ -15,6 +15,16 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        // Brand-tinted status chip for the current private-preview stage of
+        // the product (as opposed to a single feature). Keep this visually
+        // distinct from `planned` below so "what stage the product is in"
+        // never reads the same as "what this specific feature's status is".
+        preview:
+          "border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300",
+        // Muted, low-emphasis chip for a capability that is not implemented
+        // yet. Deliberately quieter than `preview` so it reads as
+        // informational rather than as a call to action.
+        planned: "border-transparent bg-muted text-muted-foreground",
       },
     },
     defaultVariants: {

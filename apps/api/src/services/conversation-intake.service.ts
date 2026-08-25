@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 
 import { AppDataSource } from '../config/database';
+import { AccountDeletionLock } from '../db/entities/AccountDeletionLock';
 import { BatonPublishAttempt } from '../db/entities/BatonPublishAttempt';
 import {
   ConversationIntake,
@@ -19,6 +20,7 @@ import {
 } from '../db/entities/ConversationIntake';
 import { ConversationMessage } from '../db/entities/ConversationMessage';
 import { TicketCandidate } from '../db/entities/TicketCandidate';
+import { logger } from '../utils/logger';
 
 import { AZURE_UPLOAD_TOTAL_TIMEOUT_MS, StorageService } from './storage/storage.service';
 import { BATON_AMBIGUOUS_HOLD_MS, BATON_PUBLISH_LEASE_MS } from './ticket-candidate.service';
@@ -29,8 +31,29 @@ const VISUAL_MEDIA_FIX_VERSION = '1.0.13';
 // claim can be reclaimed and persisted inside the callers' 60-second window.
 export const RAW_ARTIFACT_CLAIM_LEASE_MS = 30_000;
 export const RAW_ARTIFACT_DELETE_GRACE_MS = 2_000;
+// Bounds how quickly a crashed deleteAllForUser self-heals, not how long one
+// is allowed to run — deleteAllForUser heartbeats this on a timer independent
+// of its deletion loop's iterations (see ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS),
+// because a single row's cleanup can legitimately sleep past this lease while
+// it waits out an upload-claim grace window or retries a slow blob-storage
+// delete. Tying the heartbeat to iteration boundaries instead would let the
+// lease expire mid-row and let a concurrent save() self-heal past an active
+// deletion — exactly the bug this lock exists to close.
+export const ACCOUNT_DELETION_LOCK_LEASE_MS = 30_000;
+export const ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS = 10_000;
 const compatibilityQueues = new Map<string, Promise<void>>();
 const rawArtifactQueues = new Map<string, Promise<void>>();
+
+export type ConversationIntakeErrorCode = 'ACCOUNT_DELETION_IN_PROGRESS';
+
+export class ConversationIntakeError extends Error {
+  constructor(
+    public readonly code: ConversationIntakeErrorCode,
+    message: string
+  ) {
+    super(message);
+  }
+}
 
 export function createPostgresCompatibilityAdvisoryLockKey(key: string): string {
   return createHash('sha256').update(key, 'utf8').digest('hex');
@@ -502,6 +525,100 @@ function isContentHashUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+function isAccountDeletionLockUniqueConstraintError(error: unknown): boolean {
+  if (!(error instanceof QueryFailedError)) return false;
+  const driverError = error.driverError as { code?: string; message?: string };
+  // account_deletion_locks has exactly one constraint — its userId primary
+  // key — so any unique-violation on this table must be that collision.
+  if (driverError.code === '23505') return true;
+  return Boolean(
+    driverError.code === 'SQLITE_CONSTRAINT' &&
+    /account_deletion_locks/i.test(driverError.message || error.message)
+  );
+}
+
+/**
+ * Throws if userId has an active account-deletion lock, otherwise resolves.
+ * Called both before save() builds its insert and again right before its
+ * transaction commits — see the docstring on deleteAllForUser for why the
+ * pair closes the race against a concurrent deletion rather than merely
+ * narrowing it. A stale lock (heartbeat older than the lease) is treated as
+ * an abandoned/crashed deletion and ignored, matching the self-healing
+ * lease convention already used for RAW_ARTIFACT_CLAIM_LEASE_MS and
+ * BATON_PUBLISH_LEASE_MS.
+ */
+async function assertAccountDeletionNotInProgress(
+  manager: EntityManager,
+  userId: string
+): Promise<void> {
+  const lock = await manager.getRepository(AccountDeletionLock).findOneBy({ userId });
+  if (!lock) return;
+  const isActive = lock.heartbeatAt.getTime() > Date.now() - ACCOUNT_DELETION_LOCK_LEASE_MS;
+  if (!isActive) return;
+  throw new ConversationIntakeError(
+    'ACCOUNT_DELETION_IN_PROGRESS',
+    'Account deletion is in progress for this user; retry later'
+  );
+}
+
+/**
+ * Claims the account-deletion lock for userId via compare-and-swap, so two
+ * concurrent deleteAllForUser calls for the same user (e.g. a double-clicked
+ * delete button) can't both proceed. An active existing lock is a hard
+ * failure; a stale one (an earlier deletion that crashed before releasing
+ * it) is taken over in place, the same reclaim-on-stale-lease pattern used
+ * throughout this file.
+ *
+ * Returns the claim's startedAt, which the caller must use to scope its
+ * heartbeat updates and its eventual release (`{ userId, startedAt }`)
+ * rather than `{ userId }` alone. Without that, a caller that loses
+ * ownership — its own claim went stale and a second deleteAllForUser took
+ * over — would keep heartbeating or, worse, delete the successor's lock
+ * instead of its own, defeating the mutual exclusion this function exists
+ * to provide.
+ */
+async function claimAccountDeletionLock(dataSource: DataSource, userId: string): Promise<Date> {
+  const lockRepository = dataSource.getRepository(AccountDeletionLock);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const existing = await lockRepository.findOneBy({ userId });
+    if (!existing) {
+      const startedAt = new Date();
+      try {
+        await lockRepository.insert({ userId, startedAt, heartbeatAt: startedAt });
+        return startedAt;
+      } catch (error) {
+        if (!isAccountDeletionLockUniqueConstraintError(error)) throw error;
+        continue;
+      }
+    }
+    const isActive = existing.heartbeatAt.getTime() > Date.now() - ACCOUNT_DELETION_LOCK_LEASE_MS;
+    if (isActive) {
+      throw new ConversationIntakeError(
+        'ACCOUNT_DELETION_IN_PROGRESS',
+        'Account deletion is already in progress for this user'
+      );
+    }
+    const startedAt = new Date();
+    const taken = await lockRepository.update(
+      { userId, heartbeatAt: existing.heartbeatAt },
+      { startedAt, heartbeatAt: startedAt }
+    );
+    if (taken.affected === 1) return startedAt;
+  }
+  throw new Error('Could not claim the account deletion lock; too much concurrent contention');
+}
+
+/**
+ * A held account-deletion lock, returned by
+ * ConversationIntakeService.holdAccountDeletionLock. The heartbeat keeps
+ * running until release() is called; callers must release it — including on
+ * a thrown error — or the lock only self-heals after
+ * ACCOUNT_DELETION_LOCK_LEASE_MS.
+ */
+export interface AccountDeletionLockHandle {
+  release(): Promise<void>;
+}
+
 export class ConversationIntakeService {
   constructor(
     private readonly dataSource: DataSource = AppDataSource,
@@ -887,6 +1004,7 @@ export class ConversationIntakeService {
     try {
       return await withLocalCompatibilityLock(compatibilityLockKey, () =>
         this.dataSource.transaction(async (manager) => {
+          await assertAccountDeletionNotInProgress(manager, input.userId);
           if (manager.connection.options.type === 'postgres') {
             await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
               createPostgresCompatibilityAdvisoryLockKey(compatibilityLockKey),
@@ -1051,6 +1169,13 @@ export class ConversationIntakeService {
           if (messages.length > 0) {
             await manager.save(messages, { chunk: 500 });
           }
+
+          // Re-check right before the transaction commits. If a concurrent
+          // deleteAllForUser claimed the lock after our first check but
+          // before this one, roll back this insert instead of letting it
+          // land after account deletion already reported complete — see the
+          // docstring on deleteAllForUser for the full mechanism.
+          await assertAccountDeletionNotInProgress(manager, input.userId);
 
           savedIntake.messages = messages;
           return {
@@ -1260,6 +1385,46 @@ export class ConversationIntakeService {
   }
 
   /**
+   * Claims the durable per-user AccountDeletionLock and keeps it heartbeated
+   * until release() is called. Exposed separately from deleteAllForUser so a
+   * caller that does more than delete conversations — AuthService.deleteAccount
+   * also deletes the user row — can hold the same lock across all of it:
+   * deleteAllForUser's own confirming re-read (see its docstring) only
+   * guarantees no conversation survives the *conversation* sweep, not that
+   * nothing lands between deleteAllForUser returning and whatever the caller
+   * does next. Passing the returned handle into deleteAllForUser makes it
+   * skip claiming (and releasing) its own lock, trusting the caller's instead.
+   *
+   * Callers must release() the handle — including on a thrown error, e.g. in
+   * a `finally` — or the lock only self-heals after
+   * ACCOUNT_DELETION_LOCK_LEASE_MS.
+   */
+  async holdAccountDeletionLock(userId: string): Promise<AccountDeletionLockHandle> {
+    const lockRepository = this.dataSource.getRepository(AccountDeletionLock);
+    const claimedAt = await claimAccountDeletionLock(this.dataSource, userId);
+    const heartbeat = setInterval(() => {
+      lockRepository
+        .update({ userId, startedAt: claimedAt }, { heartbeatAt: new Date() })
+        .catch((error) => logger.error('Account deletion lock heartbeat failed:', error));
+    }, ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS);
+    heartbeat.unref?.();
+
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        clearInterval(heartbeat);
+        try {
+          await lockRepository.delete({ userId, startedAt: claimedAt });
+        } catch (error) {
+          logger.error('Failed to release account deletion lock:', error);
+        }
+      },
+    };
+  }
+
+  /**
    * Deletes every conversation owned by a user, for account deletion. Reuses
    * deleteForUser per row so each conversation gets the same storage-artifact
    * cleanup and Baton-publish-lease safety it gets on an individual delete.
@@ -1275,25 +1440,76 @@ export class ConversationIntakeService {
    * conversation), which isn't a failure, so we move on to the next row
    * rather than abandoning the rest of the user's data.
    *
-   * Known gap: this loop declares completion as soon as one lookup finds no
-   * rows left. It does not hold a lock against `save()`, so a conversation
-   * actively being ingested (e.g. an in-flight extension sync for the same
-   * userId) can commit after that final lookup and survive account
-   * deletion. Closing this needs a durable per-user lifecycle state that
-   * `save()` checks inside its own write transaction — a real change to a
-   * method that already layers a local lock, a Postgres advisory lock, and
-   * an in-transaction recheck for its dedup logic, so it isn't a quick
-   * follow-on here. Tracked separately rather than rushed into this path.
+   * Holds a durable per-user AccountDeletionLock for the run so a concurrent
+   * save() for the same user can't commit a straggler conversation after
+   * this loop's last "no rows left" read. save() checks the lock both
+   * before it builds its insert and again right before its transaction
+   * commits; this loop confirms the account is empty a second time before
+   * releasing the lock rather than trusting the first empty read.
+   *
+   * Neither check alone would close the race: save()'s insert isn't visible
+   * to this loop until save() commits, and this loop releasing the lock
+   * isn't visible to save() until save()'s next read. Together, the only way
+   * a straggler survives is if this loop's confirming re-read lands *before*
+   * save()'s pre-commit check, and save()'s pre-commit check then finds the
+   * lock already released — i.e. the lock's release would have to land in
+   * the sub-millisecond gap between save()'s own check and its commit, and
+   * this loop's confirming re-read would separately have to lose a race it's
+   * one full round-trip ahead in. That's not a window either side can
+   * reliably hit, unlike the single-read version this replaces.
+   *
+   * This closure relies on save()'s transaction running under READ COMMITTED
+   * (Postgres's default), so its pre-commit read observes a lock claimed by
+   * another session after the transaction began. Under snapshot isolation
+   * (e.g. REPEATABLE READ), the pre-commit read would return the same
+   * snapshot as the first check and become a no-op, reopening the race this
+   * paragraph just closed.
+   *
+   * The lock is heartbeated on a timer independent of this loop's
+   * iterations, not refreshed once per row: a single deleteForUser call can
+   * legitimately run well past ACCOUNT_DELETION_LOCK_LEASE_MS while it waits
+   * out an upload-claim grace window or retries a slow blob-storage delete
+   * (see ACCOUNT_DELETION_HEARTBEAT_INTERVAL_MS). Tying the heartbeat to
+   * iteration boundaries instead would let the lease expire mid-row and let
+   * a concurrent save() self-heal past an active deletion.
+   *
+   * By default (no existingLock) this claims and releases its own lock — the
+   * lock is released in a `finally` — including when deleteForUser throws
+   * mid-pass — so a failed attempt doesn't permanently block ingestion; a
+   * retried or crash-recovered deleteAllForUser only waits out the lease. A
+   * caller that needs the lock held past this method's return (e.g. to also
+   * delete the user row before anything can self-heal past this deletion)
+   * should claim it itself via holdAccountDeletionLock and pass the handle
+   * in — deleteAllForUser then neither claims nor releases it, leaving both
+   * entirely to the caller.
    */
-  async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
+  async deleteAllForUser(
+    userId: string,
+    existingLock?: AccountDeletionLockHandle
+  ): Promise<{ deletedCount: number }> {
     const repository = this.dataSource.getRepository(ConversationIntake);
     let deletedCount = 0;
 
-    for (;;) {
-      const next = await repository.findOne({ where: { userId }, select: ['id'] });
-      if (!next) break;
-      const deleted = await this.deleteForUser(userId, next.id);
-      if (deleted) deletedCount += 1;
+    const lock = existingLock || (await this.holdAccountDeletionLock(userId));
+
+    try {
+      for (;;) {
+        const next = await repository.findOne({ where: { userId }, select: ['id'] });
+        if (!next) {
+          // Confirm emptiness a second time before declaring done — see the
+          // docstring above for why this is what actually closes the race
+          // against a concurrent save(), rather than merely narrowing it.
+          const straggler = await repository.findOne({ where: { userId }, select: ['id'] });
+          if (!straggler) break;
+          continue;
+        }
+        const deleted = await this.deleteForUser(userId, next.id);
+        if (deleted) deletedCount += 1;
+      }
+    } finally {
+      if (!existingLock) {
+        await lock.release();
+      }
     }
 
     return { deletedCount };
