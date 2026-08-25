@@ -163,19 +163,24 @@ export async function extractChatTextFromZip(
  */
 export async function parseWhatsAppExport(fileContent: string): Promise<ChatExportData> {
   try {
-    const lines = fileContent.split(/\r?\n/).filter((line) => line.trim() !== '');
+    // Number lines before filtering blanks — otherwise lineNumber would
+    // index into the filtered array instead of the source file, and every
+    // logged line number after the first blank line would be wrong.
+    const lines = fileContent
+      .split(/\r?\n/)
+      .map((line, index) => ({ line, lineNumber: index + 1 }))
+      .filter((entry) => entry.line.trim() !== '');
     const participants = new Set<string>();
     const messages: ChatMessage[] = [];
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
+    for (const { line, lineNumber } of lines) {
       const messageMatch = IOS_MESSAGE_REGEX.exec(line) || ANDROID_MESSAGE_REGEX.exec(line);
       const systemMatch = messageMatch
         ? null
         : IOS_SYSTEM_REGEX.exec(line) || ANDROID_SYSTEM_REGEX.exec(line);
       if (!messageMatch && !systemMatch) {
-        logger.warn(`Skipping malformed line: ${line}`);
+        // Never log `line` itself — it's uploaded conversation content.
+        logger.warn(`Skipping malformed line ${lineNumber} (length ${line.length})`);
         continue;
       }
 
@@ -183,7 +188,7 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
       // matches the broader system-message format. Keep it malformed instead
       // of persisting it as a message from System.
       if (systemMatch?.groups!.content.trimStart().startsWith(':')) {
-        logger.warn(`Skipping malformed line with empty sender: ${line}`);
+        logger.warn(`Skipping malformed line ${lineNumber} with empty sender`);
         continue;
       }
 
@@ -218,13 +223,13 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
         );
 
         if (isNaN(timestamp.getTime())) {
-          logger.warn(`Invalid timestamp in line: ${line}`);
+          logger.warn(`Invalid timestamp in line ${lineNumber}`);
           continue;
         }
 
         const trimmedSender = sender.trim();
         if (!trimmedSender) {
-          logger.warn(`Empty sender in line: ${line}`);
+          logger.warn(`Empty sender in line ${lineNumber}`);
           continue;
         }
 
@@ -249,7 +254,7 @@ export async function parseWhatsAppExport(fileContent: string): Promise<ChatExpo
           mediaUrl: isMedia ? undefined : undefined,
         });
       } catch (error) {
-        logger.warn(`Error processing line: ${line}`, error);
+        logger.warn(`Error processing line ${lineNumber}`, error);
         continue;
       }
     }

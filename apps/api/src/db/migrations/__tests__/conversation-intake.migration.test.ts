@@ -9,6 +9,7 @@ import { AddRawArtifactCleanupKeys1754100000000 } from '../1754100000000-AddRawA
 import { AddTicketCandidatesAndBatonAttempts1754200000000 } from '../1754200000000-AddTicketCandidatesAndBatonAttempts';
 import { AddConversationSummaries1754300000000 } from '../1754300000000-AddConversationSummaries';
 import { AddMessageTranscripts1754400000000 } from '../1754400000000-AddMessageTranscripts';
+import { AddAccountDeletionLocks1754500000000 } from '../1754500000000-AddAccountDeletionLocks';
 
 describe('CreateConversationIntake migration', () => {
   let dataSource: DataSource;
@@ -28,6 +29,7 @@ describe('CreateConversationIntake migration', () => {
         AddTicketCandidatesAndBatonAttempts1754200000000,
         AddConversationSummaries1754300000000,
         AddMessageTranscripts1754400000000,
+        AddAccountDeletionLocks1754500000000,
       ],
     });
     await dataSource.initialize();
@@ -47,6 +49,7 @@ describe('CreateConversationIntake migration', () => {
       AddTicketCandidatesAndBatonAttempts1754200000000,
       AddConversationSummaries1754300000000,
       AddMessageTranscripts1754400000000,
+      AddAccountDeletionLocks1754500000000,
     ]);
     const queryRunner = dataSource.createQueryRunner();
     const intakeTable = await queryRunner.getTable('conversation_intakes');
@@ -56,6 +59,7 @@ describe('CreateConversationIntake migration', () => {
     const publishAttemptTable = await queryRunner.getTable('baton_publish_attempts');
     const summaryTable = await queryRunner.getTable('conversation_summaries');
     const transcriptTable = await queryRunner.getTable('message_transcripts');
+    const accountDeletionLockTable = await queryRunner.getTable('account_deletion_locks');
     await queryRunner.release();
 
     expect(intakeTable).toBeDefined();
@@ -65,6 +69,9 @@ describe('CreateConversationIntake migration', () => {
     expect(publishAttemptTable).toBeDefined();
     expect(summaryTable).toBeDefined();
     expect(transcriptTable).toBeDefined();
+    expect(accountDeletionLockTable).toBeDefined();
+    expect(accountDeletionLockTable?.findColumnByName('userId')?.isPrimary).toBe(true);
+    expect(accountDeletionLockTable?.findColumnByName('heartbeatAt')).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactStatus')).toBeDefined();
     expect(intakeTable?.findColumnByName('rawArtifactCleanupKeys')).toBeDefined();
     expect(intakeTable?.findColumnByName('batonPublishClaimId')).toBeDefined();
