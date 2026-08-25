@@ -1,6 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
+import { isIdTokenFresh } from "@convolens/contexts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -42,7 +43,14 @@ function LoginPageContent() {
         if (!mounted) return;
 
         setMystiraConfigured(Boolean(runtimeStatus?.mystiraConfigured));
-        if (session?.user) {
+        // `session.user` alone isn't proof the session is usable: the
+        // NextAuth cookie outlives the Mystira ID token, so a stale-token
+        // session can still carry a truthy `user`. Bouncing on that signal
+        // alone is what caused the redirect loop — the user lands back on
+        // the page whose API call will 401 with "needs to be refreshed"
+        // and has no way back to an explicit sign-in. Require a token that
+        // is actually still fresh before treating the visit as redundant.
+        if (session?.user && isIdTokenFresh(session.idToken)) {
           router.replace(redirectPath);
         }
       })
