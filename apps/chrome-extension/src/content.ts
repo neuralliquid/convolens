@@ -258,16 +258,20 @@ let launcherCaptureAuthGeneration = 0;
 // instance's teardown on `window` so a fresh injection can retire the old
 // one before starting.
 //
-// `cleanup()` also cancels any in-progress capture (it was written for real
-// `beforeunload`, where that's correct — the tab is gone). Retiring for
-// re-injection is not a real unload: the page is still here and the user's
-// capture may still be running, so cancelling it here would silently
-// discard in-progress work the user never asked to stop. `cleanup` takes a
-// `retiring` flag that skips only the cancel-message send — every other
-// teardown step (observers, listeners, session state) still runs in full,
-// so the new instance always starts clean and always ends up with a
-// working listener, even if the prior instance's own messaging was already
-// broken by the same event that triggered the re-injection.
+// `cleanup()` also cancels any in-progress capture. A re-injection starts a
+// fresh module scope, so the retired instance's in-memory capture buffer
+// (`guidedCaptureSession`, `activeCaptureOperation` — accumulated messages,
+// DOM observer, etc.) cannot be handed off to the new instance; there is no
+// channel to transfer it over. The capture is lost either way, so the only
+// choice is whether the background is told. Suppressing the cancel message
+// on retirement doesn't preserve anything — it leaves the background
+// thinking the operation is still "collecting" with a local buffer that no
+// longer exists anywhere, so a later finalize request fails against state
+// that's already gone. `cleanup` still takes a `retiring` flag, but it now
+// only picks the cancellation reason text (a real unload's "the tab
+// unloaded" would be false here) — the cancel-message send itself, and
+// every other teardown step, run unconditionally, so the new instance
+// always starts clean and the background is always told the truth.
 declare global {
   interface Window {
     __convoLensCleanup?: (options?: { retiring?: boolean }) => void;
@@ -357,15 +361,19 @@ function handleBeforeUnload(): void {
  * injection is retiring this instance (see the cross-injection guard
  * above). `options.retiring` is only ever passed explicitly by that guard;
  * a real unload always goes through `handleBeforeUnload`, which calls this
- * with no arguments.
+ * with no arguments. It only changes the cancellation reason text — an
+ * in-progress capture's local buffer is gone in both cases (see the guard
+ * comment above), so the background is always told, unconditionally.
  */
 function cleanup(options?: { retiring?: boolean }): void {
   const operation = activeCaptureOperation;
-  if (operation && operation.state !== "uploading" && !options?.retiring) {
+  if (operation && operation.state !== "uploading") {
     sendRuntimeLifecycleMessage({
       action: "CANCEL_CAPTURE_OPERATION",
       operationId: operation.operationId,
-      reason: "The WhatsApp tab unloaded during capture.",
+      reason: options?.retiring
+        ? "ConvoLens was reloaded during capture. Please restart the capture."
+        : "The WhatsApp tab unloaded during capture.",
     });
   }
   if (guidedCaptureSession) {

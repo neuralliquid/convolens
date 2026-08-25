@@ -114,25 +114,29 @@ test("retires a prior content-script instance unconditionally instead of deferri
   assert.ok(contentSource.includes("priorCleanup({ retiring: true });"));
 });
 
-test("cancels an in-progress capture on a real unload but not on cross-injection retirement", () => {
+test("cancels an in-progress capture on both a real unload and cross-injection retirement, with a truthful reason for each", () => {
   const cleanupBody = contentSource.match(
     /function cleanup\(options\?: \{ retiring\?: boolean \}\): void \{[\s\S]*?\n\}/,
   )?.[0];
   assert.ok(cleanupBody, "expected to find the cleanup() function body");
-  // The cancel-message send must be the only step gated on `retiring` --
-  // every other teardown step (observers, listeners, session state) has to
-  // run unconditionally so the retired instance's own listener is always
-  // gone before the new instance registers its own.
+  // A re-injection starts a fresh module scope, so the retired instance's
+  // capture buffer can never be handed off to the new one -- the capture is
+  // lost either way. The cancel-message send must therefore be
+  // unconditional; `retiring` only selects which reason string is sent, so
+  // the background is never left thinking a "collecting" operation still
+  // has a live buffer somewhere.
   assert.ok(
     cleanupBody!.includes(
-      'if (operation && operation.state !== "uploading" && !options?.retiring) {',
+      'if (operation && operation.state !== "uploading") {',
     ),
   );
-  // Two occurrences: the `retiring` field in the function's own signature,
-  // plus the one guard condition above -- nowhere else in the body reads it.
-  assert.equal(cleanupBody!.match(/retiring/g)?.length, 2);
+  assert.doesNotMatch(cleanupBody!, /!options\?\.retiring/);
+  assert.match(
+    cleanupBody!,
+    /reason: options\?\.retiring\s*\?\s*"ConvoLens was reloaded during capture\. Please restart the capture\."\s*:\s*"The WhatsApp tab unloaded during capture\."/,
+  );
   // A real unload goes through this zero-arg wrapper, so `options` is
-  // always undefined there and the cancel branch above always runs.
+  // always undefined there and the "tab unloaded" reason is always sent.
   assert.match(
     contentSource,
     /function handleBeforeUnload\(\): void \{\s*cleanup\(\);\s*\}/,
