@@ -98,3 +98,47 @@ test("classifies upstream HTTP 429 as retry-required", () => {
   assert.match(backgroundSource, /error\.status === 429/);
   assert.match(backgroundSource, /retryRequired: true/);
 });
+
+test("retires a prior content-script instance unconditionally instead of deferring init", () => {
+  // An earlier revision skipped this instance's own init entirely
+  // (`hasActiveCapture`) when the incumbent had a capture running, which
+  // could leave a tab with zero working onMessage listeners if the
+  // incumbent's own extension context was already invalidated. It always
+  // retires the incumbent now instead, so a fresh injection always ends up
+  // with a working listener.
+  assert.doesNotMatch(contentSource, /hasActiveCapture/);
+  assert.ok(
+    contentSource.includes("const priorCleanup = window.__convoLensCleanup;"),
+  );
+  assert.ok(contentSource.includes("  if (priorCleanup) {"));
+  assert.ok(contentSource.includes("priorCleanup({ retiring: true });"));
+});
+
+test("cancels an in-progress capture on both a real unload and cross-injection retirement, with a truthful reason for each", () => {
+  const cleanupBody = contentSource.match(
+    /function cleanup\(options\?: \{ retiring\?: boolean \}\): void \{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(cleanupBody, "expected to find the cleanup() function body");
+  // A re-injection starts a fresh module scope, so the retired instance's
+  // capture buffer can never be handed off to the new one -- the capture is
+  // lost either way. The cancel-message send must therefore be
+  // unconditional; `retiring` only selects which reason string is sent, so
+  // the background is never left thinking a "collecting" operation still
+  // has a live buffer somewhere.
+  assert.ok(
+    cleanupBody!.includes(
+      'if (operation && operation.state !== "uploading") {',
+    ),
+  );
+  assert.doesNotMatch(cleanupBody!, /!options\?\.retiring/);
+  assert.match(
+    cleanupBody!,
+    /reason: options\?\.retiring\s*\?\s*"ConvoLens was reloaded during capture\. Please restart the capture\."\s*:\s*"The WhatsApp tab unloaded during capture\."/,
+  );
+  // A real unload goes through this zero-arg wrapper, so `options` is
+  // always undefined there and the "tab unloaded" reason is always sent.
+  assert.match(
+    contentSource,
+    /function handleBeforeUnload\(\): void \{\s*cleanup\(\);\s*\}/,
+  );
+});

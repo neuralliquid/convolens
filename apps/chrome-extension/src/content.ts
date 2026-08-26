@@ -244,14 +244,70 @@ let launcherModeChangeGeneration = 0;
 let launcherCaptureAuthGeneration = 0;
 
 // =============================================================================
+// Cross-injection guard
+// =============================================================================
+//
+// `isInitialized` above only guards against double-init *within one script
+// instance*. Chrome can re-inject content.js into an already-open WhatsApp
+// tab (extension reload, service-worker restart) without ever firing
+// `beforeunload`, which leaves the previous instance's MutationObserver and
+// onMessage listener running. The new instance then registers its own copy
+// of both, and the two run side by side — duplicate "Chat changed" logs,
+// and "message channel closed" errors once the orphaned instance's async
+// handlers try to respond on a listener nobody torn down. Stash the active
+// instance's teardown on `window` so a fresh injection can retire the old
+// one before starting.
+//
+// `cleanup()` also cancels any in-progress capture. A re-injection starts a
+// fresh module scope, so the retired instance's in-memory capture buffer
+// (`guidedCaptureSession`, `activeCaptureOperation` — accumulated messages,
+// DOM observer, etc.) cannot be handed off to the new instance; there is no
+// channel to transfer it over. The capture is lost either way, so the only
+// choice is whether the background is told. Suppressing the cancel message
+// on retirement doesn't preserve anything — it leaves the background
+// thinking the operation is still "collecting" with a local buffer that no
+// longer exists anywhere, so a later finalize request fails against state
+// that's already gone. `cleanup` still takes a `retiring` flag, but it now
+// only picks the cancellation reason text (a real unload's "the tab
+// unloaded" would be false here) — the cancel-message send itself, and
+// every other teardown step, run unconditionally, so the new instance
+// always starts clean and the background is always told the truth.
+declare global {
+  interface Window {
+    __convoLensCleanup?: (options?: { retiring?: boolean }) => void;
+  }
+}
+
+// =============================================================================
 // Initialization
 // =============================================================================
 
 async function init(): Promise<void> {
-  // Guard against multiple initializations
+  // Guard against multiple initializations within this script instance.
   if (isInitialized) {
     console.log("[ConvoLens] Already initialized, skipping");
     return;
+  }
+
+  // Guard against a stale instance from a prior injection still being live.
+  const priorCleanup = window.__convoLensCleanup;
+  if (priorCleanup) {
+    console.log(
+      "[ConvoLens] Prior instance detected, tearing it down before re-init",
+    );
+    try {
+      // cleanup() calls chrome.runtime.onMessage.removeListener(...), which
+      // throws if the prior instance's extension context was already
+      // invalidated (e.g. a real service-worker restart, not just a content
+      // script re-injection). Best-effort: a throw here must not abort this
+      // instance's own init before it registers its own listener.
+      priorCleanup({ retiring: true });
+    } catch (error) {
+      console.warn(
+        "[ConvoLens] Prior instance teardown failed, continuing init anyway",
+        error,
+      );
+    }
   }
 
   console.log("[ConvoLens] Content script initializing...");
@@ -267,14 +323,21 @@ async function init(): Promise<void> {
   // reload, even while the page UI is still settling.
   chrome.runtime.onMessage.addListener(handleMessage);
   isInitialized = true;
-  window.addEventListener("beforeunload", cleanup);
+  window.__convoLensCleanup = cleanup;
+  window.addEventListener("beforeunload", handleBeforeUnload);
 
   // Wait for WhatsApp to fully load
   await waitForWhatsAppReady();
+  // A fresher injection may have torn this instance down (isInitialized is
+  // flipped back to false by cleanup()) while we were waiting — bail out
+  // rather than resume and clobber the newer instance's DOM/listeners.
+  if (!isInitialized) return;
 
   // Inject UI elements
   await injectUI();
+  if (!isInitialized) return;
   await refreshLauncherFromValidatedAuthentication().catch(() => undefined);
+  if (!isInitialized) return;
   window.addEventListener("resize", handleViewportResize);
 
   // Observe chat navigation
@@ -284,15 +347,33 @@ async function init(): Promise<void> {
 }
 
 /**
- * Cleanup resources when page unloads
+ * `beforeunload` listener. A thin, strictly zero-arg wrapper because
+ * `cleanup` itself now takes an options object — DOM's `EventListener` type
+ * doesn't structurally match that, and this call must always mean a real
+ * unload (never `retiring`), so no options are threaded through here.
  */
-function cleanup(): void {
+function handleBeforeUnload(): void {
+  cleanup();
+}
+
+/**
+ * Cleanup resources when the page unloads, or when a fresher content-script
+ * injection is retiring this instance (see the cross-injection guard
+ * above). `options.retiring` is only ever passed explicitly by that guard;
+ * a real unload always goes through `handleBeforeUnload`, which calls this
+ * with no arguments. It only changes the cancellation reason text — an
+ * in-progress capture's local buffer is gone in both cases (see the guard
+ * comment above), so the background is always told, unconditionally.
+ */
+function cleanup(options?: { retiring?: boolean }): void {
   const operation = activeCaptureOperation;
   if (operation && operation.state !== "uploading") {
     sendRuntimeLifecycleMessage({
       action: "CANCEL_CAPTURE_OPERATION",
       operationId: operation.operationId,
-      reason: "The WhatsApp tab unloaded during capture.",
+      reason: options?.retiring
+        ? "ConvoLens was reloaded during capture. Please restart the capture."
+        : "The WhatsApp tab unloaded during capture.",
     });
   }
   if (guidedCaptureSession) {
@@ -305,7 +386,18 @@ function cleanup(): void {
   }
   chrome.runtime.onMessage.removeListener(handleMessage);
   window.removeEventListener("resize", handleViewportResize);
+  // removeEventListener is keyed on function identity, so this only ever
+  // removes this instance's own beforeunload registration — never a newer
+  // instance's, even when this cleanup ran because that newer instance
+  // tore this one down mid-init.
+  window.removeEventListener("beforeunload", handleBeforeUnload);
   isInitialized = false;
+  // Only clear the cross-injection guard if it still points at this
+  // instance — a newer instance may already have overwritten it if this
+  // cleanup ran because that newer instance tore this one down.
+  if (window.__convoLensCleanup === cleanup) {
+    window.__convoLensCleanup = undefined;
+  }
   console.log("[ConvoLens] Cleanup completed");
 }
 
@@ -2525,13 +2617,22 @@ function startGuidedWindowDrain(session: GuidedCaptureSession): void {
     ) {
       const stopReason = session.pendingStopReason;
       session.pendingStopReason = undefined;
-      void chrome.runtime.sendMessage(
+      sendRuntimeLifecycleMessage(
         session.mode === "automatic"
           ? {
               action: "CONTROL_AUTOMATIC_CAPTURE_OPERATION",
               operationId: session.operationId,
               command: "stop",
-              stopReason,
+              // Every site that sets pendingStopReason on an "automatic"
+              // session already restricts it to an "automatic-*" reason
+              // (see runAutomaticCapture and the limitReached/
+              // consecutiveFailures branches above); ExtensionMessage's
+              // stopReason for this action is typed narrower than the
+              // shared CaptureStopReason union, so assert the invariant.
+              stopReason: stopReason as Extract<
+                CaptureStopReason,
+                `automatic-${string}`
+              >,
             }
           : {
               action: "STOP_GUIDED_CAPTURE_OPERATION",
@@ -2691,7 +2792,7 @@ function activateGuidedCaptureOperation(operationId: string): void {
   });
   session.timeoutId = window.setTimeout(() => {
     if (guidedCaptureSession?.operationId !== operationId) return;
-    void chrome.runtime.sendMessage({
+    sendRuntimeLifecycleMessage({
       action: "STOP_GUIDED_CAPTURE_OPERATION",
       operationId,
       stopReason: "guided-timeout",
