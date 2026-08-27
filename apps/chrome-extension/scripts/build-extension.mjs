@@ -1,46 +1,51 @@
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-const distDir = resolve("dist");
+const extensionDir = fileURLToPath(new URL("../", import.meta.url));
+const distDir = resolve(extensionDir, "dist");
 
 await rm(distDir, { force: true, recursive: true });
 await mkdir(distDir, { recursive: true });
 
 await Promise.all([
   build({
-    entryPoints: ["./src/content.ts"],
+    entryPoints: [resolve(extensionDir, "src/content.ts")],
     bundle: true,
-    outfile: "./dist/content.js",
+    outfile: resolve(distDir, "content.js"),
     format: "iife",
     platform: "browser",
     target: "chrome111",
   }),
   build({
-    entryPoints: ["./src/whatsapp-page-identity.ts"],
+    entryPoints: [resolve(extensionDir, "src/whatsapp-page-identity.ts")],
     bundle: true,
-    outfile: "./dist/whatsapp-page-identity.js",
+    outfile: resolve(distDir, "whatsapp-page-identity.js"),
     format: "iife",
     platform: "browser",
     target: "chrome111",
   }),
   build({
-    entryPoints: ["./src/session-bridge.ts"],
+    entryPoints: [resolve(extensionDir, "src/session-bridge.ts")],
     bundle: true,
-    outfile: "./dist/session-bridge.js",
+    outfile: resolve(distDir, "session-bridge.js"),
     format: "iife",
     platform: "browser",
     target: "chrome111",
   }),
   build({
-    entryPoints: ["./src/background.ts"],
+    entryPoints: [resolve(extensionDir, "src/background.ts")],
     bundle: true,
-    outfile: "./dist/background.js",
+    outfile: resolve(distDir, "background.js"),
     format: "esm",
     platform: "browser",
     target: "chrome111",
   }),
-  copyFile(resolve("src/content.css"), resolve("dist/content.css")),
+  copyFile(
+    resolve(extensionDir, "src/content.css"),
+    resolve(distDir, "content.css"),
+  ),
 ]);
 
 console.log(`Built extension runtime in ${distDir}`);

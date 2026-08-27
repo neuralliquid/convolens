@@ -23,32 +23,14 @@ const packageJson = JSON.parse(
 
 test("renders the runtime manifest version and keeps release versions aligned", () => {
   assert.match(popupHtml, /id="extensionVersion"/);
-  assert.match(
-    popupSource,
-    /const PACKAGED_VERSION = "1\.0\.26"/,
-  );
-  assert.match(
-    popupSource,
-    /runtimeVersion === PACKAGED_VERSION/,
-  );
-  assert.match(
-    popupSource,
-    /reload unpacked|reload \$\{PACKAGED_VERSION\}/,
-  );
-  assert.match(
-    optionsSource,
-    /const PACKAGED_VERSION = "1\.0\.26"/,
-  );
-  assert.match(
-    optionsSource,
-    /runtimeVersion === PACKAGED_VERSION/,
-  );
-  assert.match(
-    optionsSource,
-    /reload \$\{PACKAGED_VERSION\}/,
-  );
+  assert.match(popupSource, /const PACKAGED_VERSION = "1\.0\.27"/);
+  assert.match(popupSource, /runtimeVersion === PACKAGED_VERSION/);
+  assert.match(popupSource, /reload unpacked|reload \$\{PACKAGED_VERSION\}/);
+  assert.match(optionsSource, /const PACKAGED_VERSION = "1\.0\.27"/);
+  assert.match(optionsSource, /runtimeVersion === PACKAGED_VERSION/);
+  assert.match(optionsSource, /reload \$\{PACKAGED_VERSION\}/);
   assert.equal(manifest.version, packageJson.version);
-  assert.equal(manifest.version, "1.0.26");
+  assert.equal(manifest.version, "1.0.27");
 });
 
 test("opens the conversation dashboard from both popup entry points", () => {

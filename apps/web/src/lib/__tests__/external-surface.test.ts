@@ -67,6 +67,9 @@ describe("external surface containment", () => {
       /convolens-extension\.zip/,
     );
     expect(read("components/extension/install-instructions.tsx")).toMatch(
+      /convolens-extension-firefox\.zip/,
+    );
+    expect(read("components/extension/install-instructions.tsx")).toMatch(
       /If ConvoLens is already listed, click/,
     );
     expect(read("components/extension/install-instructions.tsx")).toMatch(
@@ -93,8 +96,9 @@ describe("external surface containment", () => {
       /ConvoLens is installed/i,
     );
     expect(read("app/extension/page.tsx")).toMatch(
-      /Install ConvoLens for Chrome/i,
+      /Install ConvoLens for your browser/i,
     );
+    expect(read("app/extension/page.tsx")).toMatch(/Firefox private preview/i);
   });
 
   it("reads the wrapped WhatsApp connection status returned by the extension", () => {

@@ -102,7 +102,7 @@ function runAction(action) {
 // Initialization
 // =============================================================================
 
-const PACKAGED_VERSION = "1.0.26";
+const PACKAGED_VERSION = "1.0.27";
 
 async function init() {
   const runtimeVersion = chrome.runtime.getManifest().version;
@@ -281,33 +281,38 @@ async function loadHistory() {
   ]);
   const history = stored[STORAGE_KEYS.extractionHistory] || [];
 
+  elements.historyList.replaceChildren();
+
   if (history.length === 0) {
-    elements.historyList.innerHTML = `
-      <p style="color: #666; text-align: center; padding: 20px;">No extractions yet</p>
-    `;
+    const emptyState = document.createElement("p");
+    emptyState.textContent = "No extractions yet";
+    emptyState.style.color = "#666";
+    emptyState.style.textAlign = "center";
+    emptyState.style.padding = "20px";
+    elements.historyList.append(emptyState);
     return;
   }
 
-  elements.historyList.innerHTML = history
-    .slice(0, 20)
-    .map(
-      (item) => `
-      <div class="history-item">
-        <div>
-          <div class="history-name">${escapeHtml(item.chatName)}</div>
-          <div class="history-meta">${item.messageCount} messages</div>
-        </div>
-        <div class="history-meta">${formatDate(item.extractedAt)}</div>
-      </div>
-    `,
-    )
-    .join("");
-}
+  for (const item of history.slice(0, 20)) {
+    const historyItem = document.createElement("div");
+    historyItem.className = "history-item";
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
+    const details = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "history-name";
+    name.textContent = item.chatName;
+    const messageCount = document.createElement("div");
+    messageCount.className = "history-meta";
+    messageCount.textContent = `${item.messageCount} messages`;
+    details.append(name, messageCount);
+
+    const extractedAt = document.createElement("div");
+    extractedAt.className = "history-meta";
+    extractedAt.textContent = formatDate(item.extractedAt);
+
+    historyItem.append(details, extractedAt);
+    elements.historyList.append(historyItem);
+  }
 }
 
 function formatDate(isoString) {

@@ -1,5 +1,6 @@
 import {
   getExtensionDownloadUrl,
+  getFirefoxExtensionDownloadUrl,
   getExtensionReleaseTag,
   getExtensionReleaseUrl,
   getExtensionVersion,
@@ -17,6 +18,9 @@ describe("extension release links", () => {
     );
     expect(getExtensionDownloadUrl()).toBe(
       `https://github.com/neuralliquid/convolens/releases/download/extension-v${extensionManifest.version}/convolens-extension.zip`,
+    );
+    expect(getFirefoxExtensionDownloadUrl()).toBe(
+      `https://github.com/neuralliquid/convolens/releases/download/extension-v${extensionManifest.version}/convolens-extension-firefox.zip`,
     );
   });
 });

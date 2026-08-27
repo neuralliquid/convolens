@@ -19,9 +19,11 @@ const read = (path: string) =>
 
 test("keeps release versions aligned and package inspection mandatory", () => {
   const manifest = JSON.parse(read("../manifest.json"));
+  const firefoxManifest = JSON.parse(read("../manifest.firefox.json"));
   const packageJson = JSON.parse(read("../package.json"));
-  assert.equal(manifest.version, "1.0.26");
+  assert.equal(manifest.version, "1.0.27");
   assert.equal(packageJson.version, manifest.version);
+  assert.equal(firefoxManifest.version, manifest.version);
   assert.deepEqual(manifest.content_scripts[0], {
     matches: ["https://web.whatsapp.com/*"],
     js: ["dist/whatsapp-page-identity.js"],
@@ -32,6 +34,30 @@ test("keeps release versions aligned and package inspection mandatory", () => {
     packageJson.scripts.package,
     /package-extension\.mjs && node scripts\/verify-package\.mjs$/,
   );
+  assert.match(packageJson.scripts["lint:firefox"], /web-ext lint/);
+  assert.deepEqual(firefoxManifest.background, {
+    scripts: ["dist/background.js"],
+    type: "module",
+  });
+  assert.equal(
+    firefoxManifest.browser_specific_settings.gecko.id,
+    "convolens@neuralliquid.ai",
+  );
+  assert.equal(
+    firefoxManifest.browser_specific_settings.gecko.strict_min_version,
+    "140.0",
+  );
+  assert.deepEqual(
+    firefoxManifest.browser_specific_settings.gecko.data_collection_permissions
+      .required,
+    [
+      "personallyIdentifyingInfo",
+      "authenticationInfo",
+      "personalCommunications",
+      "websiteContent",
+    ],
+  );
+  assert.equal(firefoxManifest.minimum_chrome_version, undefined);
 });
 
 test("runs extension, intake, and inspected-package evidence in CI", () => {
@@ -47,12 +73,14 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   );
   assert.match(workflow, /test:browser:persistence/);
   assert.match(workflow, /@convolens\/chrome-extension package/);
+  assert.match(workflow, /@convolens\/chrome-extension lint:firefox/);
   assert.match(workflow, /Upload current-main extension artifact/);
   assert.match(
     workflow,
     /github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/,
   );
   assert.match(workflow, /convolens-extension\.zip\.sha256/);
+  assert.match(workflow, /convolens-extension-firefox\.zip\.sha256/);
   assert.match(workflow, /if-no-files-found: error/);
   assert.match(workflow, /publish-extension-release:/);
   assert.match(workflow, /name: Publish Extension Release/);
@@ -68,6 +96,7 @@ test("runs extension, intake, and inspected-package evidence in CI", () => {
   assert.match(workflow, /TAG="extension-v\$\{VERSION\}"/);
   assert.match(workflow, /gh release download "\$TAG"/);
   assert.match(workflow, /--pattern convolens-extension\.zip\.sha256/);
+  assert.match(workflow, /--pattern convolens-extension-firefox\.zip\.sha256/);
   assert.match(
     workflow,
     /cd "\$RUNNER_TEMP\/assets"[\s\S]*sha256sum --check convolens-extension\.zip\.sha256/,
@@ -85,6 +114,7 @@ test("publishes only a validated extension ZIP and checksum to releases", () => 
   const workflow = read("../../../.github/workflows/release-validation.yml");
   assert.match(workflow, /@convolens\/chrome-extension package/);
   assert.match(workflow, /sha256sum convolens-extension\.zip/);
+  assert.match(workflow, /sha256sum convolens-extension-firefox\.zip/);
   assert.match(workflow, /name: Publish Extension Release Asset/);
   assert.match(
     workflow,
@@ -95,6 +125,7 @@ test("publishes only a validated extension ZIP and checksum to releases", () => 
   assert.match(workflow, /GH_REPO: \$\{\{ github\.repository \}\}/);
   assert.match(workflow, /gh release upload "\$RELEASE_TAG"/);
   assert.match(workflow, /convolens-extension\.zip\.sha256/);
+  assert.match(workflow, /convolens-extension-firefox\.zip\.sha256/);
 });
 
 test("shares production WhatsApp readiness selectors with authentic fixtures", () => {

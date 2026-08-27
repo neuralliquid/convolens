@@ -1,7 +1,6 @@
 import extensionManifest from "../../../chrome-extension/manifest.json";
 
-const GITHUB_RELEASES =
-  "https://github.com/neuralliquid/convolens/releases";
+const GITHUB_RELEASES = "https://github.com/neuralliquid/convolens/releases";
 
 export function getExtensionVersion(): string {
   return extensionManifest.version;
@@ -17,4 +16,8 @@ export function getExtensionReleaseUrl(): string {
 
 export function getExtensionDownloadUrl(): string {
   return `${GITHUB_RELEASES}/download/${getExtensionReleaseTag()}/convolens-extension.zip`;
+}
+
+export function getFirefoxExtensionDownloadUrl(): string {
+  return `${GITHUB_RELEASES}/download/${getExtensionReleaseTag()}/convolens-extension-firefox.zip`;
 }

@@ -82,10 +82,15 @@ jobs:
       - name: Package and inspect extension
         run: pnpm --filter @convolens/chrome-extension package
 
-      - name: Write extension checksum
+      - name: Validate Firefox extension manifest
+        run: pnpm --filter @convolens/chrome-extension lint:firefox
+
+      - name: Write extension checksums
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: apps/chrome-extension
-        run: sha256sum convolens-extension.zip > convolens-extension.zip.sha256
+        run: |
+          sha256sum convolens-extension.zip > convolens-extension.zip.sha256
+          sha256sum convolens-extension-firefox.zip > convolens-extension-firefox.zip.sha256
 
       - name: Upload current-main extension artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -95,6 +100,8 @@ jobs:
           path: |
             apps/chrome-extension/convolens-extension.zip
             apps/chrome-extension/convolens-extension.zip.sha256
+            apps/chrome-extension/convolens-extension-firefox.zip
+            apps/chrome-extension/convolens-extension-firefox.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -119,7 +126,9 @@ jobs:
           name: convolens-extension-${{ github.sha }}
 
       - name: Verify validated checksum
-        run: sha256sum --check convolens-extension.zip.sha256
+        run: |
+          sha256sum --check convolens-extension.zip.sha256
+          sha256sum --check convolens-extension-firefox.zip.sha256
 
       - name: Publish immutable versioned release
         env:
@@ -135,18 +144,29 @@ jobs:
           TAG="extension-v${VERSION}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            mkdir -p "$RUNNER_TEMP/current" "$RUNNER_TEMP/released" "$RUNNER_TEMP/assets"
-            unzip -qq convolens-extension.zip -d "$RUNNER_TEMP/current"
+            mkdir -p \
+              "$RUNNER_TEMP/current/chrome" \
+              "$RUNNER_TEMP/current/firefox" \
+              "$RUNNER_TEMP/released/chrome" \
+              "$RUNNER_TEMP/released/firefox" \
+              "$RUNNER_TEMP/assets"
+            unzip -qq convolens-extension.zip -d "$RUNNER_TEMP/current/chrome"
+            unzip -qq convolens-extension-firefox.zip -d "$RUNNER_TEMP/current/firefox"
             gh release download "$TAG" \
               --pattern convolens-extension.zip \
               --pattern convolens-extension.zip.sha256 \
+              --pattern convolens-extension-firefox.zip \
+              --pattern convolens-extension-firefox.zip.sha256 \
               --dir "$RUNNER_TEMP/assets"
             (
               cd "$RUNNER_TEMP/assets"
               sha256sum --check convolens-extension.zip.sha256
+              sha256sum --check convolens-extension-firefox.zip.sha256
             )
             unzip -qq "$RUNNER_TEMP/assets/convolens-extension.zip" \
-              -d "$RUNNER_TEMP/released"
+              -d "$RUNNER_TEMP/released/chrome"
+            unzip -qq "$RUNNER_TEMP/assets/convolens-extension-firefox.zip" \
+              -d "$RUNNER_TEMP/released/firefox"
             (
               cd "$RUNNER_TEMP/current"
               find . -type f -print0 | sort -z | xargs -0 sha256sum
@@ -179,6 +199,8 @@ jobs:
           gh release create "$TAG" \
             "convolens-extension.zip#ConvoLens extension v${VERSION}" \
             "convolens-extension.zip.sha256#SHA-256 checksum" \
+            "convolens-extension-firefox.zip#ConvoLens Firefox private-preview build v${VERSION}" \
+            "convolens-extension-firefox.zip.sha256#Firefox SHA-256 checksum" \
             --target "$GITHUB_SHA" \
             --title "ConvoLens Extension v${VERSION}" \
-            --notes "Validated unpacked Chrome extension build from commit ${GITHUB_SHA}. Download and extract convolens-extension.zip, then load the extracted directory containing manifest.json through chrome://extensions."
+            --notes "Validated Chrome and unsigned Firefox private-preview builds from commit ${GITHUB_SHA}. The Firefox ZIP is for temporary installation through about:debugging until Mozilla signing is completed."

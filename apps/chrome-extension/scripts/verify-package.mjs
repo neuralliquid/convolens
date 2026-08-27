@@ -60,7 +60,9 @@ export function verifyLocalEntryIntegrity(
       compressedSize === entry.compressedSize &&
       uncompressedSize === entry.uncompressedSize;
   if (!matches) {
-    throw new Error(`ZIP local entry sizes or CRC are inconsistent: ${entry.name}`);
+    throw new Error(
+      `ZIP local entry sizes or CRC are inconsistent: ${entry.name}`,
+    );
   }
 }
 
@@ -74,8 +76,7 @@ export function verifyDataDescriptor(buffer, offset, entry) {
     buffer.readUInt32LE(cursor + 8) === entry.uncompressedSize;
   if (matchesAt(offset)) return 12;
 
-  const hasSignature =
-    buffer.readUInt32LE(offset) === ZIP_DESCRIPTOR_SIGNATURE;
+  const hasSignature = buffer.readUInt32LE(offset) === ZIP_DESCRIPTOR_SIGNATURE;
   if (hasSignature && offset + 16 <= buffer.length && matchesAt(offset + 4)) {
     return 16;
   }
@@ -111,7 +112,9 @@ export function verifyEndOfCentralDirectory({
     throw new Error("ZIP single-disk entry counts are inconsistent.");
   }
   if (eocdOffset + 22 + commentLength !== archiveLength) {
-    throw new Error("ZIP end-of-central-directory comment length is inconsistent.");
+    throw new Error(
+      "ZIP end-of-central-directory comment length is inconsistent.",
+    );
   }
 }
 
@@ -140,7 +143,11 @@ export function verifyEntryRequirements(entry, localVersionNeeded) {
   }
 }
 
-export function verifyRegularFileEntry(creatorSystem, externalAttributes, name) {
+export function verifyRegularFileEntry(
+  creatorSystem,
+  externalAttributes,
+  name,
+) {
   if ((externalAttributes & 0x18) !== 0) {
     throw new Error(`ZIP entry is not a regular file: ${name}`);
   }
@@ -347,25 +354,44 @@ export function inspectZip(buffer) {
 }
 
 async function main() {
-  const packageJson = JSON.parse(await readFile(resolve("package.json"), "utf8"));
-  const manifest = JSON.parse(await readFile(resolve("manifest.json"), "utf8"));
-  if (packageJson.version !== manifest.version) {
-    throw new Error(
-      `Version mismatch: package ${packageJson.version}, manifest ${manifest.version}.`,
-    );
-  }
-
-  const archivePath = resolve("convolens-extension.zip");
-  const entries = inspectZip(await readFile(archivePath));
-  if (JSON.stringify(entries) !== JSON.stringify(EXPECTED_ENTRIES)) {
-    throw new Error(
-      `Unexpected ZIP entries. Expected ${EXPECTED_ENTRIES.join(", ")}; received ${entries.join(", ")}.`,
-    );
-  }
-
-  console.log(
-    `Verified extension ${manifest.version} ZIP: ${entries.length} expected payloads decompressed with matching sizes and CRCs, no duplicates or unsafe paths.`,
+  const packageJson = JSON.parse(
+    await readFile(resolve("package.json"), "utf8"),
   );
+  const packages = [
+    {
+      archive: "convolens-extension.zip",
+      manifest: "manifest.json",
+      browser: "Chrome",
+    },
+    {
+      archive: "convolens-extension-firefox.zip",
+      manifest: "manifest.firefox.json",
+      browser: "Firefox",
+    },
+  ];
+
+  for (const extensionPackage of packages) {
+    const manifest = JSON.parse(
+      await readFile(resolve(extensionPackage.manifest), "utf8"),
+    );
+    if (packageJson.version !== manifest.version) {
+      throw new Error(
+        `Version mismatch: package ${packageJson.version}, ${extensionPackage.browser} manifest ${manifest.version}.`,
+      );
+    }
+
+    const archivePath = resolve(extensionPackage.archive);
+    const entries = inspectZip(await readFile(archivePath));
+    if (JSON.stringify(entries) !== JSON.stringify(EXPECTED_ENTRIES)) {
+      throw new Error(
+        `Unexpected ${extensionPackage.browser} ZIP entries. Expected ${EXPECTED_ENTRIES.join(", ")}; received ${entries.join(", ")}.`,
+      );
+    }
+
+    console.log(
+      `Verified ${extensionPackage.browser} extension ${manifest.version} ZIP: ${entries.length} expected payloads decompressed with matching sizes and CRCs, no duplicates or unsafe paths.`,
+    );
+  }
 }
 
 if (

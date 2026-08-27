@@ -1,25 +1,26 @@
 import Link from "next/link";
 import {
   CheckCircle2,
-  Chrome,
   ExternalLink,
   FileText,
+  Globe2,
   MessageSquareText,
   ShieldCheck,
 } from "lucide-react";
 import PageWrapper from "../page-wrapper";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExtensionInstallInstructions } from "@/components/extension/install-instructions";
 
 const steps = [
   {
     title: "Sign in to ConvoLens",
-    description: "Connect the extension to your workspace with Mystira Identity.",
+    description:
+      "Connect the extension to your workspace with Mystira Identity.",
   },
   {
     title: "Open a conversation in WhatsApp Web",
-    description: "Choose the support conversation you are authorized to import.",
+    description:
+      "Choose the support conversation you are authorized to import.",
   },
   {
     title: "Send the current chat",
@@ -35,7 +36,7 @@ export default function ExtensionWelcomePage() {
         <div className="mx-auto max-w-5xl">
           <section className="max-w-3xl">
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Chrome className="h-7 w-7" />
+              <Globe2 className="h-7 w-7" />
             </div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
               Browser extension
@@ -98,8 +99,14 @@ export default function ExtensionWelcomePage() {
                 <CardHeader>
                   <CardTitle>Need to install it?</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <ExtensionInstallInstructions heading="Download and load unpacked" />
+                <CardContent className="space-y-4">
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Chrome and Firefox private-preview builds are available on
+                    the install page.
+                  </p>
+                  <Button asChild variant="outline">
+                    <Link href="/extension">Choose your browser</Link>
+                  </Button>
                 </CardContent>
               </Card>
               <Card>
