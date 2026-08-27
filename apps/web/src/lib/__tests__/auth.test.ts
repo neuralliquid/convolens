@@ -1,8 +1,35 @@
 import {
+  DEFAULT_MYSTIRA_IDENTITY_SCOPE,
+  getMystiraIdentityScope,
   refreshMystiraToken,
   sessionFromToken,
   shouldRefreshMystiraSession,
 } from "../auth";
+
+describe("Mystira Identity authorization scope", () => {
+  const originalScope = process.env.MYSTIRA_IDENTITY_SCOPE;
+
+  afterEach(() => {
+    if (originalScope === undefined) {
+      delete process.env.MYSTIRA_IDENTITY_SCOPE;
+    } else {
+      process.env.MYSTIRA_IDENTITY_SCOPE = originalScope;
+    }
+  });
+
+  it("requests the delegated Mill transcription scope by default", () => {
+    delete process.env.MYSTIRA_IDENTITY_SCOPE;
+
+    expect(getMystiraIdentityScope()).toBe(DEFAULT_MYSTIRA_IDENTITY_SCOPE);
+    expect(getMystiraIdentityScope().split(" ")).toContain("mill.transcribe");
+  });
+
+  it("preserves an explicit scope override", () => {
+    process.env.MYSTIRA_IDENTITY_SCOPE = "openid profile";
+
+    expect(getMystiraIdentityScope()).toBe("openid profile");
+  });
+});
 
 describe("Mystira Identity token refresh", () => {
   const originalWellKnown = process.env.MYSTIRA_IDENTITY_WELL_KNOWN;

@@ -21,6 +21,13 @@ type MystiraTokenResponse = {
   refresh_token?: string;
 };
 
+export const DEFAULT_MYSTIRA_IDENTITY_SCOPE =
+  "openid profile email offline_access mill.transcribe";
+
+export function getMystiraIdentityScope(): string {
+  return process.env.MYSTIRA_IDENTITY_SCOPE || DEFAULT_MYSTIRA_IDENTITY_SCOPE;
+}
+
 function getIdTokenExpiry(idToken?: string): number | undefined {
   if (!idToken) {
     return undefined;
@@ -107,9 +114,7 @@ const mystiraIdentityProvider = (): OAuthConfig<MystiraProfile> => ({
   wellKnown: process.env.MYSTIRA_IDENTITY_WELL_KNOWN,
   authorization: {
     params: {
-      scope:
-        process.env.MYSTIRA_IDENTITY_SCOPE ||
-        "openid profile email offline_access",
+      scope: getMystiraIdentityScope(),
     },
   },
   idToken: true,
