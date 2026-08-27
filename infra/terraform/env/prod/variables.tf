@@ -238,7 +238,7 @@ variable "mystira_identity_client_id" {
 variable "mystira_identity_scope" {
   type        = string
   description = "Mystira Identity OIDC scopes requested by Convolens."
-  default     = "openid profile email offline_access"
+  default     = "openid profile email offline_access mill.transcribe"
 }
 
 variable "mystira_admin_emails" {
