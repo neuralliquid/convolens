@@ -115,7 +115,7 @@ export function Navigation() {
           [styles.scrolled]: isScrolled,
           [styles.mobileMenuOpen]: mobileMenuOpen,
         })}
-        ref={mobileMenuRef as React.RefObject<HTMLDivElement>}
+        ref={mobileMenuRef}
       >
         <div className={styles.container}>
           {/* Mobile menu button */}
@@ -160,10 +160,7 @@ export function Navigation() {
             </div>
 
             {isAuthenticated ? (
-              <div
-                className={styles.dropdown}
-                ref={userDropdownRef as React.RefObject<HTMLDivElement>}
-              >
+              <div className={styles.dropdown} ref={userDropdownRef}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button

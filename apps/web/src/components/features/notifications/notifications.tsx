@@ -1,205 +1,222 @@
-"use client"
+"use client";
 
-import { useState, useEffect, JSX } from "react"
-import { useRouter } from "next/navigation"
-import { NotificationBase, NotificationsPageProps, NotificationType } from "@/types/notifications"
-import { useApp } from "@convolens/contexts"
-import { Button } from "@/components/ui/button"
-import { Check, Trash2, Clock, BellRing, FileText, Inbox, AlertCircle } from "lucide-react"
-import { mockNotifications } from "@/data/mockNotifications"
-import styles from "./notifications.module.css"
+import { useState, useEffect, JSX } from "react";
+import { useRouter } from "next/navigation";
+import {
+  NotificationBase,
+  NotificationsPageProps,
+  NotificationType,
+} from "@/types/notifications";
+import { Button } from "@/components/ui/button";
+import {
+  Check,
+  Trash2,
+  Clock,
+  BellRing,
+  FileText,
+  Inbox,
+  AlertCircle,
+} from "lucide-react";
+import { mockNotifications } from "@/data/mockNotifications";
+import styles from "./notifications.module.css";
 
 const getNotificationIcon = (type: NotificationType): JSX.Element => {
-  const iconProps = { className: styles.notificationIcon, 'aria-hidden': true }
+  const iconProps = { className: styles.notificationIcon, "aria-hidden": true };
   switch (type) {
-    case 'summary-ready':
-      return <FileText {...iconProps} />
-    case 'while-away':
-      return <Inbox {...iconProps} />
-    case 'scheduled-digest':
-      return <BellRing {...iconProps} />
+    case "summary-ready":
+      return <FileText {...iconProps} />;
+    case "while-away":
+      return <Inbox {...iconProps} />;
+    case "scheduled-digest":
+      return <BellRing {...iconProps} />;
     default:
-      return <BellRing {...iconProps} />
+      return <BellRing {...iconProps} />;
   }
-}
+};
 
 const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 // API Service stubs
 const notificationService = {
   fetchNotifications: async (): Promise<NotificationBase[]> => {
     // In a real app, this would be an API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    return [...mockNotifications] // Return a copy to avoid mutations
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return [...mockNotifications]; // Return a copy to avoid mutations
   },
-  
+
   markAsRead: async (id: string): Promise<void> => {
     // In a real app, this would be an API call
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise((resolve) => setTimeout(resolve, 200));
   },
-  
+
   markAllAsRead: async (ids: string[]): Promise<void> => {
     // In a real app, this would be an API call
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise((resolve) => setTimeout(resolve, 200));
   },
-  
+
   deleteNotification: async (id: string): Promise<void> => {
     // In a real app, this would be an API call
-    await new Promise(resolve => setTimeout(resolve, 200))
-  }
-}
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  },
+};
 
-export default function Notifications({ onMarkAsRead, onDeleteNotification }: NotificationsPageProps) {
-  const router = useRouter()
-  const { markNotificationAsRead: markReadInContext } = useApp()
-  
-  const [notifications, setNotifications] = useState<NotificationBase[]>([])
-  const [filter, setFilter] = useState<"all" | "unread" | "read">("all")
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export default function Notifications({
+  onMarkAsRead,
+  onDeleteNotification,
+}: NotificationsPageProps) {
+  const router = useRouter();
+
+  const [notifications, setNotifications] = useState<NotificationBase[]>([]);
+  const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        setError(null)
-        setIsLoading(true)
-        const data = await notificationService.fetchNotifications()
-        setNotifications(data)
+        setError(null);
+        setIsLoading(true);
+        const data = await notificationService.fetchNotifications();
+        setNotifications(data);
       } catch (err) {
-        console.error('Failed to fetch notifications:', err)
-        setError('Failed to load notifications. Please try again later.')
+        console.error("Failed to fetch notifications:", err);
+        setError("Failed to load notifications. Please try again later.");
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchNotifications()
-  }, [])
+    fetchNotifications();
+  }, []);
 
   const filteredNotifications = notifications.filter((notification) => {
-    if (filter === "all") return true
-    if (filter === "unread") return !notification.isRead
-    if (filter === "read") return notification.isRead
-    return true
-  })
+    if (filter === "all") return true;
+    if (filter === "unread") return !notification.isRead;
+    if (filter === "read") return notification.isRead;
+    return true;
+  });
 
   const handleMarkAsRead = async (id: string) => {
     try {
-      setError(null)
-      
+      setError(null);
+
       // Update optimistically
-      setNotifications(prev =>
-        prev.map(notification =>
-          notification.id === id ? { ...notification, isRead: true } : notification
-        )
-      )
-      
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === id
+            ? { ...notification, isRead: true }
+            : notification,
+        ),
+      );
+
       // Call the appropriate handler
       if (onMarkAsRead) {
-        await onMarkAsRead(id)
-      } else if (markReadInContext) {
-        await markReadInContext(id)
+        await onMarkAsRead(id);
       } else {
-        await notificationService.markAsRead(id)
+        await notificationService.markAsRead(id);
       }
     } catch (error) {
-      console.error('Failed to mark notification as read:', error)
-      setError('Failed to mark notification as read. Please try again.')
-      
+      console.error("Failed to mark notification as read:", error);
+      setError("Failed to mark notification as read. Please try again.");
+
       // Revert on error
-      setNotifications(prev =>
-        prev.map(notification =>
-          notification.id === id ? { ...notification, isRead: false } : notification
-        )
-      )
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === id
+            ? { ...notification, isRead: false }
+            : notification,
+        ),
+      );
     }
-  }
+  };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    
-    if (!window.confirm('Are you sure you want to delete this notification?')) {
-      return
+    e.stopPropagation();
+
+    if (!window.confirm("Are you sure you want to delete this notification?")) {
+      return;
     }
-    
+
     // Store the notification before removing it
-    const notificationToDelete = notifications.find(n => n.id === id)
-    if (!notificationToDelete) return
-    
+    const notificationToDelete = notifications.find((n) => n.id === id);
+    if (!notificationToDelete) return;
+
     try {
-      setError(null)
-      
+      setError(null);
+
       // Optimistic update
-      setNotifications(prev => prev.filter(notification => notification.id !== id))
-      
+      setNotifications((prev) =>
+        prev.filter((notification) => notification.id !== id),
+      );
+
       // Call the appropriate handler
       if (onDeleteNotification) {
-        await onDeleteNotification(id)
+        await onDeleteNotification(id);
       } else {
-        await notificationService.deleteNotification(id)
+        await notificationService.deleteNotification(id);
       }
     } catch (error) {
-      console.error('Failed to delete notification:', error)
-      setError('Failed to delete notification. Please try again.')
-      
+      console.error("Failed to delete notification:", error);
+      setError("Failed to delete notification. Please try again.");
+
       // Revert on error
-      setNotifications(prev => [...prev, notificationToDelete].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ))
+      setNotifications((prev) =>
+        [...prev, notificationToDelete].sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        ),
+      );
     }
-  }
+  };
 
   const handleNotificationClick = (notification: NotificationBase) => {
-    handleMarkAsRead(notification.id)
+    handleMarkAsRead(notification.id);
     if (notification.actionUrl) {
-      router.push(notification.actionUrl)
+      router.push(notification.actionUrl);
     }
-  }
+  };
 
   const markAllAsRead = async () => {
     // Get unread notifications before any state changes
-    const unreadNotifications = notifications.filter((n: NotificationBase) => !n.isRead)
-    const unreadIds = unreadNotifications.map((n: NotificationBase) => n.id)
-    
-    if (unreadIds.length === 0) return
-    
+    const unreadNotifications = notifications.filter(
+      (n: NotificationBase) => !n.isRead,
+    );
+    const unreadIds = unreadNotifications.map((n: NotificationBase) => n.id);
+
+    if (unreadIds.length === 0) return;
+
     // Store the current state for potential rollback
-    const previousState = [...notifications]
-    
+    const previousState = [...notifications];
+
     try {
-      setError(null)
-      
+      setError(null);
+
       // Optimistic update
-      setNotifications(prev =>
-        prev.map(notification => ({
+      setNotifications((prev) =>
+        prev.map((notification) => ({
           ...notification,
-          isRead: true
-        }))
-      )
-      
-      // Call the appropriate handler
-      if (markReadInContext) {
-        await Promise.all(unreadIds.map(id => markReadInContext(id)))
-      } else {
-        await notificationService.markAllAsRead(unreadIds)
-      }
+          isRead: true,
+        })),
+      );
+
+      await notificationService.markAllAsRead(unreadIds);
     } catch (error) {
-      console.error('Failed to mark all as read:', error)
-      setError('Failed to mark all notifications as read. Please try again.')
-      
+      console.error("Failed to mark all as read:", error);
+      setError("Failed to mark all notifications as read. Please try again.");
+
       // Revert to previous state on error
-      setNotifications(previousState)
+      setNotifications(previousState);
     }
-  }
+  };
 
   if (isLoading) {
     return (
@@ -207,24 +224,24 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
         <div className={styles.loadingSpinner} aria-hidden="true"></div>
         <p>Loading notifications...</p>
       </div>
-    )
+    );
   }
-  
+
   if (error) {
     return (
       <div className={styles.errorState} role="alert">
         <AlertCircle className={styles.errorIcon} />
         <p>{error}</p>
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => window.location.reload()}
           className={styles.retryButton}
         >
           Retry
         </Button>
       </div>
-    )
+    );
   }
 
   return (
@@ -239,7 +256,7 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
             variant="outline"
             size="sm"
             onClick={markAllAsRead}
-            disabled={!notifications.some(n => !n.isRead)}
+            disabled={!notifications.some((n) => !n.isRead)}
           >
             <Check className="mr-2 h-4 w-4" />
             Mark all as read
@@ -254,7 +271,7 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
             <button
               className={`${styles.filterButton} ${filter === "all" ? styles.active : ""}`}
               onClick={() => setFilter("all")}
-              aria-pressed={filter === "all" ? 'true' : 'false'}
+              aria-pressed={filter === "all" ? "true" : "false"}
               aria-label="Show all notifications"
               type="button"
             >
@@ -263,21 +280,21 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
             <button
               className={`${styles.filterButton} ${filter === "unread" ? styles.active : ""}`}
               onClick={() => setFilter("unread")}
-              aria-pressed={filter === "unread" ? 'true' : 'false'}
+              aria-pressed={filter === "unread" ? "true" : "false"}
               aria-label="Show unread notifications"
               type="button"
             >
               Unread
-              {notifications.some(n => !n.isRead) && (
+              {notifications.some((n) => !n.isRead) && (
                 <span className={styles.unreadBadge} aria-hidden="true">
-                  {notifications.filter(n => !n.isRead).length}
+                  {notifications.filter((n) => !n.isRead).length}
                 </span>
               )}
             </button>
             <button
               className={`${styles.filterButton} ${filter === "read" ? styles.active : ""}`}
               onClick={() => setFilter("read")}
-              aria-pressed={filter === "read" ? 'true' : 'false'}
+              aria-pressed={filter === "read" ? "true" : "false"}
               aria-label="Show read notifications"
               type="button"
             >
@@ -293,12 +310,12 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
                 <Inbox size={48} />
               </div>
               <h3>No notifications found</h3>
-              <p>When you get new notifications, they'll appear here.</p>
+              <p>When you get new notifications, they&apos;ll appear here.</p>
             </div>
           ) : (
             <div className={styles.notificationsList} role="list">
               {filteredNotifications.map((notification) => (
-                <div 
+                <div
                   key={notification.id}
                   className={`${styles.notificationItem} ${
                     !notification.isRead ? styles.unread : ""
@@ -309,7 +326,7 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
                   aria-describedby={`notification-${notification.id}-message`}
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       handleNotificationClick(notification);
                     }
@@ -320,7 +337,7 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
                   </div>
                   <div className={styles.notificationContent}>
                     <div className={styles.notificationHeader}>
-                      <h4 
+                      <h4
                         id={`notification-${notification.id}-title`}
                         className={styles.notificationTitle}
                       >
@@ -331,7 +348,7 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
                         {formatDate(notification.createdAt)}
                       </span>
                     </div>
-                    <p 
+                    <p
                       id={`notification-${notification.id}-message`}
                       className={styles.notificationMessage}
                     >
@@ -343,8 +360,8 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
                           variant="ghost"
                           size="sm"
                           onClick={(e) => {
-                            e.stopPropagation()
-                            handleMarkAsRead(notification.id)
+                            e.stopPropagation();
+                            handleMarkAsRead(notification.id);
                           }}
                         >
                           <Check className="mr-2 h-4 w-4" />
@@ -369,5 +386,5 @@ export default function Notifications({ onMarkAsRead, onDeleteNotification }: No
         </div>
       </div>
     </div>
-  )
+  );
 }

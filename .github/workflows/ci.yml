@@ -53,14 +53,10 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
-      # Runs in every workspace project that defines a typecheck script. Use an
-      # exclusion, not an allowlist: a new project must be gated the moment it
-      # lands. @convolens/web is the one carve-out — its existing typecheck
-      # baseline is not clean, and next.config.mjs sets
-      # typescript.ignoreBuildErrors. Drive that to zero, then delete the
-      # exclusion and the ignoreBuildErrors escape hatch.
+      # Runs in every workspace project that defines a typecheck script. A new
+      # project is gated as soon as it lands.
       - name: Typecheck
-        run: pnpm -r --filter '!@convolens/web' run typecheck
+        run: pnpm -r run typecheck
 
       - name: Test extension capture matrix
         run: pnpm --filter @convolens/chrome-extension test
