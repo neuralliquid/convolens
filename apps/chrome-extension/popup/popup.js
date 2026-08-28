@@ -72,7 +72,7 @@ let activeWhatsAppTabId = null;
 let captureModeChangeGeneration = 0;
 let operationalState = { preferredMode: "loaded" };
 
-const PACKAGED_VERSION = "1.0.26";
+const PACKAGED_VERSION = "1.0.27";
 const runtimeVersion = chrome.runtime.getManifest().version;
 if (runtimeVersion === PACKAGED_VERSION) {
   extensionVersion.textContent = `v${runtimeVersion}`;
@@ -709,9 +709,9 @@ extractBtn.addEventListener("click", async () => {
     }, 1500);
     extractBtn.disabled = Boolean(
       currentOperation &&
-        ["inspecting", "collecting", "paused", "uploading"].includes(
-          currentOperation.state,
-        ),
+      ["inspecting", "collecting", "paused", "uploading"].includes(
+        currentOperation.state,
+      ),
     );
   }
 });

@@ -1,6 +1,7 @@
-# ConvoLens Chrome Extension
+# ConvoLens Browser Extension
 
-Production-ready Chrome extension for WhatsApp Web integration, enabling AI-powered chat summarization.
+Private-preview Chrome and Firefox extension builds for sending a selected
+WhatsApp Web conversation into ConvoLens.
 
 ## Features
 
@@ -40,7 +41,8 @@ Production-ready Chrome extension for WhatsApp Web integration, enabling AI-powe
 
 ```bash
 npm run build:prod
-npm run package  # Creates convolens-extension.zip
+npm run package  # Creates Chrome and Firefox ZIPs
+npm run lint:firefox
 ```
 
 To install a packaged release, extract `convolens-extension.zip` into a new
@@ -48,6 +50,13 @@ folder, remove any previous ConvoLens unpacked extension, then use Chrome's
 **Load unpacked** action to select the extracted directory. Confirm
 `chrome://extensions` shows the ZIP version before signing in. The ZIP
 contains the manifest, compiled scripts, popup, settings page, and icons.
+
+For Firefox private-preview testing, extract
+`convolens-extension-firefox.zip`, open
+`about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and
+select the extracted `manifest.json`. The temporary build is removed when
+Firefox restarts. Persistent installation requires the separate Mozilla signing
+and distribution step.
 
 ## Usage
 
@@ -62,7 +71,8 @@ contains the manifest, compiled scripts, popup, settings page, and icons.
 
 ```
 apps/chrome-extension/
-├── manifest.json           # Extension manifest (Manifest V3)
+├── manifest.json           # Chrome Manifest V3
+├── manifest.firefox.json   # Firefox Manifest V3
 ├── package.json           # NPM configuration
 ├── tsconfig.json          # TypeScript configuration
 ├── popup/
@@ -85,10 +95,10 @@ The extension defaults to the production ConvoLens endpoints, including when it
 is loaded unpacked. A custom API endpoint can be set in the settings page for a
 local or non-production development environment.
 
-| Environment                | API URL                                                                                  | Dashboard URL                        |
-| -------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------ |
+| Environment                | API URL                                                                                      | Dashboard URL                        |
+| -------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Default                    | `https://nl-prod-convolens-api.thankfulwave-56b90601.southafricanorth.azurecontainerapps.io` | `https://convolens.neuralliquid.ai`  |
-| Local development override | `http://localhost:3001`                                                                  | configured in the local source build |
+| Local development override | `http://localhost:3001`                                                                      | configured in the local source build |
 
 ## Development
 
@@ -126,7 +136,7 @@ The extension uses data-testid selectors (most stable) with fallback class selec
 ## Security
 
 - **HTTPS Only** - All API communication over TLS
-- **Secure Storage** - Tokens in `chrome.storage.local`
+- **Secure Storage** - Tokens in browser extension storage
 - **Content Security Policy** - Strict CSP for extension pages
 - **Minimal Permissions** - Only required permissions requested
 - **No Data Persistence** - Chat content not stored locally
@@ -151,7 +161,9 @@ The extension uses data-testid selectors (most stable) with fallback class selec
 - [x] Progress indicators
 - [ ] Icon assets (16, 32, 48, 128px)
 - [ ] Chrome Web Store listing
-- [ ] Firefox/Edge versions
+- [x] Firefox private-preview package
+- [ ] Mozilla-signed Firefox distribution
+- [ ] Edge store version
 
 ## Troubleshooting
 

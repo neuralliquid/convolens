@@ -1,15 +1,17 @@
 {
   "name": "@convolens/chrome-extension",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "private": true,
   "type": "module",
   "description": "ConvoLens Chrome Extension for WhatsApp Web",
   "scripts": {
     "build": "npm run typecheck && node scripts/build-extension.mjs",
     "build:prod": "npm run build",
+    "prepare:firefox": "node scripts/prepare-firefox.mjs",
+    "lint:firefox": "npm run build:prod && npm run prepare:firefox && web-ext lint --source-dir .firefox-package --warnings-as-errors",
     "watch": "tsc --watch",
     "copy-assets": "node -e \"const fs=require('fs');const p=require('path');try{fs.mkdirSync('dist',{recursive:true});fs.readdirSync('src').filter(f=>f.endsWith('.css')).forEach(f=>fs.copyFileSync(p.join('src',f),p.join('dist',f)))}catch(e){}\"",
-    "package": "npm run build:prod && node scripts/package-extension.mjs && node scripts/verify-package.mjs",
+    "package": "npm run build:prod && npm run prepare:firefox && node scripts/package-extension.mjs && node scripts/verify-package.mjs",
     "clean": "rm -rf dist",
     "test": "npm run test:tsx && npm run test:jest",
     "test:tsx": "tsx --test tests/automatic-capture.test.ts tests/dom-selectors.test.ts tests/guided-capture.test.ts tests/media-evidence.test.ts tests/phase1-capture-safety.test.ts tests/phase2-fidelity.test.ts tests/phase3-operation-state.test.ts tests/phase4-launcher-auth.test.ts tests/phase5-preview.test.ts tests/phase6-guided-lifecycle.test.ts tests/phase7-automatic-lifecycle.test.ts tests/phase8-operational-actions.test.ts tests/phase9-release-evidence.test.ts tests/popup-runtime.test.ts tests/virtualized-capture-fixture.test.ts tests/whatsapp-identity.test.ts tests/whatsapp-metadata.test.ts tests/whatsapp-page-identity.test.ts",
@@ -33,6 +35,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "ts-jest": "^29.1.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "web-ext": "^10.5.0"
   }
 }

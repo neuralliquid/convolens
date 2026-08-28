@@ -54,6 +54,7 @@ tests/__results__/
 
 # Local extension package output
 /apps/chrome-extension/convolens-extension/
+/apps/chrome-extension/.firefox-package/
 
 # Turborepo
 .turbo/

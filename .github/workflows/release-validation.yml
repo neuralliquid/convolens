@@ -319,9 +319,14 @@ jobs:
       - name: Package and inspect extension
         run: pnpm --filter @convolens/chrome-extension package
 
-      - name: Write extension checksum
+      - name: Validate Firefox extension manifest
+        run: pnpm --filter @convolens/chrome-extension lint:firefox
+
+      - name: Write extension checksums
         working-directory: apps/chrome-extension
-        run: sha256sum convolens-extension.zip > convolens-extension.zip.sha256
+        run: |
+          sha256sum convolens-extension.zip > convolens-extension.zip.sha256
+          sha256sum convolens-extension-firefox.zip > convolens-extension-firefox.zip.sha256
 
       - name: Upload validated extension artifact
         uses: actions/upload-artifact@834a144ee995460fba8ed112a2fc961b36a5ec5a # v4.3.6
@@ -330,6 +335,8 @@ jobs:
           path: |
             apps/chrome-extension/convolens-extension.zip
             apps/chrome-extension/convolens-extension.zip.sha256
+            apps/chrome-extension/convolens-extension-firefox.zip
+            apps/chrome-extension/convolens-extension-firefox.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
@@ -381,6 +388,8 @@ jobs:
           gh release upload "$RELEASE_TAG"
           convolens-extension.zip
           convolens-extension.zip.sha256
+          convolens-extension-firefox.zip
+          convolens-extension-firefox.zip.sha256
           --clobber
 
   # =============================================================================
