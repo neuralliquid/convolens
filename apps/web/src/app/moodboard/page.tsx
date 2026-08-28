@@ -1,59 +1,75 @@
-"use client"
+"use client";
 
-import { useEffect, useRef } from "react"
-import { ArrowRight, MessageSquare, BarChart2, Shield, Zap } from "lucide-react"
-import Link from "next/link"
-import "./moodboard.css"
+import { useEffect, useRef } from "react";
+import {
+  ArrowRight,
+  MessageSquare,
+  BarChart2,
+  Shield,
+  Zap,
+} from "lucide-react";
+import Link from "next/link";
+import "./moodboard.css";
 
 export default function MoodboardPage() {
-  const statsRef = useRef<HTMLDivElement>(null)
+  const statsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Animate stats counters when they come into view
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const counters = entry.target.querySelectorAll('.counter-value')
-          counters.forEach(counter => {
-            const target = parseInt(counter.getAttribute('data-target') || '0')
-            let count = 0
-            const updateCounter = () => {
-              const increment = target / 30
-              if (count < target) {
-                count += increment
-                counter.textContent = Math.ceil(count).toString()
-                setTimeout(updateCounter, 50)
-              } else {
-                counter.textContent = target.toString()
-              }
-            }
-            updateCounter()
-          })
-          observer.unobserve(entry.target)
-        }
-      })
-    }, { threshold: 0.5 })
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const counters = entry.target.querySelectorAll(".counter-value");
+            counters.forEach((counter) => {
+              const target = parseInt(
+                counter.getAttribute("data-target") || "0",
+              );
+              let count = 0;
+              const updateCounter = () => {
+                const increment = target / 30;
+                if (count < target) {
+                  count += increment;
+                  counter.textContent = Math.ceil(count).toString();
+                  setTimeout(updateCounter, 50);
+                } else {
+                  counter.textContent = target.toString();
+                }
+              };
+              updateCounter();
+            });
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.5 },
+    );
 
     if (statsRef.current) {
-      observer.observe(statsRef.current)
+      observer.observe(statsRef.current);
     }
 
     // Add mouse move effect to cards
-    const cards = document.querySelectorAll('.hover-card')
-    cards.forEach(card => {
-      card.addEventListener('mousemove', (e) => {
-        const rect = card.getBoundingClientRect()
-        const x = ((e.clientX - rect.left) / rect.width) * 100
-        const y = ((e.clientY - rect.top) / rect.height) * 100
-        card.style.setProperty('--x', `${x}%`)
-        card.style.setProperty('--y', `${y}%`)
-      })
-    })
+    const cards = document.querySelectorAll<HTMLElement>(".hover-card");
+    const handleMouseMove = (event: MouseEvent) => {
+      const card = event.currentTarget as HTMLElement;
+      const rect = card.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 100;
+      const y = ((event.clientY - rect.top) / rect.height) * 100;
+      card.style.setProperty("--x", `${x}%`);
+      card.style.setProperty("--y", `${y}%`);
+    };
+    cards.forEach((card) =>
+      card.addEventListener("mousemove", handleMouseMove),
+    );
 
     return () => {
-      if (statsRef.current) observer.unobserve(statsRef.current)
-    }
-  }, [])
+      observer.disconnect();
+      cards.forEach((card) =>
+        card.removeEventListener("mousemove", handleMouseMove),
+      );
+    };
+  }, []);
 
   return (
     <div className="moodboard-container">
@@ -76,12 +92,30 @@ export default function MoodboardPage() {
       <section className="moodboard-section">
         <h2>Color Palette</h2>
         <div className="color-palette">
-          <div className="color-swatch primary-green" title="Primary Green: #25D366"></div>
-          <div className="color-swatch secondary-green" title="Secondary Green: #128C7E"></div>
-          <div className="color-swatch light-green" title="Light Green: #DCF8C6"></div>
-          <div className="color-swatch dark-green" title="Dark Green: #075E54"></div>
-          <div className="color-swatch dark-bg" title="Dark Background: #1F2937"></div>
-          <div className="color-swatch light-bg" title="Light Background: #F9FAFB"></div>
+          <div
+            className="color-swatch primary-green"
+            title="Primary Green: #25D366"
+          ></div>
+          <div
+            className="color-swatch secondary-green"
+            title="Secondary Green: #128C7E"
+          ></div>
+          <div
+            className="color-swatch light-green"
+            title="Light Green: #DCF8C6"
+          ></div>
+          <div
+            className="color-swatch dark-green"
+            title="Dark Green: #075E54"
+          ></div>
+          <div
+            className="color-swatch dark-bg"
+            title="Dark Background: #1F2937"
+          ></div>
+          <div
+            className="color-swatch light-bg"
+            title="Light Background: #F9FAFB"
+          ></div>
         </div>
       </section>
 
@@ -91,8 +125,14 @@ export default function MoodboardPage() {
         <div className="typography-samples">
           <div className="typography-sample">
             <h1 className="heading-sample">Understand your conversations</h1>
-            <h2 className="subheading-sample">Get insights from your WhatsApp chats</h2>
-            <p className="body-sample">Analyze message patterns, response times, and conversation flow to understand communication dynamics with our powerful AI-driven tools.</p>
+            <h2 className="subheading-sample">
+              Get insights from your WhatsApp chats
+            </h2>
+            <p className="body-sample">
+              Analyze message patterns, response times, and conversation flow to
+              understand communication dynamics with our powerful AI-driven
+              tools.
+            </p>
           </div>
         </div>
       </section>
@@ -106,7 +146,9 @@ export default function MoodboardPage() {
               <MessageSquare />
             </div>
             <div className="stats-number">
-              <span className="counter-value" data-target="4">0</span>
+              <span className="counter-value" data-target="4">
+                0
+              </span>
             </div>
             <div className="stats-label">Total Chats</div>
           </div>
@@ -115,7 +157,9 @@ export default function MoodboardPage() {
               <BarChart2 />
             </div>
             <div className="stats-number">
-              <span className="counter-value" data-target="3">0</span>
+              <span className="counter-value" data-target="3">
+                0
+              </span>
             </div>
             <div className="stats-label">Active</div>
           </div>
@@ -124,7 +168,9 @@ export default function MoodboardPage() {
               <Shield />
             </div>
             <div className="stats-number">
-              <span className="counter-value" data-target="1">0</span>
+              <span className="counter-value" data-target="1">
+                0
+              </span>
             </div>
             <div className="stats-label">Archived</div>
           </div>
@@ -133,7 +179,10 @@ export default function MoodboardPage() {
               <Zap />
             </div>
             <div className="stats-number">
-              <span className="counter-value" data-target="75">0</span>%
+              <span className="counter-value" data-target="75">
+                0
+              </span>
+              %
             </div>
             <div className="stats-label">Completion</div>
           </div>
@@ -147,13 +196,16 @@ export default function MoodboardPage() {
           <div className="chat-header">
             <div className="chat-avatar">J</div>
             <div className="chat-info">
-              <div className="chat-name">John's Group</div>
+              <div className="chat-name">John&apos;s Group</div>
               <div className="chat-participants">5 participants</div>
             </div>
           </div>
           <div className="chat-summary">
             <h3>AI Summary</h3>
-            <p>This conversation primarily discusses project deadlines and upcoming meetings. Key points include:</p>
+            <p>
+              This conversation primarily discusses project deadlines and
+              upcoming meetings. Key points include:
+            </p>
             <ul>
               <li>Team meeting scheduled for Friday at 3 PM</li>
               <li>Project Alpha deadline extended to next Tuesday</li>
@@ -186,28 +238,40 @@ export default function MoodboardPage() {
               <MessageSquare />
             </div>
             <h3>AI-Powered</h3>
-            <p>Advanced machine learning algorithms analyze conversation patterns and extract key insights.</p>
+            <p>
+              Advanced machine learning algorithms analyze conversation patterns
+              and extract key insights.
+            </p>
           </div>
           <div className="feature-card hover-card">
             <div className="feature-icon">
               <BarChart2 />
             </div>
             <h3>Real-Time</h3>
-            <p>Get instant analysis and updates as your conversations evolve over time.</p>
+            <p>
+              Get instant analysis and updates as your conversations evolve over
+              time.
+            </p>
           </div>
           <div className="feature-card hover-card">
             <div className="feature-icon">
               <Shield />
             </div>
             <h3>Privacy-First</h3>
-            <p>Your data never leaves your device. All processing happens locally for maximum security.</p>
+            <p>
+              Your data never leaves your device. All processing happens locally
+              for maximum security.
+            </p>
           </div>
           <div className="feature-card hover-card">
             <div className="feature-icon">
               <Zap />
             </div>
             <h3>Analytics</h3>
-            <p>Comprehensive metrics and visualizations to understand communication patterns.</p>
+            <p>
+              Comprehensive metrics and visualizations to understand
+              communication patterns.
+            </p>
           </div>
         </div>
       </section>
@@ -216,15 +280,9 @@ export default function MoodboardPage() {
       <section className="moodboard-section">
         <h2>Buttons</h2>
         <div className="buttons-showcase">
-          <button className="btn-primary">
-            Get Started
-          </button>
-          <button className="btn-secondary">
-            Learn More
-          </button>
-          <button className="btn-outline">
-            View Demo
-          </button>
+          <button className="btn-primary">Get Started</button>
+          <button className="btn-secondary">Learn More</button>
+          <button className="btn-outline">View Demo</button>
           <button className="btn-icon">
             <ArrowRight />
           </button>
@@ -254,5 +312,5 @@ export default function MoodboardPage() {
         </div>
       </section>
     </div>
-  )
+  );
 }

@@ -8,8 +8,8 @@ export const useNavigation = (isAuthenticated: boolean = false) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
-  const mobileMenuRef = useRef(null);
-  const userDropdownRef = useRef(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);

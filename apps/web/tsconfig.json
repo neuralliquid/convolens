@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "target": "es2018",
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -20,28 +16,13 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@ui/*": [
-        "../../packages/ui/src/*"
-      ],
-      "@utils/*": [
-        "../../packages/utils/src/*"
-      ],
-      "@config/*": [
-        "../../packages/config/src/*"
-      ]
+      "@/*": ["./src/*"],
+      "@ui/*": ["../../packages/ui/src/*"],
+      "@utils/*": ["../../packages/utils/src/*"],
+      "@config/*": ["../../packages/config/src/*"]
     },
-    "typeRoots": [
-      "./node_modules/@types",
-      "../node_modules/@types"
-    ],
-    "types": [
-      "node",
-      "jest",
-      "@testing-library/jest-dom"
-    ],
+    "typeRoots": ["./node_modules/@types", "../node_modules/@types"],
+    "types": ["node", "jest", "@testing-library/jest-dom"],
     "composite": true,
     "plugins": [
       {
@@ -58,9 +39,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    ".next",
-    "out"
-  ]
+  "exclude": ["node_modules", ".next", "out"]
 }

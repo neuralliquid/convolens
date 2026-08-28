@@ -78,9 +78,9 @@ export default function ImportChatPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Import Chat</h1>
         <p className="text-muted-foreground mb-3">
-          Use the browser extension to send a chat straight from WhatsApp
-          Web without exporting a file first. A plain-text export is also
-          available if you prefer to upload a file.
+          Use the browser extension to send a chat straight from WhatsApp Web
+          without exporting a file first. A plain-text export is also available
+          if you prefer to upload a file.
         </p>
         <Badge variant="planned" className="mb-8">
           More import paths — planned
@@ -111,8 +111,8 @@ export default function ImportChatPage() {
               <CardHeader>
                 <CardTitle>Upload Chat Export</CardTitle>
                 <CardDescription>
-                  Select a WhatsApp text export, or the full "Export chat"
-                  .zip archive.
+                  Select a WhatsApp text export, or the full “Export chat” .zip
+                  archive.
                 </CardDescription>
               </CardHeader>
               <CardContent>
