@@ -53,10 +53,16 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
 
+      - name: Lint web
+        run: pnpm --filter @convolens/web lint
+
       # Runs in every workspace project that defines a typecheck script. A new
       # project is gated as soon as it lands.
       - name: Typecheck
         run: pnpm -r run typecheck
+
+      - name: Test web quality gates
+        run: pnpm --filter @convolens/web run test -- src/lib/__tests__/quality-gates.test.ts --runInBand
 
       - name: Test extension capture matrix
         run: pnpm --filter @convolens/chrome-extension test
