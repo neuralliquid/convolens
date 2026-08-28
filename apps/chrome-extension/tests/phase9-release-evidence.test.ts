@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   verifyDataDescriptor,
+  verifyArchivedManifest,
   verifyCentralDirectoryExtent,
   verifyEndOfCentralDirectory,
   verifyEntryRequirements,
@@ -58,6 +59,30 @@ test("keeps release versions aligned and package inspection mandatory", () => {
     ],
   );
   assert.equal(firefoxManifest.minimum_chrome_version, undefined);
+});
+
+test("requires the archived manifest to match its source manifest", () => {
+  const source = { manifest_version: 3, version: "1.0.27" };
+  assert.doesNotThrow(() =>
+    verifyArchivedManifest(
+      Buffer.from(JSON.stringify(source)),
+      source,
+      "Firefox",
+    ),
+  );
+  assert.throws(
+    () =>
+      verifyArchivedManifest(
+        Buffer.from(JSON.stringify({ ...source, version: "1.0.26" })),
+        source,
+        "Firefox",
+      ),
+    /Firefox ZIP manifest\.json does not match Firefox source manifest/,
+  );
+  assert.throws(
+    () => verifyArchivedManifest(Buffer.from("{"), source, "Firefox"),
+    /Firefox ZIP manifest\.json is not valid JSON/,
+  );
 });
 
 test("runs extension, intake, and inspected-package evidence in CI", () => {

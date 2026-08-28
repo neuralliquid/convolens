@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { inflateRawSync } from "node:zlib";
 
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
@@ -275,7 +276,7 @@ function verifyEntryPayload(buffer, entry, centralOffset) {
       `ZIP entry payload failed size or CRC verification: ${entry.name}`,
     );
   }
-  return { start: offset, end: recordEnd, name: entry.name };
+  return { start: offset, end: recordEnd, name: entry.name, payload };
 }
 
 export function inspectZip(buffer) {
@@ -300,6 +301,7 @@ export function inspectZip(buffer) {
 
   const entries = [];
   const localRecords = [];
+  const payloads = new Map();
   let cursor = centralOffset;
   for (let index = 0; index < entryCount; index += 1) {
     if (buffer.readUInt32LE(cursor) !== ZIP_CENTRAL_SIGNATURE) {
@@ -336,9 +338,13 @@ export function inspectZip(buffer) {
     ) {
       throw new Error(`ZIP entry has an unsafe path: ${name}`);
     }
-    localRecords.push(
-      verifyEntryPayload(buffer, { ...entry, name }, centralOffset),
+    const localRecord = verifyEntryPayload(
+      buffer,
+      { ...entry, name },
+      centralOffset,
     );
+    localRecords.push(localRecord);
+    payloads.set(name, localRecord.payload);
     entries.push(name);
     cursor = nameEnd + extraLength + commentLength;
   }
@@ -350,7 +356,21 @@ export function inspectZip(buffer) {
     throw new Error("ZIP contains duplicate entry names.");
   }
   verifyNonOverlappingLocalRecords(localRecords);
-  return entries.sort();
+  return { entries: entries.sort(), payloads };
+}
+
+export function verifyArchivedManifest(payload, sourceManifest, browser) {
+  let archivedManifest;
+  try {
+    archivedManifest = JSON.parse(payload.toString("utf8"));
+  } catch {
+    throw new Error(`${browser} ZIP manifest.json is not valid JSON.`);
+  }
+  if (!isDeepStrictEqual(archivedManifest, sourceManifest)) {
+    throw new Error(
+      `${browser} ZIP manifest.json does not match ${browser} source manifest.`,
+    );
+  }
 }
 
 async function main() {
@@ -381,12 +401,17 @@ async function main() {
     }
 
     const archivePath = resolve(extensionPackage.archive);
-    const entries = inspectZip(await readFile(archivePath));
+    const { entries, payloads } = inspectZip(await readFile(archivePath));
     if (JSON.stringify(entries) !== JSON.stringify(EXPECTED_ENTRIES)) {
       throw new Error(
         `Unexpected ${extensionPackage.browser} ZIP entries. Expected ${EXPECTED_ENTRIES.join(", ")}; received ${entries.join(", ")}.`,
       );
     }
+    verifyArchivedManifest(
+      payloads.get("manifest.json"),
+      manifest,
+      extensionPackage.browser,
+    );
 
     console.log(
       `Verified ${extensionPackage.browser} extension ${manifest.version} ZIP: ${entries.length} expected payloads decompressed with matching sizes and CRCs, no duplicates or unsafe paths.`,
