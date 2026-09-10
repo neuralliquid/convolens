@@ -13,8 +13,8 @@ enable_container_registry = true
 # ConvoLens now uses the org-owned nl-prod-data-pg server in neuralliquid-sub;
 # this stack no longer provisions a database for the application. Setting this
 # false destroys nl-prod-convolens-pg, its database, its firewall rule and the
-# old admin secret. There is no soft delete for a flexible server, so this is
-# the point of no return for that product-local rollback.
+# old admin secret. This removes the product-local Terraform rollback path;
+# Azure may restore a deleted Flexible Server only within five days.
 enable_postgres = false
 enable_redis    = false
 
