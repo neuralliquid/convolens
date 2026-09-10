@@ -124,7 +124,7 @@ variable "sluice_model" {
 variable "shared_postgres_fqdn" {
   type        = string
   description = "Host of the org-owned shared PostgreSQL server."
-  default     = "nl-prod-shared-pg.postgres.database.azure.com"
+  default     = "nl-prod-data-pg.postgres.database.azure.com"
 }
 
 variable "shared_postgres_username" {

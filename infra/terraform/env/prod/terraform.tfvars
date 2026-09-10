@@ -10,12 +10,11 @@ custom_hostname = "convolens.neuralliquid.ai"
 
 enable_budget_alerts      = true
 enable_container_registry = true
-# The pre-migration server. Convolens moved to the org-owned nl-prod-shared-pg on
-# 2026-08-06 and has run there since; this stack no longer provisions a database
-# for the application, it only described the server that was left behind as a
-# rollback path. Setting this false destroys nl-prod-convolens-pg, its database,
-# its firewall rule and the old admin secret. There is no soft delete for a
-# flexible server, so this is the point of no return for that rollback.
+# ConvoLens now uses the org-owned nl-prod-data-pg server in neuralliquid-sub;
+# this stack no longer provisions a database for the application. Setting this
+# false destroys nl-prod-convolens-pg, its database, its firewall rule and the
+# old admin secret. This removes the product-local Terraform rollback path;
+# Azure may restore a deleted Flexible Server only within five days.
 enable_postgres = false
 enable_redis    = false
 
